@@ -1,0 +1,11 @@
+// -- Test to make sure that arrays
+//    can contain strings as elements.
+
+fn main() {
+	a cstr[3] = [ "pizza", "is", "good" ];
+	print(a[0], 5);
+	print(" ", 1);
+	print(a[1], 2);
+	print(" ", 1);
+	print(a[2], 4);
+}

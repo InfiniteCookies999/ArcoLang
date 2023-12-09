@@ -1,0 +1,112 @@
+#include "Context.h"
+
+#include <llvm/IR/Module.h>
+
+arco::ArcoContext::ArcoContext()
+	:
+	LLContext(*new llvm::LLVMContext),
+	LLArcoModule(*new llvm::Module("Arco Module", LLContext)),
+
+	MainIdentifier(Identifier("main")),
+	LengthIdentifier(Identifier("length")),
+
+	IntType(new Type(TypeKind::Int)),
+	UIntType(new Type(TypeKind::UnsignedInt)),
+	Int8Type(new Type(TypeKind::Int8)),
+	Int16Type(new Type(TypeKind::Int16)),
+	Int32Type(new Type(TypeKind::Int32)),
+	Int64Type(new Type(TypeKind::Int64)),
+	UInt8Type(new Type(TypeKind::UnsignedInt8)),
+	UInt16Type(new Type(TypeKind::UnsignedInt16)),
+	UInt32Type(new Type(TypeKind::UnsignedInt32)),
+	UInt64Type(new Type(TypeKind::UnsignedInt64)),
+	CharType(new Type(TypeKind::Char)),
+	VoidType(new Type(TypeKind::Void)),
+	BoolType(new Type(TypeKind::Bool)),
+	CStrType(new Type(TypeKind::CStr)),
+	NullType(new Type(TypeKind::Null)),
+	ErrorType(new Type(TypeKind::Error)),
+	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
+
+	BinaryOpsPrecedence({
+		
+		{ '*', 9 },
+		{ '/', 9 },
+		{ '%', 9 },
+
+		{ '+', 8 },
+		{ '-', 8 },
+
+		{ TokenKind::LT_LT, 7 }, // <<
+		{ TokenKind::GT_GT, 7 }, // >>
+		
+		{ '<'      , 6 },
+		{ '>'      , 6 },
+		{ TokenKind::LT_EQ, 6 }, // <=
+		{ TokenKind::GT_EQ, 6 }, // >=
+		
+		{ TokenKind::EQ_EQ , 5 }, // ==
+		{ TokenKind::EXL_EQ, 5 }, // !=
+		
+		{ '&', 4 },
+		
+		{ '^', 3 },
+		
+		{ '|', 2 },
+		
+		{ TokenKind::AMP_AMP, 1 }, // &&
+		{ TokenKind::BAR_BAR, 1 }, // ||
+
+		})
+{
+}
+
+arco::ArcoContext::~ArcoContext() {
+	delete &LLArcoModule;
+	delete &LLContext;
+
+	delete IntType;
+	delete UIntType;
+}
+
+void arco::ArcoContext::Initialize() {
+	
+	TokenKeywordMap.insert({ "int"     , TokenKind::KW_INT      });
+	TokenKeywordMap.insert({ "uint"    , TokenKind::KW_UINT     });
+	TokenKeywordMap.insert({ "int8"    , TokenKind::KW_INT8     });
+	TokenKeywordMap.insert({ "int16"   , TokenKind::KW_INT16    });
+	TokenKeywordMap.insert({ "int32"   , TokenKind::KW_INT32    });
+	TokenKeywordMap.insert({ "int64"   , TokenKind::KW_INT64    });
+	TokenKeywordMap.insert({ "uint8"   , TokenKind::KW_UINT8    });
+	TokenKeywordMap.insert({ "uint16"  , TokenKind::KW_UINT16   });
+	TokenKeywordMap.insert({ "uint32"  , TokenKind::KW_UINT32   });
+	TokenKeywordMap.insert({ "uint64"  , TokenKind::KW_UINT64   });
+	TokenKeywordMap.insert({ "char"    , TokenKind::KW_CHAR     });
+	TokenKeywordMap.insert({ "void"    , TokenKind::KW_VOID     });
+	TokenKeywordMap.insert({ "cstr"    , TokenKind::KW_CSTR     });
+	TokenKeywordMap.insert({ "null"    , TokenKind::KW_NULL     });
+	TokenKeywordMap.insert({ "fn"      , TokenKind::KW_FN       });
+	TokenKeywordMap.insert({ "struct"  , TokenKind::KW_STRUCT   });
+	TokenKeywordMap.insert({ "cast"    , TokenKind::KW_CAST     });
+	TokenKeywordMap.insert({ "loop"    , TokenKind::KW_LOOP     });
+	TokenKeywordMap.insert({ "break"   , TokenKind::KW_BREAK    });
+	TokenKeywordMap.insert({ "continue", TokenKind::KW_CONTINUE });
+	TokenKeywordMap.insert({ "if"     , TokenKind::KW_IF        });
+	TokenKeywordMap.insert({ "else"   , TokenKind::KW_ELSE      });
+	TokenKeywordMap.insert({ "return" , TokenKind::KW_RETURN    });
+	TokenKeywordMap.insert({ "native" , TokenKind::KW_NATIVE    });
+	TokenKeywordMap.insert({ "const"  , TokenKind::KW_CONST     });
+	TokenKeywordMap.insert({ "private", TokenKind::KW_PRIVATE   });
+
+	for (const auto& [Text, Kind] : TokenKeywordMap) {
+		TokenKeywordInvertedMap.insert({ static_cast<u32>(Kind), Text });
+	}
+}
+
+arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {
+	auto Itr = TokenKeywordMap.find(Text);
+	if (Itr != TokenKeywordMap.end()) {
+		return Itr->second;
+	}
+	return TokenKind::INVALID;
+}

@@ -1,0 +1,11 @@
+// -- Test to make sure that non-foldable
+//    array generation works.
+
+fn main() {
+	x0 int = 41; x1 int = 36;
+	a int[5] = [ 412, x0 + x1, 121, 45, 56 ];
+	loop i int = 0; i < 5; i = i + 1 {
+		print(a[i]);
+		print(" ", 1);
+	}
+}

@@ -1,0 +1,44 @@
+
+native fn GetStdHandle(nStdHandle uint32) void*;
+
+native fn WriteFile(hFile                  void*,
+                    lpBuffer               cstr,
+					nNumberOfBytesToWrite  uint32,
+					lpNumberOfBytesWritten uint32*,
+					lpOverlapped           void* // Ignored data structure.
+					) int32;
+					
+fn print(msg cstr, length int) {
+	handle        void* = GetStdHandle(-11);
+	bytes_written uint32;
+	WriteFile(handle, msg, length, &bytes_written, null);
+}
+
+fn print(i int) {
+	if i == 0 {
+		msg cstr = "0";
+		print(msg, 1);
+		return;
+	}
+	
+	length int = 0;
+	buffer char[20];
+	
+	i = -i;
+	
+	v int = i;
+	loop v < 0 {
+		v = v / 10;
+		length = length + 1;
+	}
+	
+	scan int = length - 1;
+	loop i < 0 {
+		val int = -(i % 10) + 48;
+		buffer[scan] = cast(char) val;
+		scan = scan - 1;
+		i = i / 10;
+	}
+	
+	print(buffer, length);
+}

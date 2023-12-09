@@ -1,0 +1,10 @@
+// -- Test to make sure that simple range based
+//    loops works.
+
+fn main() {
+	sum int = 0;
+	loop i int = 0; i < 5; i = i + 1 {
+		sum = sum + i;
+	}
+	print(sum);
+}

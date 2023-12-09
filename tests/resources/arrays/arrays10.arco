@@ -1,0 +1,18 @@
+// -- Test to make sure that arrays can
+//    be delcared such that their size is
+//    infered.
+
+fn main() {
+	a1 int[] = [ 21, 55, 11, 56, 3 ];
+	loop i int = 0; i < 5; i = i + 1 {
+		print(a1[i]);
+		print(" ", 1);
+	}
+	a2 int[][] = [ [ 33, 5, 1 ], [ 8, 3, 72, 22 ] ];
+	loop i int = 0; i < 2; i = i + 1 {
+		loop j int = 0; j < 4; j = j + 1 {
+			print(a2[i][j]);
+			print(" ", 1);
+		}
+	}
+}

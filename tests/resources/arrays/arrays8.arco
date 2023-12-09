@@ -1,0 +1,7 @@
+// -- Test to make sure that arrays can
+//    have no elements.
+
+fn main() {
+	a int[3] = [];
+	b int[3][2] = [ [], [] ];
+}
