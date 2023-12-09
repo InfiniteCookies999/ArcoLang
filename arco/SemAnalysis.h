@@ -74,6 +74,7 @@ namespace arco {
 		void CheckArray(Array* Arr);
 		void CheckArrayAccess(ArrayAccess* Access);
 		void CheckTypeCast(TypeCast* Cast);
+		void CheckStructInitializer(StructInitializer* StructInit);
 
 		void CheckCondition(Expr* Cond, const char* PreErrorText);
 

@@ -50,6 +50,7 @@ namespace arco {
 		ARRAY,
 		ARRAY_ACCESS,
 		TYPE_CAST,
+		STRUCT_INITIALIZER,
 	
 	};
 
@@ -376,6 +377,14 @@ namespace arco {
 
 		Type* ToType;
 		Expr* Value;
+
+	};
+
+	// Ex.  'StructName { 4, 2 }'
+	struct StructInitializer : Expr {
+		StructInitializer() : Expr(AstKind::STRUCT_INITIALIZER) {}
+
+		llvm::SmallVector<NonNamedValue, 2> Args;
 
 	};
 }

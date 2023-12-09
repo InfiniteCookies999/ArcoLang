@@ -1,6 +1,7 @@
 #include "IRGen.h"
 
 #include "Context.h"
+#include <unordered_set>
 
 //===-------------------------------===//
 // Helper Functions
@@ -118,33 +119,35 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
 		return llvm::ArrayType::get(GenType(Context, ArrayTy->GetElementType()), ArrayTy->GetLength());
 	}
-	case TypeKind::Struct: {
-		StructType* StructTy = static_cast<StructType*>(Ty);
-		StructDecl* Struct = StructTy->GetStruct();
-		if (Struct->LLStructTy) {
-			return Struct->LLStructTy;
-		}
-		llvm::StructType* LLStructTy = llvm::StructType::create(Context.LLContext);
-		Struct->LLStructTy = LLStructTy; // Set early to prevent endless recursive
-
-		std::vector<llvm::Type*> LLStructFieldTypes;
-		LLStructFieldTypes.resize(Struct->Fields.size());
-		if (Struct->Fields.empty()) {
-			LLStructFieldTypes.push_back(llvm::Type::getInt8Ty(Context.LLContext));
-		} else {
-			for (VarDecl* Field : Struct->Fields) {
-				LLStructFieldTypes[Field->FieldIdx] = GenType(Context, Field->Ty);	
-			}
-		}
-		LLStructTy->setBody(LLStructFieldTypes);
-		LLStructTy->setName(StructTy->GetStructName().Text);
-
-		return LLStructTy;
-	}
+	case TypeKind::Struct:
+		return GenStructType(Context, static_cast<StructType*>(Ty));
 	default:
 		assert(!"Failed to implement case for GenType()");
 		return nullptr;
 	}
+}
+
+llvm::StructType* arco::GenStructType(ArcoContext& Context, StructType* StructTy) {
+	StructDecl* Struct = StructTy->GetStruct();
+	if (Struct->LLStructTy) {
+		return Struct->LLStructTy;
+	}
+	llvm::StructType* LLStructTy = llvm::StructType::create(Context.LLContext);
+	Struct->LLStructTy = LLStructTy; // Set early to prevent endless recursive
+
+	std::vector<llvm::Type*> LLStructFieldTypes;
+	LLStructFieldTypes.resize(Struct->Fields.size());
+	if (Struct->Fields.empty()) {
+		LLStructFieldTypes.push_back(llvm::Type::getInt8Ty(Context.LLContext));
+	} else {
+		for (VarDecl* Field : Struct->Fields) {
+			LLStructFieldTypes[Field->FieldIdx] = GenType(Context, Field->Ty);	
+		}
+	}
+	LLStructTy->setBody(LLStructFieldTypes);
+	LLStructTy->setName(StructTy->GetStructName().Text);
+
+	return LLStructTy;
 }
 
 arco::IRGenerator::IRGenerator(ArcoContext& Context)
@@ -332,6 +335,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenArrayAccess(static_cast<ArrayAccess*>(Node));
 	case AstKind::TYPE_CAST:
 		return GenTypeCast(static_cast<TypeCast*>(Node));
+	case AstKind::STRUCT_INITIALIZER:
+		return GenStructInitializer(static_cast<StructInitializer*>(Node), nullptr);
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;
@@ -970,6 +975,37 @@ llvm::Value* arco::IRGenerator::GenTypeCast(TypeCast* Cast) {
 	return GenCast(Cast->Ty, Cast->Value->Ty, GenRValue(Cast->Value));
 }
 
+llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr) {
+	StructType* StructTy = static_cast<StructType*>(StructInit->Ty);
+	StructDecl* Struct = StructTy->GetStruct();
+
+	if (!LLAddr) {
+		LLAddr = CreateUnseenAlloca(GenStructType(StructTy), "tmp.structinit.addr");
+	}
+
+	std::unordered_set<ulen> ConsumedFieldIdxs;
+	for (ulen i = 0; i < StructInit->Args.size(); i++) {
+		NonNamedValue Value = StructInit->Args[i];
+		
+		llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Struct->Fields[i]->FieldIdx);
+		GenAssignment(LLFieldAddr, Value.E);
+		ConsumedFieldIdxs.insert(i);
+	}
+
+	for (VarDecl* Field : Struct->Fields) {
+		if (ConsumedFieldIdxs.find(Field->FieldIdx) == ConsumedFieldIdxs.end()) {
+			llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
+			if (Field->Assignment) {
+				GenAssignment(LLFieldAddr, Field->Assignment);
+			} else {
+				// TODO: assign default value
+			}
+		}
+	}
+
+	return LLAddr;
+}
+
 llvm::Value* arco::IRGenerator::GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
 	return Builder.CreateAdd(LLLHS, LLRHS);
 }
@@ -1179,6 +1215,8 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value) {
 	if (Value->Is(AstKind::ARRAY)) {
 		GenArray(static_cast<Array*>(Value), LLAddress);
+	} else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
+		GenStructInitializer(static_cast<StructInitializer*>(Value), LLAddress);
 	} else {
 		llvm::Value* LLAssignment = GenRValue(Value);
 		Builder.CreateStore(LLAssignment, LLAddress);

@@ -100,6 +100,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::TYPE_CAST:
 		CheckTypeCast(static_cast<TypeCast*>(Node));
 		break;
+	case AstKind::STRUCT_INITIALIZER:
+		CheckStructInitializer(static_cast<StructInitializer*>(Node));
+		break;
 	case AstKind::NUMBER_LITERAL:
 	case AstKind::STRING_LITERAL:
 	case AstKind::NULLPTR:
@@ -831,6 +834,42 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
 	Cast->IsFoldable = Cast->Value->IsFoldable;
 	YIELD_ERROR_WHEN(Cast, Cast->Value);
 
+}
+
+void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
+	StructType* StructTy = static_cast<StructType*>(StructInit->Ty);
+	if (!FixupStructType(StructTy)) {
+		YIELD_ERROR(StructInit);
+	}
+
+	StructDecl* Struct = StructTy->GetStruct();
+
+	// TODO: May want to allow if the fields are foldable!
+	StructInit->IsFoldable = false;
+
+	// TODO: Would want to check if the structure has a constructor here.
+
+	for (ulen i = 0; i < StructInit->Args.size(); i++) {
+		NonNamedValue Value = StructInit->Args[i];
+		CheckNode(Value.E);
+
+		if (i >= Struct->Fields.size()) {
+			Error(Value.ExpandedLoc, "Too many fields in initializer");
+			return;
+		}
+
+		if (Value.E->Ty == Context.ErrorType) {
+			continue;
+		}
+
+		Type* FieldTy = Struct->Fields[i]->Ty;
+		if (!IsAssignableTo(FieldTy, Value.E)) {
+			Error(Value.ExpandedLoc, "Cannot assign value of type '%s' to field of type '%s'",
+				Value.E->Ty->ToString(), FieldTy->ToString());
+		} else {
+			CreateCast(Value.E, FieldTy);
+		}
+	}
 }
 
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {

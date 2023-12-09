@@ -93,6 +93,7 @@ int main() {
 	RunTest(SRC("arrays/arrays12.arco"), "pizza is good");
 
 	RunTest(SRC("structs/structs1.arco"), "55 44");
+	RunTest(SRC("structs/structs2.arco"), "55 44");
 
 	if (Succeeded + Failed > 0) {
 		llvm::outs() << "Passed/Tested (" << Succeeded << "/" << (Succeeded + Failed) << ")\n";

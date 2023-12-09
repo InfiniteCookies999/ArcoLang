@@ -606,24 +606,43 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 	case TokenKind::STRING_LITERAL:  return ParseStringLiteral();
 	case TokenKind::IDENT: {
 
-		IdentRef* IRef = NewNode<IdentRef>(CTok);
-		IRef->Ident = Identifier(CTok.GetText());
-		NextToken();
+		if (PeekToken(1).Is('{')) {
+			Identifier StructName = Identifier(CTok.GetText());
+			StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
+			NextToken();
 
-		// Even if the identifier is not in the current scope
-		// of variable declarations it may be refering to
-		// a function identifier, class, enum, ect.. so
-		// no error is displayed and the process of determining
-		// the identifier's declaration is determined during
-		// semantic analysis.
-		if (LocScope && IRef->Is(AstKind::IDENT_REF)) {
-			if (VarDecl* FoundVar = LocScope->FindVariable(IRef->Ident)) {
-				IRef->Var     = FoundVar;
-				IRef->RefKind = IdentRef::RK::Var;
+			NextToken(); // Consuming '{' token.
+			StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
+			StructInit->Ty = Ty;
+			
+			if (CTok.IsNot('}')) {
+				ParseAggregatedValues(StructInit->Args, '}', true);
 			}
-		}
 
-		return ParseIdentPostfix(IRef);
+			Match('}', "for struct initializer");
+
+			return StructInit;
+		} else {
+
+			IdentRef* IRef = NewNode<IdentRef>(CTok);
+			IRef->Ident = Identifier(CTok.GetText());
+			NextToken();
+
+			// Even if the identifier is not in the current scope
+			// of variable declarations it may be refering to
+			// a function identifier, class, enum, ect.. so
+			// no error is displayed and the process of determining
+			// the identifier's declaration is determined during
+			// semantic analysis.
+			if (LocScope && IRef->Is(AstKind::IDENT_REF)) {
+				if (VarDecl* FoundVar = LocScope->FindVariable(IRef->Ident)) {
+					IRef->Var     = FoundVar;
+					IRef->RefKind = IdentRef::RK::Var;
+				}
+			}
+
+			return ParseIdentPostfix(IRef);
+		}
 	}
 	// ---- Pre unary expressions ----
 	case '-': case '+': {

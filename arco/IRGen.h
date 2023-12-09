@@ -10,6 +10,7 @@ namespace arco {
 	class ArcoContext;
 
 	llvm::Type* GenType(ArcoContext& Context, Type* Ty);
+	llvm::StructType* GenStructType(ArcoContext& Context, StructType* StructTy);
 
 	class IRGenerator {
 	public:
@@ -76,6 +77,7 @@ namespace arco {
 		void FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy);
 		llvm::Value* GenArrayAccess(ArrayAccess* Access);
 		llvm::Value* GenTypeCast(TypeCast* Cast);
+		llvm::Value* GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr);
 
 		llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
 		llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
@@ -141,6 +143,10 @@ namespace arco {
 
 		inline llvm::Type* GenType(Type* Ty) {
 			return arco::GenType(Context, Ty);
+		}
+
+		inline llvm::StructType* GenStructType(StructType* StructTy) {
+			return arco::GenStructType(Context, StructTy);
 		}
 
 	};
