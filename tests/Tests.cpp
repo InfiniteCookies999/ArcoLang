@@ -96,6 +96,9 @@ int main() {
 	RunTest(SRC("structs/structs2.arco"), "55 44");
 	RunTest(SRC("structs/structs3.arco"), "55 44");
 	RunTest(SRC("structs/structs4.arco"), "55 44");
+	RunTest(SRC("structs/structs5.arco"), "124 66 25");
+	RunTest(SRC("structs/structs6.arco"), "124 66 25");
+	RunTest(SRC("structs/structs7.arco"), "55 99");
 
 	//RunTest(SRC("lots_of_errors.arco"), "");
 

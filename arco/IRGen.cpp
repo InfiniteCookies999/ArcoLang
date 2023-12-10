@@ -834,7 +834,11 @@ llvm::Value* arco::IRGenerator::GenStringLiteral(StringLiteral* String) {
 }
 
 llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
-	return IRef->Var->LLAddress;
+	if (IRef->Var->IsField()) {
+		return CreateStructGEP(LLThis, IRef->Var->FieldIdx);
+	} else {
+		return IRef->Var->LLAddress;
+	}
 }
 
 llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {

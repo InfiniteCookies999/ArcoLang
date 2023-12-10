@@ -245,6 +245,7 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	Match(TokenKind::KW_STRUCT);
 	
 	ulen FieldCount = 0;
+	PUSH_SCOPE()
 	Match('{');
 	while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
 		AstNode* Stmt;
@@ -258,6 +259,7 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 		}
 	}
 	Match('}');
+	POP_SCOPE()
 
 	return Struct;
 }
