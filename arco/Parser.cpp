@@ -60,7 +60,7 @@ case TokenKind::KW_CHAR:    \
 case TokenKind::KW_CSTR
 
 arco::Parser::Parser(ArcoContext& Context, Module& Mod, const SourceBuf Buffer, const char* File)
-	: Context(Context), Mod(Mod), Log(File), Lex(Context, Log, Buffer)
+	: Context(Context), Mod(Mod), Log(File, Mod), Lex(Context, Log, Buffer)
 {
 }
 

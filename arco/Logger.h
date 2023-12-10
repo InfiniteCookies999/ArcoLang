@@ -8,6 +8,8 @@
 
 namespace arco {
 
+	struct Module;
+
 	// True if an error was found during compilation.
 	// This includes reading files, parsing, semantic anlysis,
 	// IR generation, and machine code generation.
@@ -16,7 +18,7 @@ namespace arco {
 	class Logger {
 	public:
 
-		Logger(const char* FilePath);
+		Logger(const char* FilePath, Module& Mod);
 
 		void BeginError(SourceLoc Loc, const char* MsgHeader) {
 			PrimaryErrLoc = Loc;
@@ -49,10 +51,20 @@ namespace arco {
 	private:
 		llvm::raw_ostream& OS;
 
+		Module& Mod;
+
 		const char* FilePath;
+		
+		// Current information for printing the error.
+		std::string LNPad; // New line pad for displaying error location.
+		ulen LargestLineNum;
 		SourceLoc   PrimaryErrLoc;
 
 		void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer);
+
+		void DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines);
+
+		std::string RangeFromWindow(const char* Loc, i64 Direction);
 
 		static void GlobalError(llvm::raw_ostream& OS, const std::function<void()>& Printer);
 

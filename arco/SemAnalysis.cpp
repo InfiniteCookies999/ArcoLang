@@ -23,7 +23,7 @@ static inline ulen min(ulen a, ulen b) {
 }
 
 arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Module& Mod, Decl* D)
-	: Context(Context), Mod(Mod), Log(D->File.c_str())
+	: Context(Context), Mod(Mod), Log(D->File.c_str(), Mod)
 {
 }
 
