@@ -108,7 +108,7 @@ void arco::Compiler::Compile(llvm::SmallVector<const char*>& Sources) {
 		Decl* D = Context.QueuedDeclsToGen.front();
 		Context.QueuedDeclsToGen.pop();
 
-		SemAnalyzer Analyzer(Context, Mod, D);
+		SemAnalyzer Analyzer(Context, D);
 		if (D->Is(AstKind::FUNC_DECL)) {
 			Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
 		}
@@ -121,6 +121,10 @@ void arco::Compiler::Compile(llvm::SmallVector<const char*>& Sources) {
 		if (D->Is(AstKind::FUNC_DECL)) {
 			IRGen.GenFunc(static_cast<FuncDecl*>(D));
 		}
+	}
+
+	if (FoundCompileError) {
+		return;
 	}
 
 	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {

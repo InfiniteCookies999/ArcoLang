@@ -22,8 +22,8 @@ static inline ulen min(ulen a, ulen b) {
 	return a < b ? a : b;
 }
 
-arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Module& Mod, Decl* D)
-	: Context(Context), Mod(Mod), Log(D->File.c_str(), Mod)
+arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
+	: Context(Context), Mod(*D->Mod), Log(D->File.c_str(), D->FileBuffer)
 {
 }
 
@@ -1023,7 +1023,7 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 		return false;
 	}
 	StructDecl* Struct = Itr->second;
-	SemAnalyzer Analyzer(Context, *Struct->Module, Struct);
+	SemAnalyzer Analyzer(Context, Struct);
 	Analyzer.CheckStructDecl(Struct);
 	StructTy->AssignStruct(Struct);
 	return true;

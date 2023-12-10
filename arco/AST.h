@@ -90,11 +90,12 @@ namespace arco {
 	struct Decl : AstNode {
 		Decl(AstKind Kind) : AstNode(Kind) {}
 
-		Module* Module;
-
 		bool GenRequestedAlready = false;
 
+		Module*     Mod;
+
 		std::string File;
+		SourceBuf   FileBuffer;
 
 		Modifiers  Mods;
 		Identifier Name;

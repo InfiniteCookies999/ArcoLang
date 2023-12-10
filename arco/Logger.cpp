@@ -4,11 +4,13 @@
 
 namespace arco {
 	// Satisfying linkage
-	bool FoundCompileError = false;
+	bool FoundCompileError      = false;
+	ulen TotalAccumulatedErrors = 0;
+	ulen TOTAL_ALLOWED_ERRORS   = 20;
 }
 
-arco::Logger::Logger(const char* FilePath, Module& Mod)
-	: FilePath(FilePath), Mod(Mod), OS(llvm::errs())
+arco::Logger::Logger(const char* FilePath, SourceBuf Buffer)
+	: FilePath(FilePath), Buffer(Buffer), OS(llvm::errs())
 {
 }
 
@@ -60,6 +62,15 @@ void arco::Logger::EndError() {
 
 	OS << '\n';
 
+	++TotalAccumulatedErrors;
+
+	if (TotalAccumulatedErrors == TOTAL_ALLOWED_ERRORS) {
+		SetTerminalColor(TerminalColorBrightBlue);
+		OS << ">>";
+		SetTerminalColor(TerminalColorDefault);
+		OS << " Exceeded the maximum allowed error messages. Exiting.\n";
+		exit(1);
+	}
 }
 
 void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer) {
@@ -154,7 +165,10 @@ std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
 
 		++Moved;
 
-		//if (MemPtr == Mod.)
+		if (MemPtr == Buffer.memory || MemPtr == Buffer.memory + Buffer.length - 1) {
+			// Hit one end of the buffer so there is nothing more to di.
+			break;
+		}
 
 		if (Moved == abs(Direction)) {
 			// Moved enough.

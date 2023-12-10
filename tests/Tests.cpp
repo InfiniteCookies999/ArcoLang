@@ -97,6 +97,8 @@ int main() {
 	RunTest(SRC("structs/structs3.arco"), "55 44");
 	RunTest(SRC("structs/structs4.arco"), "55 44");
 
+	//RunTest(SRC("lots_of_errors.arco"), "");
+
 	if (Succeeded + Failed > 0) {
 		llvm::outs() << "Passed/Tested (" << Succeeded << "/" << (Succeeded + Failed) << ")\n";
 		if (Failed) {

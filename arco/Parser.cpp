@@ -60,7 +60,7 @@ case TokenKind::KW_CHAR:    \
 case TokenKind::KW_CSTR
 
 arco::Parser::Parser(ArcoContext& Context, Module& Mod, const SourceBuf Buffer, const char* File)
-	: Context(Context), Mod(Mod), Log(File, Mod), Lex(Context, Log, Buffer)
+	: Context(Context), Mod(Mod), Log(File, Buffer), Lex(Context, Log, Buffer)
 {
 }
 
@@ -161,7 +161,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	NextToken(); // Consuming 'fn' keyword.
 
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
-	Func->Module = &Mod;
+	Func->Mod    = &Mod;
 	Func->File   = Log.GetFilePath();
 	Func->Name   = ParseIdentifier("Expected identifier for function declaration");
 	Func->Mods   = Mods;
@@ -213,14 +213,14 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 	VarDecl* Var = NewNode<VarDecl>(CTok);
-	Var->Module = &Mod;
+	Var->Mod    = &Mod;
 	Var->File   = Log.GetFilePath();
 	Var->Name   = ParseIdentifier("Expected identifier for variable declaration");
 	Var->Mods   = Mods;
 
 	Var->Ty = ParseType();
 
-	if (LocScope) {
+	if (LocScope && !Var->Name.IsNull()) {
 		LocScope->VarDecls.insert({ Var->Name, Var });
 	}
 
@@ -238,7 +238,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 
 arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	StructDecl* Struct = NewNode<StructDecl>(CTok);
-	Struct->Module = &Mod;
+	Struct->Mod    = &Mod;
 	Struct->File   = Log.GetFilePath();
 	Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
 	Struct->Mods   = Mods;

@@ -11,7 +11,7 @@ namespace arco {
 	class SemAnalyzer {
 	public:
 
-		explicit SemAnalyzer(ArcoContext& Context, Module& Mod, Decl* D);
+		explicit SemAnalyzer(ArcoContext& Context, Decl* D);
 
 		void CheckFuncDecl(FuncDecl* Func);
 		

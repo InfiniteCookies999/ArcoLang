@@ -8,17 +8,18 @@
 
 namespace arco {
 
-	struct Module;
-
 	// True if an error was found during compilation.
 	// This includes reading files, parsing, semantic anlysis,
 	// IR generation, and machine code generation.
 	extern bool FoundCompileError;
 
+	extern ulen TotalAccumulatedErrors;
+	extern ulen TOTAL_ALLOWED_ERRORS;
+
 	class Logger {
 	public:
 
-		Logger(const char* FilePath, Module& Mod);
+		Logger(const char* FilePath, SourceBuf Buffer);
 
 		void BeginError(SourceLoc Loc, const char* MsgHeader) {
 			PrimaryErrLoc = Loc;
@@ -51,10 +52,9 @@ namespace arco {
 	private:
 		llvm::raw_ostream& OS;
 
-		Module& Mod;
-
 		const char* FilePath;
-		
+		SourceBuf   Buffer;
+
 		// Current information for printing the error.
 		std::string LNPad; // New line pad for displaying error location.
 		ulen LargestLineNum;
