@@ -1007,11 +1007,8 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 		NumberLiteral* Number = static_cast<NumberLiteral*>(LengthExpr);
 		ArrayTy->AssignLength(Number->UnsignedIntValue);
 	}
-	Type* ElmTy = ArrayTy->GetElementType();
-	if (ElmTy->GetKind() == TypeKind::Array) {
-		if (!FixupArrayType(static_cast<ArrayType*>(ElmTy))) {
-			return false;
-		}
+	if (!FixupType(ArrayTy->GetElementType())) {
+		return false;
 	}
 	return true;
 }

@@ -1181,11 +1181,68 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 	}
 }
 
+void arco::IRGenerator::StructArrayCallDefaultConstructors(Type* BaseTy,
+	                                                       llvm::Value* LLArrStartPtr,
+	                                                       llvm::Value* LLTotalLinearLength) {
+	GenInternalArrayLoop(BaseTy, LLArrStartPtr, LLTotalLinearLength,
+		[this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
+			CallDefaultConstructor(LLElmAddr, static_cast<StructType*>(BaseTy));
+		});
+}
+
+void arco::IRGenerator::GenInternalArrayLoop(Type* BaseTy,
+	                                         llvm::Value* LLArrStartPtr,
+	                                         llvm::Value* LLTotalLinearLength,
+	                                         const std::function<void(llvm::PHINode*, Type*)>& CodeGenCallback) {
+	
+	llvm::BasicBlock* BeforeLoopBB = Builder.GetInsertBlock();
+	llvm::Value* LLEndOfArrPtr = CreateInBoundsGEP(LLArrStartPtr, { LLTotalLinearLength });
+
+	llvm::BasicBlock* LoopBB    = llvm::BasicBlock::Create(LLContext, "array.loop", LLFunc);
+	llvm::BasicBlock* LoopEndBB = llvm::BasicBlock::Create(LLContext, "array.end", LLFunc);
+
+	Builder.CreateBr(LoopBB);
+	Builder.SetInsertPoint(LoopBB);
+
+	// Pointer used to traverse through the array
+	llvm::PHINode* LLArrPtr = Builder.CreatePHI(llvm::PointerType::get(GenType(BaseTy), 0), 0, "obj.loop.ptr");
+
+	// Incoming value to the start of the array from the incoming block
+	LLArrPtr->addIncoming(LLArrStartPtr, BeforeLoopBB);
+
+	CodeGenCallback(LLArrPtr, BaseTy);
+
+	// Move to the next element in the array
+	llvm::Value* LLNextElementPtr = CreateInBoundsGEP(LLArrPtr, { GetSystemUInt(1, LLContext, LLModule) });
+
+	// Checking if all objects have been looped over
+	llvm::Value* LLLoopEndCond = Builder.CreateICmpEQ(LLNextElementPtr, LLEndOfArrPtr);
+	Builder.CreateCondBr(LLLoopEndCond, LoopEndBB, LoopBB);
+
+	// The value must come from the block that 'LLNextCount' is created
+	// in which would be whatever the current block is.
+	llvm::BasicBlock* LLCurBlock = Builder.GetInsertBlock();
+	LLArrPtr->addIncoming(LLNextElementPtr, LLCurBlock);
+
+	// End of loop
+	Builder.SetInsertPoint(LoopEndBB);
+
+}
+
 llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
 	llvm::Value* LLValue = CreateInBoundsGEP(LLArray,
 				{ GetSystemUInt(0, LLContext, LLModule), GetSystemUInt(0, LLContext, LLModule) });
 	LLValue->setName("array.decay");
 	return LLValue;
+}
+
+llvm::Value* arco::IRGenerator::MultiDimensionalArrayToPointerOnly(llvm::Value* LLArray, ArrayType* ArrTy) {
+	ulen Depth = ArrTy->GetDepthLevel();
+	llvm::SmallVector<llvm::Value*, 4> LLIdxs;
+	for (ulen i = 0; i < Depth + 1; i++) {
+		LLIdxs.push_back(GetSystemUInt(0, LLContext, LLModule));
+	}
+	return CreateInBoundsGEP(LLArray, LLIdxs);
 }
 
 inline llvm::Value* arco::IRGenerator::CreateInBoundsGEP(llvm::Value* LLAddr, llvm::ArrayRef<llvm::Value*> IdxList) {
@@ -1273,6 +1330,31 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 				LLAlignment
 			);
 		}
+	} else if (Ty->GetKind() == TypeKind::Array) {
+		ArrayType* ArrTy = static_cast<ArrayType*>(Ty);
+		Type* BaseTy = ArrTy->GetBaseType();
+		if (BaseTy->GetKind() == TypeKind::Struct) {
+			StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
+			if (Struct->FieldsHaveAssignment) {
+				// Cannot simply memset the array to zero must call the default constructor.
+				llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(LLAddr, ArrTy);
+				llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrTy->GetTotalLinearLength(), LLContext, LLModule);
+				StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
+				return;
+			}
+		}
+		
+		// Memset to zero.
+		ulen TotalLinearLength = ArrTy->GetTotalLinearLength();
+		TotalLinearLength *= SizeOfTypeInBytes(GenType(BaseTy));
+		llvm::Align LLAlignment = llvm::Align();
+		Builder.CreateMemSet(
+			LLAddr,
+			GetLLUInt8(0, LLContext),
+			GetLLUInt64(TotalLinearLength, LLContext),
+			LLAlignment
+		);
+		
 	} else {
 		Builder.CreateStore(GenZeroedValue(Ty), LLAddr);
 	}

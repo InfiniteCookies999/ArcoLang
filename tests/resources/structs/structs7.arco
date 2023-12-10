@@ -1,4 +1,5 @@
-// -- Test to make sure that default field initialization works.
+// -- Test to make sure that default field initialization 
+//    works when one field uses another.
 
 Data struct {
 	a int = 55;

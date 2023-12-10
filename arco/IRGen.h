@@ -102,9 +102,18 @@ namespace arco {
 		llvm::Constant* GenConstValue(Type* Ty);
 		llvm::Constant* GenZeroedValue(Type* Ty);
 
+		void StructArrayCallDefaultConstructors(Type* BaseTy,
+			                                    llvm::Value* LLArrStartPtr,
+			                                    llvm::Value* LLTotalLinearLength);
+		void GenInternalArrayLoop(Type* BaseTy,
+			                      llvm::Value* LLArrStartPtr,
+			                      llvm::Value* LLTotalLinearLength,
+			                      const std::function<void(llvm::PHINode*, Type*)>& CodeGenCallback);
+
 		/// Converts the llvm array type to its eqv. pointer type.
 		///
 		llvm::Value* DecayArray(llvm::Value* LLArray);
+		llvm::Value* MultiDimensionalArrayToPointerOnly(llvm::Value* LLArray, ArrayType* ArrTy);
 
 		inline llvm::Value* CreateInBoundsGEP(llvm::Value* LLAddr, llvm::ArrayRef<llvm::Value*> IdxList);
 		inline llvm::Value* GetArrayIndexAddress(llvm::Value* LLArray, llvm::Value* LLIndex);
