@@ -4,6 +4,8 @@
 #include "Tokens.h"
 #include "AST.h"
 
+#include <queue>
+
 namespace llvm {
 	class LLVMContext;
 	class Module;
@@ -30,6 +32,8 @@ namespace arco {
 		llvm::StringRef GetKeywordAsString(u16 Kind) const {
 			return TokenKeywordInvertedMap.find(static_cast<u32>(Kind))->second;
 		}
+
+		void RequestGen(Decl* D);
 
 		FuncDecl* MainEntryFunc = nullptr;
 
@@ -59,6 +63,8 @@ namespace arco {
 		// Maps a binary operator to its precedence.
 		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
 
+		std::queue<Decl*> QueuedDeclsToGen;
+
 		// ----- LLVM -----
 		llvm::LLVMContext& LLContext;
 		llvm::Module&      LLArcoModule;
@@ -66,6 +72,7 @@ namespace arco {
 
 		llvm::DenseMap<Type*, PointerType*>                PointerCache;
 		llvm::DenseMap<std::pair<Type*, ulen>, ArrayType*> ArrayCache;
+		std::queue<StructDecl*>                            DefaultConstrucorsNeedingCreated;
 
 	private:
 		// TODO: This can be replaced with perfect hashing!

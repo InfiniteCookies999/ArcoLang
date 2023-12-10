@@ -120,15 +120,14 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		return llvm::ArrayType::get(GenType(Context, ArrayTy->GetElementType()), ArrayTy->GetLength());
 	}
 	case TypeKind::Struct:
-		return GenStructType(Context, static_cast<StructType*>(Ty));
+		return GenStructType(Context, static_cast<StructType*>(Ty)->GetStruct());
 	default:
 		assert(!"Failed to implement case for GenType()");
 		return nullptr;
 	}
 }
 
-llvm::StructType* arco::GenStructType(ArcoContext& Context, StructType* StructTy) {
-	StructDecl* Struct = StructTy->GetStruct();
+llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) {
 	if (Struct->LLStructTy) {
 		return Struct->LLStructTy;
 	}
@@ -145,7 +144,7 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructType* StructTy
 		}
 	}
 	LLStructTy->setBody(LLStructFieldTypes);
-	LLStructTy->setName(StructTy->GetStructName().Text);
+	LLStructTy->setName(Struct->Name.Text);
 
 	return LLStructTy;
 }
@@ -165,6 +164,34 @@ void arco::IRGenerator::GenFunc(FuncDecl* Func) {
 
 	GenFuncDecl(Func);
 	GenFuncBody(Func);
+
+}
+
+void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
+	LLFunc = Struct->LLDefaultConstructor;
+
+	llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
+	Builder.SetInsertPoint(LLEntryBlock);
+
+	// Allocating "this" pointer
+	llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this.addr");
+
+	// Storing "this" pointer
+	Builder.CreateStore(LLFunc->getArg(0), LLThisAddr);
+
+	LLThis = CreateLoad(LLThisAddr);
+	LLThis->setName("this");
+
+	for (VarDecl* Field : Struct->Fields) {
+		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
+		if (Field->Assignment) {
+			GenAssignment(LLFieldAddr, Field->Assignment);
+		} else {
+			GenDefaultValue(Field->Ty, LLFieldAddr);
+		}
+	}
+
+	Builder.CreateRetVoid();
 
 }
 
@@ -382,6 +409,8 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 	if (Var->Assignment) {
 		GenAssignment(Var->LLAddress, Var->Assignment);
+	} else {
+		GenDefaultValue(Var->Ty, Var->LLAddress);
 	}
 	return Var->LLAddress;
 }
@@ -753,7 +782,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	}
 	default:
 		assert(!"Failed to implement GenBinaryOp() case!");
-		break;
+		return nullptr;
 	}
 }
 
@@ -1221,6 +1250,58 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value) {
 		llvm::Value* LLAssignment = GenRValue(Value);
 		Builder.CreateStore(LLAssignment, LLAddress);
 	}
+}
+
+void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
+	if (Ty->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(Ty);
+		StructDecl* Struct = StructTy->GetStruct();
+
+		if (Struct->FieldsHaveAssignment) {
+			CallDefaultConstructor(LLAddr, StructTy);
+		} else {
+			ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
+			llvm::Align LLAlignment = llvm::Align();
+			Builder.CreateMemSet(
+				LLAddr,
+				GetLLUInt8(0, LLContext),
+				GetLLUInt64(TotalLinearLength, LLContext),
+				LLAlignment
+			);
+		}
+	} else {
+		Builder.CreateStore(GenZeroedValue(Ty), LLAddr);
+	}
+}
+
+void arco::IRGenerator::CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy) {
+	llvm::Function* LLDefaultConstructor = GenDefaultConstructorDecl(StructTy->GetStruct());
+	Builder.CreateCall(LLDefaultConstructor, { LLAddr });
+}
+
+llvm::Function* arco::IRGenerator::GenDefaultConstructorDecl(StructDecl* Struct) {
+	if (Struct->LLDefaultConstructor) {
+		return Struct->LLDefaultConstructor;
+	}
+
+	llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
+		llvm::Type::getVoidTy(LLContext),
+		{ llvm::PointerType::get(GenStructType(Struct), 0) },
+		false
+	);
+
+	llvm::Function* LLFunc = llvm::Function::Create(
+		LLFuncType,
+		llvm::Function::ExternalLinkage,
+		std::string("default.constructor.") + Struct->Name.Text,
+		LLModule
+	);
+	LLFunc->setDSOLocal(true);
+
+	Context.DefaultConstrucorsNeedingCreated.push(Struct);
+
+	Struct->LLDefaultConstructor = LLFunc;
+	return Struct->LLDefaultConstructor;
 }
 
 llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char* Name) {

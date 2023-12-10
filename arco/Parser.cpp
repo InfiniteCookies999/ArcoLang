@@ -161,9 +161,10 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	NextToken(); // Consuming 'fn' keyword.
 
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
-	Func->File = Log.GetFilePath();
-	Func->Name = ParseIdentifier("Expected identifier for function declaration");
-	Func->Mods = Mods;
+	Func->Module = &Mod;
+	Func->File   = Log.GetFilePath();
+	Func->Name   = ParseIdentifier("Expected identifier for function declaration");
+	Func->Mods   = Mods;
 
 	CFunc = Func;
 
@@ -212,9 +213,10 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 	VarDecl* Var = NewNode<VarDecl>(CTok);
-	Var->File = Log.GetFilePath();
-	Var->Name = ParseIdentifier("Expected identifier for variable declaration");
-	Var->Mods = Mods;
+	Var->Module = &Mod;
+	Var->File   = Log.GetFilePath();
+	Var->Name   = ParseIdentifier("Expected identifier for variable declaration");
+	Var->Mods   = Mods;
 
 	Var->Ty = ParseType();
 
@@ -236,9 +238,10 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 
 arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	StructDecl* Struct = NewNode<StructDecl>(CTok);
-	Struct->File = Log.GetFilePath();
-	Struct->Name = ParseIdentifier("Expected identifier for struct declaration");
-	Struct->Mods = Mods;
+	Struct->Module = &Mod;
+	Struct->File   = Log.GetFilePath();
+	Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
+	Struct->Mods   = Mods;
 	Match(TokenKind::KW_STRUCT);
 	
 	ulen FieldCount = 0;

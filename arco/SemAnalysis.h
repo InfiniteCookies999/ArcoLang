@@ -15,6 +15,8 @@ namespace arco {
 
 		void CheckFuncDecl(FuncDecl* Func);
 		
+		void CheckStructDecl(StructDecl* Struct);
+
 	private:
 		ArcoContext& Context;
 		Module&      Mod;

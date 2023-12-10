@@ -39,6 +39,15 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	CheckScopeStmts(Func->Scope, FuncScope);
 }
 
+void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
+	for (VarDecl* Field : Struct->Fields) {
+		CheckVarDecl(Field);
+		if (Field->Assignment) {
+			Struct->FieldsHaveAssignment = true;
+		}
+	}
+}
+
 void arco::SemAnalyzer::CheckFuncParamTypes(FuncDecl* Func) {
 	if (Func->ParamTypesChecked) return;
 
@@ -665,6 +674,9 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 	Call->IsFoldable = false;
 	Call->Ty = Call->CalledFunc->RetTy;
+
+	Context.RequestGen(Call->CalledFunc);
+
 }
 
 arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates,
@@ -1010,6 +1022,9 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 		Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
 		return false;
 	}
-	StructTy->AssignStruct(Itr->second);
+	StructDecl* Struct = Itr->second;
+	SemAnalyzer Analyzer(Context, *Struct->Module, Struct);
+	Analyzer.CheckStructDecl(Struct);
+	StructTy->AssignStruct(Struct);
 	return true;
 }

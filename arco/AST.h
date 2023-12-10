@@ -90,6 +90,10 @@ namespace arco {
 	struct Decl : AstNode {
 		Decl(AstKind Kind) : AstNode(Kind) {}
 
+		Module* Module;
+
+		bool GenRequestedAlready = false;
+
 		std::string File;
 
 		Modifiers  Mods;
@@ -143,7 +147,11 @@ namespace arco {
 
 		llvm::SmallVector<VarDecl*> Fields;
 
-		llvm::StructType* LLStructTy = nullptr;
+		llvm::StructType* LLStructTy         = nullptr;
+		llvm::Function* LLDefaultConstructor = nullptr;
+
+		// At least one field has assignment.
+		bool FieldsHaveAssignment = false;
 	};
 
 	// Ex.   'if cond {}'

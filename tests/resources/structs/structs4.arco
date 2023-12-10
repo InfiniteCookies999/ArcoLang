@@ -1,0 +1,13 @@
+// -- Test to make sure that default field initialization works.
+
+Data struct {
+	a int = 55;
+	b int = 44;
+}
+
+fn main() {
+	data Data;
+	print(data.a);
+	print(" ", 1);
+	print(data.b);
+}

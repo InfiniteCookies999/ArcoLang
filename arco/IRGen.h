@@ -10,7 +10,7 @@ namespace arco {
 	class ArcoContext;
 
 	llvm::Type* GenType(ArcoContext& Context, Type* Ty);
-	llvm::StructType* GenStructType(ArcoContext& Context, StructType* StructTy);
+	llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
 
 	class IRGenerator {
 	public:
@@ -18,6 +18,8 @@ namespace arco {
 		explicit IRGenerator(ArcoContext& Context);
 
 		void GenFunc(FuncDecl* Func);
+
+		void GenImplicitDefaultConstructorBody(StructDecl* Struct);
 
 	private:
 		ArcoContext&       Context;
@@ -34,6 +36,9 @@ namespace arco {
 
 		// The address that the return value gets placed into.
 		llvm::Value* LLRetAddr = nullptr;
+
+		// The 'this' pointer of the struct.
+		llvm::Value* LLThis = nullptr;
 
 		// The exit points of loops currently being processed
 		llvm::SmallVector<llvm::BasicBlock*, 4> LoopBreakStack;
@@ -138,6 +143,10 @@ namespace arco {
 		void GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, llvm::BasicBlock* LLFalseBB);
 
 		void GenAssignment(llvm::Value* LLAddress, Expr* Value);
+		void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
+
+		void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);
+		llvm::Function* GenDefaultConstructorDecl(StructDecl* Struct);
 
 		llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name);
 
@@ -145,10 +154,13 @@ namespace arco {
 			return arco::GenType(Context, Ty);
 		}
 
-		inline llvm::StructType* GenStructType(StructType* StructTy) {
-			return arco::GenStructType(Context, StructTy);
+		inline llvm::StructType* GenStructType(StructDecl* Struct) {
+			return arco::GenStructType(Context, Struct);
 		}
-
+		
+		inline llvm::StructType* GenStructType(StructType* StructTy) {
+			return arco::GenStructType(Context, StructTy->GetStruct());
+		}
 	};
 
 }

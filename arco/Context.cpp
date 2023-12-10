@@ -110,3 +110,9 @@ arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {
 	}
 	return TokenKind::INVALID;
 }
+
+void arco::ArcoContext::RequestGen(Decl* D) {
+	if (D->GenRequestedAlready) return;
+	D->GenRequestedAlready = true;
+	QueuedDeclsToGen.push(D);
+}

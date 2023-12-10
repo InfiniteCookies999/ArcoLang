@@ -97,22 +97,37 @@ void arco::Compiler::Compile(llvm::SmallVector<const char*>& Sources) {
 	i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
 	i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
 
-	if (FoundCompileError) {
+	if (Context.MainEntryFunc) {
+		Context.RequestGen(Context.MainEntryFunc);
+	} else {
+		Logger::GlobalError(llvm::errs(), "Could not find entry point function");
 		return;
 	}
 
-	for (auto& [Name, Funcs] : Mod.Funcs) {
-		for (FuncDecl* Func : Funcs) {
-			SemAnalyzer Analyzer(Context, Mod, Func);
-			Analyzer.CheckFuncDecl(Func);
-	
-			if (FoundCompileError) {
-				continue;
-			}
+	while (!Context.QueuedDeclsToGen.empty()) {
+		Decl* D = Context.QueuedDeclsToGen.front();
+		Context.QueuedDeclsToGen.pop();
 
-			IRGenerator IRGen(Context);	
-			IRGen.GenFunc(Func);
+		SemAnalyzer Analyzer(Context, Mod, D);
+		if (D->Is(AstKind::FUNC_DECL)) {
+			Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
 		}
+	
+		if (FoundCompileError) {
+			continue;
+		}
+
+		IRGenerator IRGen(Context);	
+		if (D->Is(AstKind::FUNC_DECL)) {
+			IRGen.GenFunc(static_cast<FuncDecl*>(D));
+		}
+	}
+
+	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
+		StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
+		Context.DefaultConstrucorsNeedingCreated.pop();
+		IRGenerator IRGen(Context);
+		IRGen.GenImplicitDefaultConstructorBody(Struct);
 	}
 
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;

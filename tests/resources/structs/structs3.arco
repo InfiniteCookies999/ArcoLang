@@ -1,0 +1,17 @@
+// -- Test to make sure that struct intializers work
+//    with non-foldable arguments.
+
+Data struct {
+	a int;
+	b int;
+}
+
+fn main() {
+	c int = 55;
+	data Data = Data{
+		c, 44
+	};
+	print(data.a);
+	print(" ", 1);
+	print(data.b);
+}
