@@ -1,0 +1,9 @@
+
+native fn GetStdHandle(nStdHandle uint32) void*;
+
+native fn WriteFile(hFile                  void*,
+                    lpBuffer               cstr,
+					nNumberOfBytesToWrite  uint32,
+					lpNumberOfBytesWritten uint32*,
+					lpOverlapped           void* // Ignored data structure.
+					) int32;

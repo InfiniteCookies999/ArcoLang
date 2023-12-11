@@ -23,12 +23,13 @@ static inline ulen min(ulen a, ulen b) {
 }
 
 arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
-	: Context(Context), Mod(*D->Mod), Log(D->File.c_str(), D->FileBuffer)
+	: Context(Context), Mod(D->Mod), Log(D->FScope->Path.c_str(), D->FScope->Buffer)
 {
 }
 
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
-	CFunc = Func;
+	CFunc  = Func;
+	FScope = Func->FScope;
 
 	// -- DEBUG
 	//llvm::outs() << "Checking function: " << Func->Name << "\n";
@@ -40,6 +41,8 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 }
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
+	FScope = Struct->FScope;
+
 	for (VarDecl* Field : Struct->Fields) {
 		CheckVarDecl(Field);
 		if (Field->Assignment) {
@@ -92,7 +95,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 		CheckUnaryOp(static_cast<UnaryOp*>(Node));
 		break;
 	case AstKind::IDENT_REF:
-		CheckIdentRef(static_cast<IdentRef*>(Node), false);
+		CheckIdentRef(static_cast<IdentRef*>(Node), false, Mod);
 		break;
 	case AstKind::FIELD_ACCESSOR:
 		CheckFieldAccessor(static_cast<FieldAccessor*>(Node), false);
@@ -528,14 +531,17 @@ void arco::SemAnalyzer::CheckUnaryOp(UnaryOp* UniOp) {
 	}
 }
 
-void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef, bool ExpectsFuncCall, StructDecl* StructToLookup) {
+void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
+	                                  bool ExpectsFuncCall,
+	                                  Module* ModToLookup,
+	                                  StructDecl* StructToLookup) {
 
 	auto SearchForFuncs = [=]() {
 		if (StructToLookup) {
 			// TODO: Search for member functions!
 		} else {
-			auto Itr = Mod.Funcs.find(IRef->Ident);
-			if (Itr != Mod.Funcs.end()) {
+			auto Itr = ModToLookup->Funcs.find(IRef->Ident);
+			if (Itr != ModToLookup->Funcs.end()) {
 				IRef->Funcs   = &Itr->second;
 				IRef->RefKind = IdentRef::RK::Funcs;
 			}
@@ -566,10 +572,18 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef, bool ExpectsFuncCall, Stru
 		SearchForFuncs();
 		if (!IRef->IsFound())
 			SearchForVars();
-	} else {
+	} else if (!IRef->IsFound()) {
 		SearchForVars();
 		if (!IRef->IsFound())
 			SearchForFuncs();
+	}
+
+	if (!IRef->IsFound() && ModToLookup == Mod) {
+		auto Itr = FScope->ModImports.find(IRef->Ident);
+		if (Itr != FScope->ModImports.end()) {
+			IRef->Mod     = Itr->second;
+			IRef->RefKind = IdentRef::RK::Import;
+		}
 	}
 
 	IRef->IsFoldable = false;
@@ -580,8 +594,12 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef, bool ExpectsFuncCall, Stru
 		IRef->Ty = VarRef->Ty;
 		break;
 	}
+	case IdentRef::RK::Import: {
+		IRef->Ty = Context.ImportType;
+		break;
+	}
 	case IdentRef::RK::Funcs: {
-		// TODO:!!
+		// TODO: Set type information.
 		break;
 	}
 	case IdentRef::RK::NotFound: {
@@ -607,7 +625,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 	Expr* Site = FieldAcc->Site;
 
 	if (Site->Is(AstKind::IDENT_REF)) {
-		CheckIdentRef(static_cast<IdentRef*>(Site), ExpectsFuncCall);
+		CheckIdentRef(static_cast<IdentRef*>(Site), false, Mod);
 	} else {
 		CheckNode(Site);
 	}
@@ -622,6 +640,12 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 		}
 	}
 
+	if (Site->Ty == Context.ImportType) {
+		IdentRef* IRef = static_cast<IdentRef*>(Site);
+		CheckIdentRef(FieldAcc, ExpectsFuncCall, IRef->Mod);
+		return;
+	}
+
 	if (Site->Ty->GetKind() != TypeKind::Struct) {
 		Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty->ToString());
 		YIELD_ERROR(FieldAcc);
@@ -630,7 +654,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 	StructType* StructTy = static_cast<StructType*>(Site->Ty);
 	StructDecl* Struct = StructTy->GetStruct();
 
-	CheckIdentRef(FieldAcc, ExpectsFuncCall, Struct);
+	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod, Struct);
 }
 
 void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
@@ -647,7 +671,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 	switch (Call->Site->Kind) {
 	case AstKind::IDENT_REF:
-		CheckIdentRef(static_cast<IdentRef*>(Call->Site), true);
+		CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, Mod);
 		break;
 	case AstKind::FIELD_ACCESSOR:
 		CheckFieldAccessor(static_cast<FieldAccessor*>(Call->Site), true);
@@ -1014,8 +1038,8 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 }
 
 bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
-	auto Itr = Mod.Structs.find(StructTy->GetStructName());
-	if (Itr == Mod.Structs.end()) {
+	auto Itr = Mod->Structs.find(StructTy->GetStructName());
+	if (Itr == Mod->Structs.end()) {
 		Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
 		return false;
 	}

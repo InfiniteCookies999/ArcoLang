@@ -59,13 +59,23 @@ case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_CSTR
 
-arco::Parser::Parser(ArcoContext& Context, Module& Mod, const SourceBuf Buffer, const char* File)
-	: Context(Context), Mod(Mod), Log(File, Buffer), Lex(Context, Log, Buffer)
+arco::Parser::Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer)
+	: Context(Context), Mod(Mod), Log(FilePath, FileBuffer), Lex(Context, Log, FileBuffer),
+	  FScope(new FileScope( FilePath, FileBuffer ))
 {
 }
 
 void arco::Parser::Parse() {
 	NextToken(); // Prime the parser.
+
+	// Parsing imports.
+	while (CTok.IsNot(TokenKind::TK_EOF)) {
+		if (CTok.Is(TokenKind::KW_IMPORT)) {
+			ParseImport();
+		} else {
+			break;
+		}
+	}
 
 	// Parsing top level statements.
 	while (CTok.IsNot(TokenKind::TK_EOF)) {
@@ -88,13 +98,34 @@ void arco::Parser::Parse() {
 				}
 			}
 
-			Mod.Funcs[Func->Name].push_back(Func);
+			Mod->Funcs[Func->Name].push_back(Func);
 		} else if (Stmt->Is(AstKind::STRUCT_DECL)) {
 			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
 			
-			Mod.Structs[Struct->Name] = Struct;
+			Mod->Structs[Struct->Name] = Struct;
 		}
 	}
+}
+
+void arco::Parser::ParseImport() {
+	Token ImportTok = CTok;
+	NextToken(); // Consuming 'import' token.
+
+	Identifier ModName = ParseIdentifier("Expected identifier for import module name");
+
+	auto Itr = Context.ModNamesToMods.find(ModName.Text);
+	if (Itr == Context.ModNamesToMods.end()) {
+		Error(ImportTok, "Could not find import module for '%s'", ModName.Text.data());
+		return;
+	}
+
+	if (FScope->ModImports.find(ModName) != FScope->ModImports.end()) {
+		Error(ImportTok, "Duplicate import");
+		return;
+	}
+
+	FScope->ModImports[ModName] = Itr->second;
+
 }
 
 void arco::Parser::ParseOptStmt(AstNode*& Stmt, u16 TokenEndDelim) {
@@ -161,8 +192,8 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	NextToken(); // Consuming 'fn' keyword.
 
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
-	Func->Mod    = &Mod;
-	Func->File   = Log.GetFilePath();
+	Func->Mod    = Mod;
+	Func->FScope = FScope;
 	Func->Name   = ParseIdentifier("Expected identifier for function declaration");
 	Func->Mods   = Mods;
 
@@ -213,8 +244,8 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 	VarDecl* Var = NewNode<VarDecl>(CTok);
-	Var->Mod    = &Mod;
-	Var->File   = Log.GetFilePath();
+	Var->Mod    = Mod;
+	Var->FScope = FScope;
 	Var->Name   = ParseIdentifier("Expected identifier for variable declaration");
 	Var->Mods   = Mods;
 
@@ -238,8 +269,8 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 
 arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	StructDecl* Struct = NewNode<StructDecl>(CTok);
-	Struct->Mod    = &Mod;
-	Struct->File   = Log.GetFilePath();
+	Struct->Mod    = Mod;
+	Struct->FScope = FScope;
 	Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
 	Struct->Mods   = Mods;
 	Match(TokenKind::KW_STRUCT);
@@ -1120,9 +1151,21 @@ void arco::Parser::SkipRecovery() {
 	case TokenKind::KW_RETURN:
 	case TokenKind::KW_FN:
 	case TokenKind::KW_LOOP:
+	case TokenKind::KW_BREAK:
+	case TokenKind::KW_CONTINUE:
 		return;
 	case TokenKind::TK_EOF:
 		return;
+	case TokenKind::IDENT:
+		switch (PeekToken(1).Kind) {
+		case TYPE_KW_START_CASES:
+		case TokenKind::IDENT:
+			// Variable declaration
+			return;
+		}
+		// Skip and continue
+		NextToken();
+		break;
 	default:
 		// Skip and continue
 		NextToken();

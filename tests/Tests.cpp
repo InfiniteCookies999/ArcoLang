@@ -16,11 +16,12 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 	llvm::outs() << "Testing: \"" << TestSource << "\"\n";
 	llvm::outs() << "----------------------------\n";
 
-	llvm::SmallVector<const char*> Sources;
-	Sources.push_back(SRC("test_utils.arco"));
-	Sources.push_back(TestSource);
+	llvm::SmallVector<arco::Source> Sources;
+	Sources.push_back(arco::Source{ "default.program.module", SRC("test_utils.arco") });
+	Sources.push_back(arco::Source{ "default.program.module", TestSource });
 
 	arco::Compiler Compiler;
+	Compiler.StandAlone = true;
 	//Compiler.DisplayLLVMIR = true;
 	//Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);

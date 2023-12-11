@@ -27,6 +27,7 @@ arco::ArcoContext::ArcoContext()
 	NullType(new Type(TypeKind::Null)),
 	ErrorType(new Type(TypeKind::Error)),
 	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
+	ImportType(new Type(TypeKind::Import)),
 
 	BinaryOpsPrecedence({
 		
@@ -67,6 +68,23 @@ arco::ArcoContext::~ArcoContext() {
 
 	delete IntType;
 	delete UIntType;
+	delete Int8Type;
+	delete Int16Type;
+	delete Int32Type;
+	delete Int64Type;
+	delete UInt8Type;
+	delete UInt16Type;
+	delete UInt32Type;
+	delete UInt64Type;
+	delete CharType;
+	delete VoidType;
+	delete BoolType;
+	delete CStrType;
+	delete NullType;
+	delete ErrorType;
+	delete EmptyArrayElmType;
+	delete ImportType;
+
 }
 
 void arco::ArcoContext::Initialize() {
@@ -84,6 +102,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "char"    , TokenKind::KW_CHAR     });
 	TokenKeywordMap.insert({ "void"    , TokenKind::KW_VOID     });
 	TokenKeywordMap.insert({ "cstr"    , TokenKind::KW_CSTR     });
+	TokenKeywordMap.insert({ "import"  , TokenKind::KW_IMPORT   });
 	TokenKeywordMap.insert({ "null"    , TokenKind::KW_NULL     });
 	TokenKeywordMap.insert({ "fn"      , TokenKind::KW_FN       });
 	TokenKeywordMap.insert({ "struct"  , TokenKind::KW_STRUCT   });

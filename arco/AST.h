@@ -69,6 +69,15 @@ namespace arco {
 
 	};
 
+	struct FileScope {
+		std::string                         Path;
+		SourceBuf                           Buffer;
+		llvm::DenseMap<Identifier, Module*> ModImports;
+
+		FileScope(std::string Path, SourceBuf Buffer)
+			: Path(Path), Buffer(Buffer) {}
+	};
+
 	struct LexScope {
 		SourceLoc  StartLoc;
 		SourceLoc  EndLoc;
@@ -94,8 +103,7 @@ namespace arco {
 
 		Module*     Mod;
 
-		std::string File;
-		SourceBuf   FileBuffer;
+		FileScope* FScope;
 
 		Modifiers  Mods;
 		Identifier Name;
@@ -305,12 +313,14 @@ namespace arco {
 			Var,
 			Funcs, // Plural because of function overloading.
 			Struct,
+			Import,
 			NotFound
 		} RefKind = RK::NotFound;
 
 		union {
 			FuncsList* Funcs;
 			VarDecl*   Var;
+			Module*    Mod;
 		};
 	};
 

@@ -18,7 +18,7 @@ namespace arco {
 	class Parser {
 	public:
 
-		explicit Parser(ArcoContext& Context, Module& Mod, const SourceBuf Buffer, const char* File);
+		explicit Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer);
 
 		void Parse();
 
@@ -26,9 +26,11 @@ namespace arco {
 		static const ulen MAX_SAVED_TOKENS = 8;
 
 		ArcoContext& Context;
-		Module&      Mod;
+		Module*      Mod;
 		Lexer        Lex;
 		Logger       Log;
+
+		FileScope* FScope;
 
 		Token PrevToken;
 		Token CTok;
@@ -66,6 +68,7 @@ namespace arco {
 		// a given depth is while parsing.
 		ulen LargestArrayLengthAtDepth[MAX_ARRAY_DEPTH] = { 0 };
 
+		void ParseImport();
 
 		//===-------------------------------===//
 		// Statements

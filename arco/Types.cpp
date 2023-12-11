@@ -162,6 +162,7 @@ std::string arco::Type::ToString() const {
 	case TypeKind::Void:            return "void";
 	case TypeKind::Null:            return "null";
 	case TypeKind::CStr:            return "cstr";
+	case TypeKind::Import:          return "import";
 	case TypeKind::EmptyArrayElm:   return "";
 	case TypeKind::Pointer: {
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);

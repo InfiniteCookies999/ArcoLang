@@ -49,44 +49,61 @@ arco::Compiler::~Compiler() {
 	delete &Context;
 }
 
-void arco::Compiler::Compile(llvm::SmallVector<const char*>& Sources) {
+void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	
 	i64 ParseTimeBegin = GetTimeInMilliseconds();
 
 	Context.Initialize();
 
-	Module Mod;
+	if (!StandAlone) {
+		if (auto StdLibPath = GetStdLibPath()) {
+			Sources.push_back(Source{ "std", StdLibPath });
+		} else {
+			Logger::GlobalError(llvm::errs(),
+				"Environment variable missing for arco's standard library. Please set variable 'ArcoStdLibPath' to point towards the standard library");
+			return;
+		}
+	}
+
+	// Create a module for every source.
+	for (const Source& Source : Sources) {
+		if (Context.ModNamesToMods.find(Source.ModName) == Context.ModNamesToMods.end()) {
+			Context.ModNamesToMods.insert({ Source.ModName, new Module() });
+		}
+	}
 
 	// Creating FileUnits for the .eris files
 	namespace fs = std::filesystem;
-	for (const char* Source : Sources) {
-		fs::path Path = fs::path(Source);
+	for (const Source& Source : Sources) {
+		const char* FLPath = Source.Path.data();
+		fs::path Path = fs::path(FLPath);
 
 		std::error_code EC;
 		if (!fs::exists(Path, EC) || EC) {
 			if (EC) {
 				Logger::GlobalError(llvm::errs(),
-					"Could not check if source \"%s\" exist. Please check permissions", Source);
+					"Could not check if source \"%s\" exist. Please check permissions", FLPath);
 			} else {
 				Logger::GlobalError(llvm::errs(),
-					"Source \"%s\" does not exist", Source);
+					"Source \"%s\" does not exist", FLPath);
 			}
 			continue;
 		}
 
-		if (fs::is_directory(Source)) {
-			Logger::GlobalError(llvm::errs(), "Not handling directory loading yet");
+		Module* Mod = Context.ModNamesToMods[Source.ModName];
+
+		if (fs::is_directory(FLPath)) {
+			std::string PathS = Path.generic_string();
+			std::string RootDir = PathS.empty() ? "." : PathS;
+			
+			ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
 		} else {
 			// The user specified an absolute path to a file.
 			if (Path.extension() != ".arco") {
 				Logger::GlobalError(llvm::errs(),
-						"Expected source file with extension type .arco for file: \"%s\"", Source);
+						"Expected source file with extension type .arco for file: \"%s\"", FLPath);
 				continue;
 			}
-
-			std::string AbsPath = fs::absolute(Path).generic_string();
-			ulen LastPtr = AbsPath.find_last_of('/');
-			std::string RootDir = LastPtr == std::string::npos ? "." : AbsPath.substr(0, LastPtr);
 
 			ParseFile(Mod,
 				      Path.filename().generic_string(),
@@ -226,13 +243,34 @@ void arco::Compiler::Compile(llvm::SmallVector<const char*>& Sources) {
 		<< '/' << ExecutableName << '\n';
 }
 
-void arco::Compiler::ParseFile(Module& Mod, const std::string& RelativePath, const std::string& AbsolutePath) {
+void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen) {
+	for (const auto& Entry : std::filesystem::directory_iterator(DirectoryPath)) {
+		if (Entry.is_regular_file()) {
+			const std::string& Path = Entry.path().generic_string();
+
+			if (Path.substr(Path.find_last_of('.') + 1) == "arco") {
+				const std::string& RelativePath = Path.substr(PrimaryPathLen);
+				const std::string& AbsolutePath = std::filesystem::absolute(Entry.path()).generic_string();
+
+				ParseFile(Mod, RelativePath, AbsolutePath);
+			}
+		} else if (Entry.is_directory()) {
+			ParseDirectoryFiles(Mod, Entry.path(), PrimaryPathLen);
+		}
+	}
+}
+
+void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath) {
 	SourceBuf Buffer;
 	if (!ReadFile(AbsolutePath.c_str(), Buffer.memory, Buffer.length)) {
 		Logger::GlobalError(llvm::errs(), "Failed to read file: %s. Check permissions", AbsolutePath.c_str());	
 		return;
 	}
 
-	Parser Parser(Context, Mod, Buffer, RelativePath.c_str());
+	Parser Parser(Context, Mod, RelativePath.c_str(), Buffer);
 	Parser.Parse();
+}
+
+const char* arco::Compiler::GetStdLibPath() {
+	return std::getenv("ArcoStdLibPath");
 }

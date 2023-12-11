@@ -9,3 +9,4 @@ project ("arco")
 # Include sub-projects.
 add_subdirectory ("arco")
 add_subdirectory ("tests")
+add_subdirectory ("driver")

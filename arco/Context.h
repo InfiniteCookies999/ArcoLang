@@ -5,6 +5,7 @@
 #include "AST.h"
 
 #include <queue>
+#include <llvm/ADT/StringMap.h>
 
 namespace llvm {
 	class LLVMContext;
@@ -35,6 +36,8 @@ namespace arco {
 
 		void RequestGen(Decl* D);
 
+		llvm::StringMap<Module*> ModNamesToMods;
+
 		FuncDecl* MainEntryFunc = nullptr;
 
 		// 'main' identifier (for identifying entry points)
@@ -59,6 +62,7 @@ namespace arco {
 		Type* UInt64Type;
 		Type* ErrorType;
 		Type* EmptyArrayElmType;
+		Type* ImportType;
 
 		// Maps a binary operator to its precedence.
 		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;

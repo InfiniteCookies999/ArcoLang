@@ -40,7 +40,9 @@ namespace arco {
 		Error,
 		// When an array is declared with no elements.
 		EmptyArrayElm,
-		Struct
+		Struct,
+		// When an identifier is an import the type is set to this.
+		Import,
 
 	};
 

@@ -1,12 +1,26 @@
 #ifndef ARCO_COMPILER_H
 #define ARCO_COMPILER_H
 
+#include "Prelude.h"
+
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/ADT/StringRef.h>
+
+namespace std {
+	namespace filesystem {
+		class path;
+	}
+}
 
 namespace arco {
 
 	class ArcoContext;
 	class Module;
+
+	struct Source {
+		llvm::StringRef ModName;
+		llvm::StringRef Path;
+	};
 
 	class Compiler {
 	public:
@@ -36,12 +50,16 @@ namespace arco {
 
 		~Compiler();
 
-		void Compile(llvm::SmallVector<const char*>& Sources);
+		void Compile(llvm::SmallVector<Source>& Sources);
 	
 	private:
 		ArcoContext& Context;
 
-		void ParseFile(Module& Mod, const std::string& RelativePath, const std::string& AbsolutePath);
+		void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
+
+		void ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath);
+
+		const char* GetStdLibPath();
 
 	};
 }

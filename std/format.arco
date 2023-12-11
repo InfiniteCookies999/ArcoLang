@@ -1,0 +1,6 @@
+
+fn print(msg cstr, length int) {
+	handle        void* = GetStdHandle(-11);
+	bytes_written uint32;
+	WriteFile(handle, msg, length, &bytes_written, null);
+}

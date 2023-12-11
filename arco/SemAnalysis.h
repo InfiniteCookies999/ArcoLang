@@ -19,10 +19,11 @@ namespace arco {
 
 	private:
 		ArcoContext& Context;
-		Module&      Mod;
+		Module*      Mod;
 		Logger       Log;
 
-		FuncDecl* CFunc;
+		FuncDecl*  CFunc;
+		FileScope* FScope;
 
 		// Every time a loop is entered this is incremented,
 		// and decremented when existed
@@ -65,7 +66,10 @@ namespace arco {
 
 		void CheckBinaryOp(BinaryOp* BinOp);
 		void CheckUnaryOp(UnaryOp* UniOp);
-		void CheckIdentRef(IdentRef* IRef, bool ExpectsFuncCall, StructDecl* StructToLookup = nullptr);
+		void CheckIdentRef(IdentRef* IRef,
+			               bool ExpectsFuncCall,
+			               Module* ModToLookup,
+			               StructDecl* StructToLookup = nullptr);
 		void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
 		void CheckFuncCall(FuncCall* Call);
 		FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
