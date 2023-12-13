@@ -380,6 +380,20 @@ YIELD_ERROR(BinOp)
 	case TokenKind::CRT_EQ: case TokenKind::BAR_EQ:
 	case TokenKind::LT_LT_EQ: case TokenKind::GT_GT_EQ: {
 		
+		CheckModifibility(BinOp->LHS);
+
+		if (LTy->GetKind() == TypeKind::Array) {
+			// TODO: May want to change this requirement.
+			Error(BinOp, "Cannot reassign the value of an array");
+			YIELD_ERROR(BinOp);
+		}
+		
+		if (!IsAssignableTo(LTy, BinOp->RHS)) {
+			Error(BinOp, "Cannot assign value of type '%s' to variable of type '%s'",
+				RTy->ToString(), LTy->ToString());
+			YIELD_ERROR(BinOp);
+		}
+
 		BinOp->Ty = LTy;
 		break;
 	}
