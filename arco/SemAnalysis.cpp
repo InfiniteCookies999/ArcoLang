@@ -1,6 +1,7 @@
 #include "SemAnalysis.h"
 
 #include "Context.h"
+#include "IRGen.h"
 
 #define YIELD_ERROR(N)     \
 N->Ty = Context.ErrorType; \
@@ -436,6 +437,9 @@ YIELD_ERROR(BinOp)
 		Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
 
 		if (BinOp->Op == '/') {
+			if (BinOp->RHS->IsFoldable) {
+				
+			}
 			// TODO: Check division by zero!!
 		}
 
@@ -1090,12 +1094,44 @@ bool arco::SemAnalyzer::FixupType(Type* Ty) {
 
 bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 	Expr* LengthExpr = ArrayTy->GetLengthExpr();
-	if (!LengthExpr) return true;
-
-	if (LengthExpr->Is(AstKind::NUMBER_LITERAL)) {
-		NumberLiteral* Number = static_cast<NumberLiteral*>(LengthExpr);
-		ArrayTy->AssignLength(Number->UnsignedIntValue);
+	if (!LengthExpr) {
+		// If the length expression is nullptr this means that the
+		// length is determined by the assignment of the variable.
+		return true;
 	}
+
+	CheckNode(LengthExpr);
+	if (LengthExpr->Ty == Context.ErrorType) {
+		return false;
+	}
+
+	if (!LengthExpr) return true;
+	
+	// TODO: Want to have an expanded location for the length so that it underlies
+	// the entire expression.
+
+	if (!LengthExpr->IsFoldable) {
+		Error(LengthExpr, "Could not compute the length of the array at compile time");
+		return false;
+	} else if (!LengthExpr->Ty->IsInt()) {
+		Error(LengthExpr, "The length of the array is expected to be an integer");
+		return false;
+	}
+
+	IRGenerator IRGen(Context);
+	llvm::ConstantInt* LLInt =
+		llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
+
+	if (LLInt->isZero()) {
+		Error(LengthExpr, "The length of the array cannot be zero");
+		return false;
+	} else if (LengthExpr->Ty->IsSigned() && LLInt->isNegative()) {
+		Error(LengthExpr, "The length of the array cannot be negative");
+		return false;
+	}
+
+	ArrayTy->AssignLength(LLInt->getZExtValue());
+
 	if (!FixupType(ArrayTy->GetElementType())) {
 		return false;
 	}

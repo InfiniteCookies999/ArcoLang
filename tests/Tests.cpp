@@ -94,6 +94,7 @@ int main() {
 	RunTest(SRC("arrays/arrays11.arco"), "14 99 55 1 121 ");
 	RunTest(SRC("arrays/arrays12.arco"), "pizza is good");
 	RunTest(SRC("arrays/arrays13.arco"), "25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 ");
+	RunTest(SRC("arrays/arrays14.arco"), "1 2 3 4 5 6 7 8 9 10 11 99 ");
 	
 	RunTest(SRC("structs/structs1.arco"), "55 44");
 	RunTest(SRC("structs/structs2.arco"), "55 44");

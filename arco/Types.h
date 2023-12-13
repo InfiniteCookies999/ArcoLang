@@ -130,8 +130,8 @@ namespace arco {
 		ArrayType()
 			: ContainerType(TypeKind::Array) {}
 
-		Expr* LengthExpr = nullptr;
-		ulen  Length;
+		Expr*     LengthExpr = nullptr;
+		ulen      Length;
 	};
 
 	class StructType : public Type {

@@ -21,6 +21,8 @@ namespace arco {
 
 		void GenImplicitDefaultConstructorBody(StructDecl* Struct);
 
+		llvm::Value* GenRValue(Expr* E);
+
 	private:
 		ArcoContext&       Context;
 		llvm::LLVMContext& LLContext;
@@ -52,7 +54,6 @@ namespace arco {
 		void GenFuncBody(FuncDecl* Func);
 
 		llvm::Value* GenNode(AstNode* Node);
-		llvm::Value* GenRValue(Expr* E);
 
 		//===-------------------------------===//
 		// Statements

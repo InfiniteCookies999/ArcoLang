@@ -517,7 +517,7 @@ arco::Type* arco::Parser::ParseType() {
 
 	if (CTok.Is('[')) {
 
-		llvm::SmallVector<Expr*, 2> LengthExprs;
+		llvm::SmallVector<Expr*, 2>     LengthExprs;
 
 		bool IsImplicit = false;
 		bool AlreadyReportedImplicitError = false, EncounteredNonImplicit = false;
@@ -550,7 +550,6 @@ arco::Type* arco::Parser::ParseType() {
 			}
 		}
 
-		// TODO: use of long long type.
 		for (long long i = LengthExprs.size() - 1; i >= 0; i--) {
 			Ty = ArrayType::Create(Ty, LengthExprs[i], Context);
 		}
