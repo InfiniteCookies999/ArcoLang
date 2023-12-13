@@ -383,6 +383,16 @@ YIELD_ERROR(BinOp)
 		
 		CheckModifibility(BinOp->LHS);
 
+		if (BinOp->Op == TokenKind::SLASH_EQ || BinOp->Op == TokenKind::MOD_EQ) {
+			if (BinOp->RHS->IsFoldable) {
+				IRGenerator IRGen(Context);
+				llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
+				if (LLInt->isZeroValue()) {
+					Error(BinOp, "Division by zero");
+				}
+			}
+		}
+
 		if (LTy->GetKind() == TypeKind::Array) {
 			// TODO: May want to change this requirement.
 			Error(BinOp, "Cannot reassign the value of an array");
@@ -436,11 +446,12 @@ YIELD_ERROR(BinOp)
 
 		Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
 
-		if (BinOp->Op == '/') {
-			if (BinOp->RHS->IsFoldable) {
-				
+		if (BinOp->Op == '/' && BinOp->RHS->IsFoldable) {
+			IRGenerator IRGen(Context);
+			llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
+			if (LLInt->isZeroValue()) {
+				Error(BinOp, "Division by zero");
 			}
-			// TODO: Check division by zero!!
 		}
 
 		CreateCast(BinOp->LHS, ToType);
@@ -456,8 +467,12 @@ YIELD_ERROR(BinOp)
 			OPERATOR_CANNOT_APPLY(RTy);
 		}
 		
-		if (BinOp->Op == '%') {
-			// TODO: Check division by zero!!
+		if (BinOp->Op == '%' && BinOp->RHS->IsFoldable) {
+			IRGenerator IRGen(Context);
+			llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
+			if (LLInt->isZeroValue()) {
+				Error(BinOp, "Division by zero");
+			}
 		}
 
 		// Want the LHS to determine the type since it is what gets
