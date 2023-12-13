@@ -28,6 +28,8 @@ arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
 }
 
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
+	if (Func->ParsingError) return;
+
 	CFunc  = Func;
 	FScope = Func->FScope;
 
@@ -41,6 +43,8 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 }
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
+	if (Struct->ParsingError) return;
+
 	FScope = Struct->FScope;
 
 	for (VarDecl* Field : Struct->Fields) {
@@ -146,6 +150,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 }
 
 void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
+	if (Var->ParsingError) return;
 
 	if (!FixupType(Var->Ty)) {
 		YIELD_ERROR(Var);
@@ -524,10 +529,56 @@ void arco::SemAnalyzer::CheckUnaryOp(UnaryOp* UniOp) {
 	CheckNode(UniOp->Value);
 	YIELD_ERROR_WHEN(UniOp, UniOp->Value);
 
-	if (UniOp->Op == '&') {
-		UniOp->Ty = PointerType::Create(UniOp->Value->Ty, Context);
-	} else {
-		UniOp->Ty = UniOp->Value->Ty;
+	UniOp->IsFoldable = UniOp->Value->IsFoldable;
+	Type* ValTy = UniOp->Value->Ty;
+
+#define OPERATOR_CANNOT_APPLY(T)                                  \
+Error(UniOp, "Operator '%s' cannot apply to type '%s'",           \
+	Token::TokenKindToString(UniOp->Op, Context), T->ToString()); \
+YIELD_ERROR(UniOp);
+
+	switch (UniOp->Op) {
+	case TokenKind::PLUS_PLUS:   case TokenKind::POST_PLUS_PLUS:
+	case TokenKind::MINUS_MINUS: case TokenKind::POST_MINUS_MINUS: {
+		if (!ValTy->IsInt()) {
+			OPERATOR_CANNOT_APPLY(ValTy);
+		}
+
+		CheckModifibility(UniOp->Value);
+
+		UniOp->Ty = ValTy;
+		break;
+	}
+	case '&': {
+		if (!IsLValue(UniOp->Value)) {
+			Error(UniOp, "Operator '%s' requires the value to be modifiable",
+				Token::TokenKindToString(UniOp->Op, Context));
+		}
+
+		UniOp->Ty = PointerType::Create(ValTy, Context);
+		break;
+	}
+	case '*': {
+		if (ValTy->GetKind() != TypeKind::Pointer) {
+			OPERATOR_CANNOT_APPLY(ValTy);
+		}
+
+		UniOp->Ty = static_cast<PointerType*>(ValTy)->GetElementType();
+		break;
+	}
+	case '-': case '+': case '~': {
+		if (!ValTy->IsNumber()) {
+			OPERATOR_CANNOT_APPLY(ValTy);
+		}
+
+		// TODO: Handle casting for unsigned?
+
+		UniOp->Ty = ValTy;
+		break;
+	}
+	default:
+		assert(!"Unhandled unary check");
+		break;
 	}
 }
 
@@ -1048,4 +1099,25 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	Analyzer.CheckStructDecl(Struct);
 	StructTy->AssignStruct(Struct);
 	return true;
+}
+
+void arco::SemAnalyzer::CheckModifibility(Expr* LValue) {
+	if (!IsLValue(LValue)) {
+		Error(LValue, "Expected to be a modifiable value");
+	}
+	// TODO: In future check for constness
+}
+
+bool arco::SemAnalyzer::IsLValue(Expr* E) {
+	if (E->Is(AstKind::IDENT_REF) || E->Is(AstKind::FIELD_ACCESSOR)) {
+		return static_cast<IdentRef*>(E)->RefKind == IdentRef::RK::Var;
+	}
+	if (E->Is(AstKind::UNARY_OP)) {
+		UnaryOp* UOP = static_cast<UnaryOp*>(E);
+		return UOP->Op == '*';
+	}
+	if (E->Is(AstKind::ARRAY_ACCESS)) {
+		return true;
+	}
+	return false;
 }

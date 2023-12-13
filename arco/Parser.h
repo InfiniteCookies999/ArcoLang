@@ -100,7 +100,8 @@ namespace arco {
 		Expr* ParseAssignmentAndExprs();
 		Expr* ParseExpr();
 		Expr* ParseBinaryExpr(Expr* LHS);
-		Expr* ParseTerm();
+		Expr* ParsePrimaryAndPostfixUnaryExpr();
+		Expr* ParsePrimaryAndPostfixUnaryExpr(Expr* LHS);
 		Expr* ParsePrimaryExpr();
 		Expr* ParseIdentPostfix(Expr* Site);
 		NumberLiteral* ParseIntLiteral();

@@ -189,6 +189,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
 
 arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	
+	ulen NumErrs = TotalAccumulatedErrors;
+
 	NextToken(); // Consuming 'fn' keyword.
 
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
@@ -239,10 +241,17 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 		}
 	}
 
+	if (NumErrs != TotalAccumulatedErrors) {
+		Func->ParsingError = true;
+	}
+
 	return Func;
 }
 
 arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
+
+	ulen NumErrs = TotalAccumulatedErrors;
+
 	VarDecl* Var = NewNode<VarDecl>(CTok);
 	Var->Mod    = Mod;
 	Var->FScope = FScope;
@@ -264,10 +273,17 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 		Var->Assignment = ParseExpr();
 	}
 
+	if (NumErrs != TotalAccumulatedErrors) {
+		Var->ParsingError = true;
+	}
+
 	return Var;
 }
 
 arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
+
+	ulen NumErrs = TotalAccumulatedErrors;
+
 	StructDecl* Struct = NewNode<StructDecl>(CTok);
 	Struct->Mod    = Mod;
 	Struct->FScope = FScope;
@@ -291,6 +307,10 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	}
 	Match('}');
 	POP_SCOPE()
+
+	if (NumErrs != TotalAccumulatedErrors) {
+		Struct->ParsingError = true;
+	}
 
 	return Struct;
 }
@@ -568,7 +588,7 @@ arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
 }
 
 arco::Expr* arco::Parser::ParseExpr() {
-	return ParseBinaryExpr(ParsePrimaryExpr());
+	return ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
 }
 
 arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
@@ -590,7 +610,7 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
 		NextToken(); // Consuming the operator
 
 		llvm::DenseMap<u16, u32>::iterator NextOpItr;
-		Expr* RHS = ParsePrimaryExpr();
+		Expr* RHS = ParsePrimaryAndPostfixUnaryExpr();
 		NextOp = CTok;
 		bool MoreOperators = (NextOpItr = Context.BinaryOpsPrecedence.find(NextOp.Kind))
 			                           != Context.BinaryOpsPrecedence.end();
@@ -628,8 +648,26 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
 	return LHS;
 }
 
-arco::Expr* arco::Parser::ParseTerm() {
-	return ParsePrimaryExpr();
+arco::Expr* arco::Parser::ParsePrimaryAndPostfixUnaryExpr() {
+	return ParsePrimaryAndPostfixUnaryExpr(ParsePrimaryExpr());
+}
+
+arco::Expr* arco::Parser::ParsePrimaryAndPostfixUnaryExpr(Expr* LHS) {
+	if (CTok.Is(TokenKind::PLUS_PLUS)) {
+		UnaryOp* UOP = NewNode<UnaryOp>(CTok);
+		UOP->Op = TokenKind::POST_PLUS_PLUS;
+		NextToken(); // Consuming the unary operator
+		UOP->Value = LHS;
+		return UOP;
+	} else if (CTok.Is(TokenKind::MINUS_MINUS)) {
+		UnaryOp* UOP = NewNode<UnaryOp>(CTok);
+		UOP->Op = TokenKind::POST_MINUS_MINUS;
+		NextToken(); // Consuming the unary operator
+		UOP->Value = LHS;
+		return UOP;
+	} else {
+		return LHS;
+	}
 }
 
 arco::Expr* arco::Parser::ParsePrimaryExpr() {
@@ -724,7 +762,8 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		UniOP->Value = E;
 		return UniOP;
 	}
-	case '&': case '*': {
+	case '&': case '*':
+	case TokenKind::PLUS_PLUS: case MINUS_MINUS: {
 		if ((CTok.Kind == '*' && PeekToken(1).Kind == '&') ||
 			(CTok.Kind == '&' && PeekToken(1).Kind == '*')
 			) {
@@ -747,7 +786,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		Match('(');
 		Cast->ToType = ParseType();
 		Match(')');
-		Cast->Value = ParseExpr(); // TODO: Replace with ParsePrimaryAndPostfixUnaryExpr
+		Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
 		return Cast;
 	}
 	case '[':

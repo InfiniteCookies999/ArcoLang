@@ -93,6 +93,9 @@ namespace arco {
 		bool FixupArrayType(ArrayType* ArrayTy);
 		bool FixupStructType(StructType* StructTy);
 
+		void CheckModifibility(Expr* LValue);
+		bool IsLValue(Expr* E);
+
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);
 			Log.EndError();

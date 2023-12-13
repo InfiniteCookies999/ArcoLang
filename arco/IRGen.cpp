@@ -787,7 +787,60 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 }
 
 llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
+	
+	auto GetOneValue = [](Type* Ty, llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
+		llvm::Value* LLOne = nullptr;
+		switch (Ty->GetKind()) {
+		case TypeKind::Int8:
+			LLOne = GetLLInt8(1, LLContext);
+			break;
+		case TypeKind::UnsignedInt8:
+			LLOne = GetLLUInt8(1, LLContext);
+			break;
+		case TypeKind::Int16:
+			LLOne = GetLLInt16(1, LLContext);
+			break;
+		case TypeKind::UnsignedInt16:
+			LLOne = GetLLUInt16(1, LLContext);
+			break;
+		case TypeKind::Int32:
+			LLOne = GetLLInt32(1, LLContext);
+			break;
+		case TypeKind::UnsignedInt32:
+			LLOne = GetLLUInt32(1, LLContext);
+			break;
+		case TypeKind::Int64:
+			LLOne = GetLLInt64(1, LLContext);
+			break;
+		case TypeKind::UnsignedInt64:
+			LLOne = GetLLUInt64(1, LLContext);
+			break;
+		case TypeKind::Int:
+			LLOne = GetSystemInt(1, LLContext, LLModule);
+			break;
+		case TypeKind::UnsignedInt:
+			LLOne = GetSystemUInt(1, LLContext, LLModule);
+			break;
+		default: assert(!"unimplementd!"); break;
+		}
+		return LLOne;
+	};
+	
 	switch (UniOp->Op) {
+	case TokenKind::PLUS_PLUS: case TokenKind::POST_PLUS_PLUS: {
+		llvm::Value* LLVal  = GenNode(UniOp->Value);
+		llvm::Value* LLRVal = CreateLoad(LLVal);
+		llvm::Value* IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		Builder.CreateStore(IncRes, LLVal);
+		return UniOp->Op == TokenKind::PLUS_PLUS ? IncRes : LLRVal;
+	}
+	case TokenKind::MINUS_MINUS: case TokenKind::POST_MINUS_MINUS: {
+		llvm::Value* LLVal  = GenNode(UniOp->Value);
+		llvm::Value* LLRVal = CreateLoad(LLVal);
+		llvm::Value* IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		Builder.CreateStore(IncRes, LLVal);
+		return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
+	}
 	case '&': {
 		// When GenRValue is called it makes sure
 		// not to shave off the pointer value for

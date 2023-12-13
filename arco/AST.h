@@ -100,6 +100,7 @@ namespace arco {
 		Decl(AstKind Kind) : AstNode(Kind) {}
 
 		bool GenRequestedAlready = false;
+		bool ParsingError        = false;
 
 		Module*     Mod;
 
