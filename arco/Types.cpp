@@ -224,10 +224,14 @@ arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, ulen Length, ArcoContext& 
 	return Ty;
 }
 
-arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, Expr* LengthExpr, ArcoContext& Context) {
+arco::ArrayType* arco::ArrayType::Create(Type* ElmTy,
+	                                     Expr* LengthExpr,
+	                                     SourceLoc LengthExprErrorLoc,
+	                                     ArcoContext& Context) {
 	ArrayType* Ty = new ArrayType;
-	Ty->ElmTy      = ElmTy;
-	Ty->LengthExpr = LengthExpr;
+	Ty->ElmTy              = ElmTy;
+	Ty->LengthExprErrorLoc = LengthExprErrorLoc;
+	Ty->LengthExpr         = LengthExpr;
 	return Ty;
 }
 

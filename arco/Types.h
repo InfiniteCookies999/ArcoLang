@@ -112,11 +112,16 @@ namespace arco {
 	public:
 
 		static ArrayType* Create(Type* ElmTy, ulen Length, ArcoContext& Context);
-		static ArrayType* Create(Type* ElmTy, Expr* LengthExpr, ArcoContext& Context);
+		static ArrayType* Create(Type* ElmTy,
+			                     Expr* LengthExpr,
+			                     SourceLoc LengthExprErrorLoc,
+			                     ArcoContext& Context);
 
 		ulen GetLength() const { return Length; }
 
 		Expr* GetLengthExpr() const { return LengthExpr; }
+
+		SourceLoc GetLengthExprErrorLoc() const { return LengthExprErrorLoc; }
 
 		/// This is the product of all the lengths
 		/// of the dimensions of the array.
@@ -130,6 +135,7 @@ namespace arco {
 		ArrayType()
 			: ContainerType(TypeKind::Array) {}
 
+		SourceLoc LengthExprErrorLoc;
 		Expr*     LengthExpr = nullptr;
 		ulen      Length;
 	};

@@ -59,6 +59,17 @@ case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_CSTR
 
+// P - Parsing code.
+// L - The Source location to assign to.
+#define CREATE_EXPANDED_SOURCE_LOC(P, L)           \
+SourceLoc ExpandedStartLoc = CTok.Loc;             \
+P;                                                 \
+L.LineNumber = ExpandedStartLoc.LineNumber;        \
+L.Text =                                           \
+    llvm::StringRef(ExpandedStartLoc.Text.begin(), \
+             PrevToken.GetText().end() - ExpandedStartLoc.Text.begin());
+   
+
 arco::Parser::Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer)
 	: Context(Context), Mod(Mod), Log(FilePath, FileBuffer), Lex(Context, Log, FileBuffer),
 	  FScope(new FileScope( FilePath, FileBuffer ))
@@ -518,6 +529,7 @@ arco::Type* arco::Parser::ParseType() {
 	if (CTok.Is('[')) {
 
 		llvm::SmallVector<Expr*, 2>     LengthExprs;
+		llvm::SmallVector<SourceLoc, 2> ExpandedErrorLocs;
 
 		bool IsImplicit = false;
 		bool AlreadyReportedImplicitError = false, EncounteredNonImplicit = false;
@@ -533,14 +545,20 @@ arco::Type* arco::Parser::ParseType() {
 				}
 
 				LengthExprs.push_back(nullptr);
+				ExpandedErrorLocs.push_back(SourceLoc{});
 
 				// Size information will be taken on implicitly.
 				NextToken(); // Consuming ']' token
 			} else {
 				EncounteredNonImplicit = true;
 				
-				LengthExprs.push_back(ParseExpr());
-				
+				SourceLoc ExpandedErrorLoc;
+				CREATE_EXPANDED_SOURCE_LOC(
+					LengthExprs.push_back(ParseExpr()),
+					ExpandedErrorLoc
+				)
+				ExpandedErrorLocs.push_back(ExpandedErrorLoc);
+
 				if (IsImplicit && !AlreadyReportedImplicitError) {
 					Error(CTok, "Implicit array subscripts require all subscripts to be implicit.");
 					AlreadyReportedImplicitError = true;
@@ -551,7 +569,7 @@ arco::Type* arco::Parser::ParseType() {
 		}
 
 		for (long long i = LengthExprs.size() - 1; i >= 0; i--) {
-			Ty = ArrayType::Create(Ty, LengthExprs[i], Context);
+			Ty = ArrayType::Create(Ty, LengthExprs[i], ExpandedErrorLocs[i], Context);
 		}
 	}
 
@@ -1127,7 +1145,10 @@ void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue, 2>& Va
 	do {
 
 		NonNamedValue NonNamedVal;
-		NonNamedVal.E = ParseExpr();
+		CREATE_EXPANDED_SOURCE_LOC(
+			NonNamedVal.E = ParseExpr(),
+			NonNamedVal.ExpandedLoc
+		)
 
 		Values.push_back(NonNamedVal);
 

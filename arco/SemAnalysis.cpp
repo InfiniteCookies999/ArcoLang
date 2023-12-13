@@ -831,7 +831,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(FuncCall* Call, FuncsL
 			VarDecl* Param = Params[ArgCount];
 
 			if (!IsAssignableTo(Param->Ty, Arg->Ty, Arg)) {
-				Error(Call,
+				Error(Args[ArgCount].ExpandedLoc,
 					"Cannot assign argument %s of type '%s' to parameter of type '%s'",
 					ArgCount+1,
 					Arg->Ty->ToString(), Param->Ty->ToString());
@@ -1107,14 +1107,13 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 
 	if (!LengthExpr) return true;
 	
-	// TODO: Want to have an expanded location for the length so that it underlies
-	// the entire expression.
+	SourceLoc ErrorLoc = ArrayTy->GetLengthExprErrorLoc();
 
 	if (!LengthExpr->IsFoldable) {
-		Error(LengthExpr, "Could not compute the length of the array at compile time");
+		Error(ErrorLoc, "Could not compute the length of the array at compile time");
 		return false;
 	} else if (!LengthExpr->Ty->IsInt()) {
-		Error(LengthExpr, "The length of the array is expected to be an integer");
+		Error(ErrorLoc, "The length of the array is expected to be an integer");
 		return false;
 	}
 
@@ -1123,10 +1122,10 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 		llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
 
 	if (LLInt->isZero()) {
-		Error(LengthExpr, "The length of the array cannot be zero");
+		Error(ErrorLoc, "The length of the array cannot be zero");
 		return false;
 	} else if (LengthExpr->Ty->IsSigned() && LLInt->isNegative()) {
-		Error(LengthExpr, "The length of the array cannot be negative");
+		Error(ErrorLoc, "The length of the array cannot be negative");
 		return false;
 	}
 
