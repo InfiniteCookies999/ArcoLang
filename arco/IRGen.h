@@ -77,7 +77,7 @@ namespace arco {
 		llvm::Value* GenStringLiteral(StringLiteral* String);
 		llvm::Value* GenIdentRef(IdentRef* IRef);
 		llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
-		llvm::Value* GenFuncCall(FuncCall* Call);
+		llvm::Value* GenFuncCall(FuncCall* Call, llvm::Value* LLAddr);
 		llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr);
 		llvm::Constant* GenConstArray(Array* Arr, ArrayType* DestTy);
 		void FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy);
@@ -125,6 +125,12 @@ namespace arco {
 
 		inline ulen SizeOfTypeInBytes(llvm::Type* LLType);
 
+		llvm::Value* GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal);
+
+		void GenReturnByStoreToElisionRetSlot(Expr* Value);
+
+		void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
+
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already
 		/// end in a branch (terminal).
@@ -159,6 +165,10 @@ namespace arco {
 		llvm::Function* GenDefaultConstructorDecl(StructDecl* Struct);
 
 		llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name);
+
+		llvm::Value* GetElisionRetSlotAddr(llvm::Function* LLFunc);
+
+		void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr);
 
 		inline llvm::Type* GenType(Type* Ty) {
 			return arco::GenType(Context, Ty);

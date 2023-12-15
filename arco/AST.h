@@ -115,7 +115,15 @@ namespace arco {
 
 		llvm::Function* LLFunction = nullptr;
 
-		bool ParamTypesChecked = false;
+		bool ParamTypesChecked   = false;
+		// If this is true then the function will return
+		// a struct type as an integer and then the caller
+		// will bitcast back to the struct type.
+		bool UsesOptimizedIntRet = false;
+		// If this is true then the function will pass
+		// the return value as a parameter rather than
+		// returning it.
+		bool UsesParamRetSlot    = false;
 
 		Type*                          RetTy;
 		llvm::SmallVector<VarDecl*, 2> Params;
@@ -138,6 +146,10 @@ namespace arco {
 
 		ulen ParamIdx = -1;
 		ulen FieldIdx = -1;
+
+		// If the variable is declared inside a function
+		// and returned.
+		bool IsLocalRetValue = false;
 
 		llvm::Value* LLAddress = nullptr;
 

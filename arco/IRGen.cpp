@@ -160,7 +160,7 @@ arco::IRGenerator::IRGenerator(ArcoContext& Context)
 void arco::IRGenerator::GenFunc(FuncDecl* Func) {
 
 	// -- DEBUG
-	// llvm::outs() << "generating function: " << Func->Name << '\n';
+	//llvm::outs() << "generating function: " << Func->Name << '\n';
 
 	GenFuncDecl(Func);
 	GenFuncBody(Func);
@@ -174,7 +174,7 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 	Builder.SetInsertPoint(LLEntryBlock);
 
 	// Allocating "this" pointer
-	llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this.addr");
+	llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this");
 
 	// Storing "this" pointer
 	Builder.CreateStore(LLFunc->getArg(0), LLThisAddr);
@@ -198,9 +198,39 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 	if (Func->LLFunction) return;
 	
+	// TODO: Native functions will not need to return data structures
+	//       in the same way.
+
 	llvm::Type* LLRetTy;
-	LLRetTy = Func == Context.MainEntryFunc ? llvm::Type::getInt32Ty(LLContext)
-		                                    : GenType(Func->RetTy);
+	if (Func->RetTy->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(Func->RetTy);
+		
+		ulen SizeInBytes = SizeOfTypeInBytes(GenStructType(StructTy));
+		if (SizeInBytes <= LLModule.getDataLayout().getPointerSize()) {
+			// Return type is optimized to fit into an integer.
+			auto NextPow2 = [](ulen V) {
+				--V;
+				V |= V >> 1;
+				V |= V >> 2;
+				V |= V >> 4;
+				V |= V >> 8;
+				V |= V >> 16;
+				V++;
+				return V;
+			};
+			Func->UsesOptimizedIntRet = true;
+			LLRetTy = llvm::Type::getIntNTy(LLContext, NextPow2(SizeInBytes) * 8); // *8 because bits
+
+		} else {
+			// Copy elision case by passing return value as param.
+			Func->UsesParamRetSlot = true;
+			LLRetTy = llvm::Type::getVoidTy(LLContext);
+		}
+	} else {
+		LLRetTy = Func == Context.MainEntryFunc ? llvm::Type::getInt32Ty(LLContext)
+		                                        : GenType(Func->RetTy);
+	}
+
 	llvm::Twine LLFuncName = Func->Name.Text;
 	llvm::Twine LLFullFuncName = (Func == Context.MainEntryFunc ||
 		                          (Func->Mods & ModKinds::NATIVE))
@@ -208,6 +238,12 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		                       : LLFuncName.concat(".arco");
 	
 	llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
+	ulen ImplicitParams = 0;
+
+	if (Func->UsesParamRetSlot) {
+		LLParamTypes.push_back(llvm::PointerType::get(GenType(Func->RetTy), 0));
+		++ImplicitParams;
+	}
 	for (VarDecl* Param : Func->Params) {
 		Type* Ty = Param->Ty;
 		if (Ty->GetKind() == TypeKind::Array) {
@@ -240,8 +276,12 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		LLFunc->setDSOLocal(true);
 	}
 
+	
+	if (Func->UsesParamRetSlot) {
+		GetElisionRetSlotAddr(LLFunc)->setName("ret.addr");
+	}
 	for (ulen i = 0; i < Func->Params.size(); i++) {
-		LLFunc->getArg(i)->setName(llvm::Twine(Func->Params[i]->Name.Text).concat(".param"));
+		LLFunc->getArg(i + ImplicitParams)->setName(llvm::Twine(Func->Params[i]->Name.Text).concat(".param"));
 	}
 
 	Func->LLFunction = LLFunc;
@@ -262,28 +302,42 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		LLFuncEndBB = llvm::BasicBlock::Create(LLContext, "func.return");
 		if (Func == Context.MainEntryFunc) {
 			LLRetAddr = Builder.CreateAlloca(GenType(Context.Int32Type), nullptr, "ret.val");
+		} else if (Func->RetTy->GetKind() != TypeKind::Void &&
+			       !Func->UsesParamRetSlot) {
+			LLRetAddr = Builder.CreateAlloca(GenType(Func->RetTy), nullptr, "ret.val");
 		}
 	}
 
 	// Allocating space for the variables
 	//
 	for (VarDecl* Var : Func->AllocVars) {
-		llvm::Type* LLTy;
-		if (Var->IsParam() && Var->Ty->GetKind() == TypeKind::Array) {
-			ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
-			LLTy = llvm::PointerType::get(GenType(ArrayTy->GetElementType()), 0);
+		if (Func->UsesParamRetSlot && Func->NumReturns == 1 && Var->IsLocalRetValue) {
+			// RVO case in which although the variable was declared as inside
+			// of the function since it is returned by the function and the
+			// function uses a parameter for a return slot the variable may use
+			// the address of the return slot instead.
+			Var->LLAddress = GetElisionRetSlotAddr(LLFunc);
 		} else {
-			LLTy = GenType(Var->Ty);
-		}
+			llvm::Type* LLTy;
+			if (Var->IsParam() && Var->Ty->GetKind() == TypeKind::Array) {
+				ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+				LLTy = llvm::PointerType::get(GenType(ArrayTy->GetElementType()), 0);
+			} else {
+				LLTy = GenType(Var->Ty);
+			}
 
-		llvm::Value* LLAlloca = Builder.CreateAlloca(LLTy);
-		LLAlloca->setName(Var->Name.Text);
-		Var->LLAddress = LLAlloca;
+			llvm::Value* LLAlloca = Builder.CreateAlloca(LLTy);
+			LLAlloca->setName(Var->Name.Text);
+			Var->LLAddress = LLAlloca;
+		}
 	}
 
 	// Storing the incoming parameters
 	//
 	ulen LLParamIndex = 0;
+	if (Func->UsesParamRetSlot) {
+		++LLParamIndex;
+	}
 	for (VarDecl* Param : Func->Params) {
 		Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
 	}
@@ -306,7 +360,9 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	}
 
 	if (Func->NumReturns > 1) {
-		if (LLRetAddr) {
+		if (Func->UsesOptimizedIntRet) {
+			Builder.CreateRet(GenReturnValueForOptimizedStructAsInt(LLRetAddr));
+		} else if (LLRetAddr) {
 			Builder.CreateRet(CreateLoad(LLRetAddr));
 		} else {
 			Builder.CreateRetVoid();
@@ -355,7 +411,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 	case AstKind::FIELD_ACCESSOR:
 		return GenFieldAccessor(static_cast<FieldAccessor*>(Node));
 	case AstKind::FUNC_CALL:
-		return GenFuncCall(static_cast<FuncCall*>(Node));
+		return GenFuncCall(static_cast<FuncCall*>(Node), nullptr);
 	case AstKind::ARRAY:
 		return GenArray(static_cast<Array*>(Node), nullptr);
 	case AstKind::ARRAY_ACCESS:
@@ -423,8 +479,29 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 		// returning and must create the return instructions.
 	
 		llvm::Value* LLRetValue = nullptr;
+		
+		if (CFunc->RetTy->GetKind() == TypeKind::Struct) {
+			if (CFunc->UsesOptimizedIntRet) {
+				LLRetValue = GenReturnValueForOptimizedStructAsInt(GenNode(Ret->Value));
+			}
+			// Check for cases in which the value needs to be copied into the elision
+			// return address.
+			else if (
+				(Ret->Value->Is(AstKind::IDENT_REF) &&
+				 !static_cast<IdentRef*>(Ret->Value)->Var->IsLocalRetValue) ||
+				(Ret->Value->Is(AstKind::UNARY_OP))  // dereferencing another object need to copy.
+					) {
+				llvm::Value* LLToAddr   = GetElisionRetSlotAddr(LLFunc);
+				llvm::Value* LLFromAddr = GenNode(Ret->Value);
 
-		if (!Ret->Value && CFunc == Context.MainEntryFunc) {
+				// TODO: In the future if the object has a move constructor that would
+				// need to be called instead of copying.
+				CopyStructObject(LLToAddr, LLFromAddr, static_cast<StructType*>(CFunc->RetTy)->GetStruct());
+
+			} else {
+				GenReturnByStoreToElisionRetSlot(Ret->Value);
+			}
+		} else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
 			// Default to returning zero for the main function.
 			LLRetValue = GetLLInt32(0, LLContext);
 		} else if (Ret->Value) {
@@ -442,6 +519,31 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 			Builder.CreateRetVoid();
 		}
 	} else {
+
+		// Multiple returns exists. All returns jump to the LLFuncEndBB.
+		// Storing the return value into LLRetAddr and letting LLFuncEndBB
+		// handle the code for returning the value.
+
+		if (CFunc->RetTy->GetKind() == TypeKind::Struct) {
+
+			// Even if the function uses optimized integer returning still need
+			// to copy to the return address. If it does use optimized integer
+			// returning the bitcasting will then occur at the LLFuncEndBB block.
+
+			llvm::Value* LLToAddr = CFunc->UsesParamRetSlot
+				                          ? GetElisionRetSlotAddr(LLFunc)
+				                          : LLRetAddr;
+			llvm::Value* LLFromAddr = GenNode(Ret->Value);
+			// TODO: Move constructors if supported
+
+			CopyStructObject(LLToAddr, LLFromAddr, static_cast<StructType*>(CFunc->RetTy)->GetStruct());
+
+		} else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
+			Builder.CreateStore(GetLLInt32(0, LLContext), LLRetAddr);
+		} else if (Ret->Value) {
+			Builder.CreateStore(GenRValue(Ret->Value), LLRetAddr);
+		}
+
 		Builder.CreateBr(LLFuncEndBB);
 	}
 
@@ -573,9 +675,8 @@ llvm::Value* arco::IRGenerator::GenNestedScope(NestedScopeStmt* NestedScope) {
 llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	switch (BinOp->Op) {
 	case '=': {
-		llvm::Value* LLValue = GenRValue(BinOp->RHS);
 		llvm::Value* LLAddress = GenNode(BinOp->LHS);
-		Builder.CreateStore(LLValue, LLAddress);
+		GenAssignment(LLAddress, BinOp->RHS);
 		return LLAddress;
 	}
 	//
@@ -903,34 +1004,93 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 		);
 	}
 
-	llvm::Value* LLSite = GenNode(FieldAcc->Site);
+	Expr* Site = FieldAcc->Site;
+	llvm::Value* LLSite;
+	if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
+		FuncCall* Call = static_cast<FuncCall*>(Site);
+		LLSite = CreateUnseenAlloca(GenType(Call->Ty), "tmp.obj");
+		GenStoreStructRetFromCall(Call, LLSite);
+	} else {
+		LLSite = GenNode(Site);
+	}
+
+	// Automatically dereference pointers!
+	if (Site->Ty->GetKind() == TypeKind::Pointer) {
+		LLSite = CreateLoad(LLSite);
+		LLSite->setName("ptr.deref");
+	}
 
 	return CreateStructGEP(LLSite, FieldAcc->Var->FieldIdx);
 }
 
-llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call) {
+llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr) {
 
 	GenFuncDecl(Call->CalledFunc);
 
+	ulen NumArgs = Call->Args.size();
+	if (Call->CalledFunc->UsesParamRetSlot) {
+		++NumArgs;
+	}
+
 	llvm::SmallVector<llvm::Value*, 2> LLArgs;
+	LLArgs.resize(NumArgs);
+
+	ulen ArgIdx = 0;
+	if (Call->CalledFunc->UsesParamRetSlot) {
+		if (LLAddr) {
+			LLArgs[ArgIdx++] = LLAddr;
+		} else {
+			// Strange, but the user has decided to ignore
+			// the return value so a temporary object needs
+			// to be created.
+			LLAddr = CreateUnseenAlloca(GenType(Call->Ty), "ignored.ret");
+			LLArgs[ArgIdx++] = LLAddr;
+		}
+	}
 
 	for (ulen i = 0; i < Call->Args.size(); i++) {
 		Expr* Arg = Call->Args[i].E;
-		llvm::Value* LLArg = GenRValue(Arg);
-		if (Arg->Ty->GetKind() == TypeKind::Array) {
-			// If not already decayed, decay.
-			if (LLArg->getType()->isPointerTy() &&
-				LLArg->getType()->getPointerElementType()->isArrayTy()
-				) {
-				LLArg = DecayArray(LLArg);
-			} else {
-				// TODO: Load?
+		llvm::Value* LLArg = nullptr;
+		if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
+			LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
+			GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
+
+			// TODO: If there ends up being further optimizations such that parameters
+			// take into account similar constraints to return values where structs
+			// get passed as integers/pointers depending on memory size then this will
+			// not need to be loaded.
+			LLArg = CreateLoad(LLArg);
+
+		} else {
+			LLArg = GenRValue(Arg);
+			
+			if (Arg->Ty->GetKind() == TypeKind::Array) {
+				// If not already decayed, decay.
+				if (LLArg->getType()->isPointerTy() &&
+					LLArg->getType()->getPointerElementType()->isArrayTy()
+					) {
+					LLArg = DecayArray(LLArg);
+				} else {
+					// TODO: Load?
+				}
 			}
 		}
-		LLArgs.push_back(LLArg);
+		LLArgs[ArgIdx++] = LLArg;
 	}
 
 	llvm::Function* LLCalledFunc = Call->CalledFunc->LLFunction;
+
+	// -- DEBUG
+	//llvm::outs() << "Calling function with name: " << Call->CalledFunc->Name << "\n";
+	//llvm::outs() << "Types passed to function:\n";
+	//for (ulen i = 0; i < LLArgs.size(); i++) {
+	//	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
+	//}
+	//llvm::outs() << "Types expected by function:\n";
+	//for (ulen i = 0; i < LLCalledFunc->arg_size(); i++) {
+	//	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
+	//}
+	//llvm::outs() << "\n";
 
 	llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
 	if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
@@ -947,7 +1107,7 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr) {
 	}
 
 	if (!LLAddr) {
-		LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array.addr");
+		LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
 	}
 
 	if (Arr->IsFoldable) {
@@ -1066,7 +1226,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 	StructDecl* Struct = StructTy->GetStruct();
 
 	if (!LLAddr) {
-		LLAddr = CreateUnseenAlloca(GenStructType(StructTy), "tmp.structinit.addr");
+		LLAddr = CreateUnseenAlloca(GenStructType(StructTy), "tmp.structinit");
 	}
 
 	std::unordered_set<ulen> ConsumedFieldIdxs;
@@ -1084,7 +1244,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 			if (Field->Assignment) {
 				GenAssignment(LLFieldAddr, Field->Assignment);
 			} else {
-				// TODO: assign default value
+				GenDefaultValue(Field->Ty, LLFieldAddr);
 			}
 		}
 	}
@@ -1339,6 +1499,53 @@ inline ulen arco::IRGenerator::SizeOfTypeInBytes(llvm::Type* LLType) {
 	return LLTypeSize.getFixedSize();
 }
 
+llvm::Value* arco::IRGenerator::GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal) {
+	if (LLRetVal->getType()->isPointerTy()) {
+		// Bitcast the struct type's address value to a integer pointer.
+		llvm::Type* LLRetTy = CFunc->LLFunction->getReturnType();
+		llvm::Value* LLDestVal = Builder.CreateBitCast(LLRetVal, llvm::PointerType::get(LLRetTy, 0));
+		return CreateLoad(LLDestVal);
+	} else {
+		// Ex.   return func();  // where function returns an optimized integer ret. value
+		return LLRetVal;
+	}
+}
+
+void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value) {
+	if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
+		// Ex.  'return StructName{ 43, 22 };'
+		GenStructInitializer(static_cast<StructInitializer*>(Value),
+							 GetElisionRetSlotAddr(LLFunc));
+	} else if (Value->Is(AstKind::FUNC_CALL)) {
+		// Ex.  'fn foo() StructName { return bar(); }
+		GenFuncCall(static_cast<FuncCall*>(Value),
+			        GetElisionRetSlotAddr(LLFunc));
+	} // else the remaining case should be that Value is AstKind::IDENT_REF
+	// in which the identifier reference should already point to the elision
+	// return address.
+	//
+	// Ex.
+	//     'func() A {
+	//         a A = A:{ 44, 22 };
+	//         a.g = 33;
+	//         return a;
+	//     }'
+	//
+	// Where sizeof(A) >= size of architecture's pointer size.
+}
+
+void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct) {
+	// TODO: In the future if their is a copy constructor call that instead!
+	llvm::StructType* LLStructType =  llvm::cast<llvm::StructType>(LLFromAddr->getType()->getPointerElementType());
+	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
+	llvm::Align LLAlignment = LLStructLayout->getAlignment();
+	Builder.CreateMemCpy(
+		LLToAddr, LLAlignment,
+		LLFromAddr, LLAlignment,
+		SizeOfTypeInBytes(LLStructType)
+	);
+}
+
 void arco::IRGenerator::GenBranchIfNotTerm(llvm::BasicBlock* LLBB) {
 	// Avoiding back-to-back branching.
 	llvm::BasicBlock* CurBB = Builder.GetInsertBlock();
@@ -1360,8 +1567,18 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value) {
 		GenArray(static_cast<Array*>(Value), LLAddress);
 	} else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
 		GenStructInitializer(static_cast<StructInitializer*>(Value), LLAddress);
+	} else if (Value->Is(AstKind::FUNC_CALL)) {
+		FuncCall* Call = static_cast<FuncCall*>(Value);
+		if (Call->Ty->GetKind() == TypeKind::Struct) {
+			GenStoreStructRetFromCall(Call, LLAddress);
+		} else {
+			llvm::Value* LLAssignment = GenRValue(Value);
+			Builder.CreateStore(LLAssignment, LLAddress);
+		}
 	} else {
 		llvm::Value* LLAssignment = GenRValue(Value);
+		// -- DEBUG
+		// llvm::outs() << "Address Type: " << LLValTypePrinter(LLAddress) << " Assignment Type: " << LLValTypePrinter(LLAssignment);
 		Builder.CreateStore(LLAssignment, LLAddress);
 	}
 }
@@ -1455,4 +1672,27 @@ llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char*
 	LLAddr->setName(Name);
 	Builder.SetInsertPoint(BackupInsertBlock);
 	return LLAddr;
+}
+
+llvm::Value* arco::IRGenerator::GetElisionRetSlotAddr(llvm::Function* LLFunc) {
+	// TODO: Check if a member function and return argument slot 2
+	// if it's a member function.
+	return LLFunc->getArg(0);
+}
+
+void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr) {
+	llvm::StructType* LLStructTy = GenStructType(static_cast<StructType*>(Call->Ty));
+
+	ulen StructByteSize = SizeOfTypeInBytes(LLStructTy);
+	if (StructByteSize <= LLModule.getDataLayout().getPointerSize()) {
+		// The return type is small enough to be shoved into an
+		// integer so that returned value needs to be reinterpreted
+		// as an integer to store the result.
+		llvm::Value* LLRetVal = GenFuncCall(Call, nullptr);
+		LLAddr = Builder.CreateBitCast(LLAddr, llvm::PointerType::get(LLRetVal->getType(), 0));
+		Builder.CreateStore(LLRetVal, LLAddr);
+	} else {
+		// Needs to be passed as a parameter.
+		GenFuncCall(Call, LLAddr);
+	}
 }

@@ -104,6 +104,13 @@ int main() {
 	RunTest(SRC("structs/structs6.arco"), "124 66 25");
 	RunTest(SRC("structs/structs7.arco"), "55 99");
 
+	RunTest(SRC("returns/returns1.arco"), "55 55");
+	RunTest(SRC("returns/returns2.arco"), "55 55");
+	RunTest(SRC("returns/returns3.arco"), "55 55");
+	RunTest(SRC("returns/returns4.arco"), "55 55");
+	RunTest(SRC("returns/returns5.arco"), "55 55");
+	RunTest(SRC("returns/returns6.arco"), "55 55");
+
 	//RunTest(SRC("lots_of_errors.arco"), "");
 
 	if (Succeeded + Failed > 0) {

@@ -1,0 +1,30 @@
+// -- Test to make sure that copy elision and returns
+//    by integer optimizations work for directly returning
+//    struct types.
+
+A struct {
+	val int32;
+}
+
+B struct {
+	val1 int32;
+	val2 int32;
+	val3 int32;
+	val4 int32;
+}
+
+fn func1() A {
+	return A{ 55 };
+}
+
+fn func2() B {
+	return B{ 55 };
+}
+
+fn main() {
+	a A = func1();
+	print(cast(int) a.val);
+	print(" ", 1);
+	b B = func2();
+	print(cast(int) b.val1);
+}

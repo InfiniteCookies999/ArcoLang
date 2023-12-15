@@ -61,6 +61,10 @@ void arco::SemAnalyzer::CheckFuncParamTypes(FuncDecl* Func) {
 
 	Func->ParamTypesChecked = true;
 
+	if (!FixupType(Func->RetTy)) {
+		Func->RetTy = Context.ErrorType;
+	}
+
 	llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
 	for (VarDecl* Param : Params) {
 		if (!FixupType(Param->Ty)) {
@@ -223,6 +227,16 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
 			CreateCast(Return->Value, CFunc->RetTy);
 		} else {
 			ReturnMatched = false;
+		}
+		if (Return->Value->Is(AstKind::IDENT_REF)) {
+			IdentRef* IRef = static_cast<IdentRef*>(Return->Value);
+			if (IRef->RefKind == IdentRef::RK::Var) {
+				VarDecl* Var = IRef->Var;
+				// TODO: Will also want to make sure it is not global!
+				if (!Var->IsParam() && !Var->IsField()) {
+					Var->IsLocalRetValue = true;
+				}
+			}
 		}
 	} else {
 		ReturnMatched = CFunc->RetTy == Context.VoidType;
@@ -404,6 +418,8 @@ YIELD_ERROR(BinOp)
 				RTy->ToString(), LTy->ToString());
 			YIELD_ERROR(BinOp);
 		}
+
+		CreateCast(BinOp->RHS, LTy);
 
 		BinOp->Ty = LTy;
 		break;

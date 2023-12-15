@@ -148,14 +148,14 @@ arco::Type* arco::Type::GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoCo
 
 std::string arco::Type::ToString() const {
 	switch (GetKind()) {
-	case TypeKind::Int8:		    return "i8";
-	case TypeKind::Int16:		    return "i16";
-	case TypeKind::Int32:		    return "i32";
-	case TypeKind::Int64:		    return "i64";
-	case TypeKind::UnsignedInt8:    return "u8";
-	case TypeKind::UnsignedInt16:   return "u16";
-	case TypeKind::UnsignedInt32:   return "u32";
-	case TypeKind::UnsignedInt64:   return "u64";
+	case TypeKind::Int8:		    return "int8";
+	case TypeKind::Int16:		    return "int16";
+	case TypeKind::Int32:		    return "int32";
+	case TypeKind::Int64:		    return "int64";
+	case TypeKind::UnsignedInt8:    return "uint8";
+	case TypeKind::UnsignedInt16:   return "uint16";
+	case TypeKind::UnsignedInt32:   return "uint32";
+	case TypeKind::UnsignedInt64:   return "uint64";
 	case TypeKind::Char:            return "char";
 	case TypeKind::Int:             return "int";
 	case TypeKind::UnsignedInt:     return "uint";
