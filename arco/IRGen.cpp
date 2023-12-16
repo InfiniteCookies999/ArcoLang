@@ -355,6 +355,10 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
 	}
 
+	if (Func->IsConstructor) {
+		GenConstructorBodyFieldAssignments(Func->Struct);
+	}
+
 	// Generating the statements of the function.
 	for (AstNode* Stmt : Func->Scope.Stmts) {
 		GenNode(Stmt);
@@ -1175,14 +1179,25 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 }
 
 llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr) {
+	return GenFuncCallGeneral(
+		Call,
+		Call->CalledFunc,
+		Call->Args,
+		LLAddr
+	);
+}
 
-	GenFuncDecl(Call->CalledFunc);
-
-	ulen NumArgs = Call->Args.size();
-	if (Call->CalledFunc->Struct) {
+llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
+	                                               FuncDecl* CalledFunc,
+	                                               llvm::SmallVector<NonNamedValue, 2>& Args,
+	                                               llvm::Value* LLAddr) {
+	GenFuncDecl(CalledFunc);
+	
+	ulen NumArgs = Args.size();
+	if (CalledFunc->Struct) {
 		++NumArgs;
 	}
-	if (Call->CalledFunc->UsesParamRetSlot) {
+	if (CalledFunc->UsesParamRetSlot) {
 		++NumArgs;
 	}
 
@@ -1190,30 +1205,33 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 	LLArgs.resize(NumArgs);
 
 	ulen ArgIdx = 0;
-	if (Call->CalledFunc->Struct) {
-		if (LLThis && CFunc && Call->CalledFunc->Struct == CFunc->Struct) {
+	if (CalledFunc->Struct) {
+		if (CalledFunc->IsConstructor) {
+			LLArgs[ArgIdx++] = LLAddr;
+		} else if (LLThis && CFunc && CalledFunc->Struct == CFunc->Struct) {
 			// Calling one member function from another.
 			LLArgs[ArgIdx++] = LLThis;
 		} else {
 			// Calling a member function from a variable so
 			// that the variable's address gets passed in.
+			FuncCall* Call = static_cast<FuncCall*>(CallNode);
 			LLArgs[ArgIdx++] = GenNode(Call->Site);
 		}
 	}
-	if (Call->CalledFunc->UsesParamRetSlot) {
+	if (CalledFunc->UsesParamRetSlot) {
 		if (LLAddr) {
 			LLArgs[ArgIdx++] = LLAddr;
 		} else {
 			// Strange, but the user has decided to ignore
 			// the return value so a temporary object needs
 			// to be created.
-			LLAddr = CreateUnseenAlloca(GenType(Call->Ty), "ignored.ret");
+			LLAddr = CreateUnseenAlloca(GenType(CallNode->Ty), "ignored.ret");
 			LLArgs[ArgIdx++] = LLAddr;
 		}
 	}
 
-	for (ulen i = 0; i < Call->Args.size(); i++) {
-		Expr* Arg = Call->Args[i].E;
+	for (ulen i = 0; i < Args.size(); i++) {
+		Expr* Arg = Args[i].E;
 		llvm::Value* LLArg = nullptr;
 		if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
 			LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
@@ -1237,10 +1255,10 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 		LLArgs[ArgIdx++] = LLArg;
 	}
 
-	llvm::Function* LLCalledFunc = Call->CalledFunc->LLFunction;
+	llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
 
 	// -- DEBUG
-	//llvm::outs() << "Calling function with name: " << Call->CalledFunc->Name << "\n";
+	//llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
 	//llvm::outs() << "Types passed to function:\n";
 	//for (ulen i = 0; i < LLArgs.size(); i++) {
 	//	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
@@ -1386,6 +1404,15 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 
 	if (!LLAddr) {
 		LLAddr = CreateUnseenAlloca(GenStructType(StructTy), "tmp.structinit");
+	}
+
+	if (StructInit->CalledConstructor) {
+		return GenFuncCallGeneral(
+			StructInit,
+			StructInit->CalledConstructor,
+			StructInit->Args,
+			LLAddr
+		);
 	}
 
 	std::unordered_set<ulen> ConsumedFieldIdxs;
@@ -1730,6 +1757,17 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
 		LLFromAddr, LLAlignment,
 		SizeOfTypeInBytes(LLStructType)
 	);
+}
+
+void arco::IRGenerator::GenConstructorBodyFieldAssignments(StructDecl* Struct) {
+	for (VarDecl* Field : Struct->Fields) {
+		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
+		if (Field->Assignment) {
+			GenAssignment(LLFieldAddr, Field->Assignment);
+		} else {
+			GenDefaultValue(Field->Ty, LLFieldAddr);
+		}
+	}
 }
 
 void arco::IRGenerator::GenBranchIfNotTerm(llvm::BasicBlock* LLBB) {

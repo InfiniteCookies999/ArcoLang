@@ -124,6 +124,8 @@ void arco::Parser::ParseImport() {
 
 	Identifier ModName = ParseIdentifier("Expected identifier for import module name");
 
+	Match(';');
+
 	auto Itr = Context.ModNamesToMods.find(ModName.Text);
 	if (Itr == Context.ModNamesToMods.end()) {
 		Error(ImportTok, "Could not find import module for '%s'", ModName.Text.data());
@@ -318,7 +320,13 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 			FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
 			if (!Func->Name.IsNull()) {
 				Func->Struct = Struct;
-				Struct->Funcs[Func->Name].push_back(Func);
+				if (Func->Name == Struct->Name) {
+					// TODO: Should it also go into the Funcs list?
+					Func->IsConstructor = true;
+					Struct->Constructors.push_back(Func);
+				} else {
+					Struct->Funcs[Func->Name].push_back(Func);
+				}
 			}
 		} else {
 			// TODO: Place in a list of invalid statements and report later
@@ -712,12 +720,13 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 	case TokenKind::IDENT: {
 
 		if (AllowStructInitializer && PeekToken(1).Is('{')) {
+			StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
+
 			Identifier StructName = Identifier(CTok.GetText());
 			StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
 			NextToken();
 
 			NextToken(); // Consuming '{' token.
-			StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
 			StructInit->Ty = Ty;
 			
 			if (CTok.IsNot('}')) {

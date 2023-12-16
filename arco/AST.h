@@ -125,6 +125,7 @@ namespace arco {
 		// the return value as a parameter rather than
 		// returning it.
 		bool UsesParamRetSlot    = false;
+		bool IsConstructor       = false;
 
 		// Non-nullptr if the function is a member function.
 		StructDecl* Struct = nullptr;
@@ -171,7 +172,8 @@ namespace arco {
 	struct StructDecl : Decl {
 		StructDecl() : Decl(AstKind::STRUCT_DECL) {}
 
-		llvm::SmallVector<VarDecl*> Fields;
+		llvm::SmallVector<VarDecl*>           Fields;
+		FuncsList                             Constructors;
 		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
 		llvm::StructType* LLStructTy         = nullptr;
@@ -425,6 +427,10 @@ namespace arco {
 	// Ex.  'StructName { 4, 2 }'
 	struct StructInitializer : Expr {
 		StructInitializer() : Expr(AstKind::STRUCT_INITIALIZER) {}
+
+		// If not nullptr then it initializes by calling the
+		// a constructor
+		FuncDecl* CalledConstructor = nullptr;
 
 		llvm::SmallVector<NonNamedValue, 2> Args;
 

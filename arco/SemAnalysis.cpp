@@ -902,9 +902,8 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 	FuncsList* Canidates = static_cast<IdentRef*>(Call->Site)->Funcs;
 
-	Call->CalledFunc = FindBestFuncCallCanidate(Canidates, Call->Args);
+	Call->CalledFunc = CheckCallToCanidates(Call->Loc, Canidates, Call->Args);
 	if (!Call->CalledFunc) {
-		DisplayErrorForNoMatchingFuncCall(Call, Canidates);
 		YIELD_ERROR(Call);
 	}
 
@@ -917,12 +916,30 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 	Call->IsFoldable = false;
 	Call->Ty = Call->CalledFunc->RetTy;
 
-	Context.RequestGen(Call->CalledFunc);
+}
 
+arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
+	                                                    FuncsList* Canidates,
+	                                                    llvm::SmallVector<NonNamedValue, 2>& Args) {
+	FuncDecl* Selected = FindBestFuncCallCanidate(Canidates, Args);
+	if (!Selected) {
+		DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args);
+		return nullptr;
+	}
+
+	for (ulen i = 0; i < Args.size(); i++) {
+		Expr*    Arg   = Args[i].E;
+		VarDecl* Param = Selected->Params[i];
+		CreateCast(Arg, Param->Ty);
+	}
+
+	Context.RequestGen(Selected);
+	
+	return Selected;
 }
 
 arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates,
-	                                                        llvm::SmallVector<NonNamedValue, 2>& Args) {
+	                                                        const llvm::SmallVector<NonNamedValue, 2>& Args) {
 	if (!Canidates) return nullptr;
 
 	FuncDecl* Selection = nullptr;
@@ -948,7 +965,7 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 }
 
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
-	                                      llvm::SmallVector<NonNamedValue, 2>& Args,
+	                                      const llvm::SmallVector<NonNamedValue, 2>& Args,
 	                                      ulen& NumConflicts) {
 	if (Canidate->Params.size() != Args.size()) {
 		return false;
@@ -968,9 +985,11 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 	return true;
 }
 
-void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(FuncCall* Call, FuncsList* Canidates) {
+void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
+	                                                      FuncsList* Canidates,
+			                                              const llvm::SmallVector<NonNamedValue, 2>& Args) {
 	
-	const char* CallType = "function";
+	const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
 	bool EncounteredError = false;
 	if (Canidates && Canidates->size() == 1) {
@@ -981,10 +1000,9 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(FuncCall* Call, FuncsL
 		FuncDecl* SingleCanidate = (*Canidates)[0];
 
 		const llvm::SmallVector<VarDecl*, 2>&      Params = SingleCanidate->Params;
-		const llvm::SmallVector<NonNamedValue, 2>& Args   = Call->Args;
 		for (ulen ArgCount = 0; Args.size(); ArgCount++) {
 			if (ArgCount >= Params.size()) {
-				Error(Call, "Too many arguments for %s call", CallType);
+				Error(ErrorLoc, "Too many arguments for %s call", CallType);
 				EncounteredError = true;
 				break;
 			}
@@ -1005,14 +1023,14 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(FuncCall* Call, FuncsL
 	
 	if (!EncounteredError) {
 		std::string FuncDef = "(";
-		for (ulen i = 0; i < Call->Args.size(); i++) {
-			FuncDef += Call->Args[i].E->Ty->ToString();
-			if (i+1 != Call->Args.size()) FuncDef += ", ";
+		for (ulen i = 0; i < Args.size(); i++) {
+			FuncDef += Args[i].E->Ty->ToString();
+			if (i+1 != Args.size()) FuncDef += ", ";
 		}
 		FuncDef += ")";
 
-		Error(Call, "Could not find function with parameter types '%s'",
-			FuncDef);
+		Error(ErrorLoc, "Could not find %s with parameter types '%s'",
+			  CallType, FuncDef);
 	}
 }
 
@@ -1115,12 +1133,36 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 	// TODO: May want to allow if the fields are foldable!
 	StructInit->IsFoldable = false;
 
-	// TODO: Would want to check if the structure has a constructor here.
-
+	bool ArgsHaveErrors = false;
 	for (ulen i = 0; i < StructInit->Args.size(); i++) {
 		NonNamedValue Value = StructInit->Args[i];
 		CheckNode(Value.E);
+		if (Value.E->Ty == Context.ErrorType) {
+			ArgsHaveErrors = true;
+		}
+	}
 
+	if (!Struct->Constructors.empty()) {
+		// Calling constructor!
+
+		if (ArgsHaveErrors) {
+			return;
+		}
+
+		FuncDecl* CalledConstructor =
+			CheckCallToCanidates(
+				StructInit->Loc,
+				&Struct->Constructors,
+				StructInit->Args
+				);
+
+		StructInit->CalledConstructor = CalledConstructor;
+		return;
+	}
+
+	for (ulen i = 0; i < StructInit->Args.size(); i++) {
+		NonNamedValue Value = StructInit->Args[i];
+		
 		if (i >= Struct->Fields.size()) {
 			Error(Value.ExpandedLoc, "Too many fields in initializer");
 			return;

@@ -78,6 +78,10 @@ namespace arco {
 		llvm::Value* GenIdentRef(IdentRef* IRef);
 		llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
 		llvm::Value* GenFuncCall(FuncCall* Call, llvm::Value* LLAddr);
+		llvm::Value* GenFuncCallGeneral(Expr* CallNode,
+			                            FuncDecl* CalledFunc,
+			                            llvm::SmallVector<NonNamedValue, 2>& Args,
+			                            llvm::Value* LLAddr);
 		llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr);
 		llvm::Constant* GenConstArray(Array* Arr, ArrayType* DestTy);
 		void FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy);
@@ -131,6 +135,8 @@ namespace arco {
 		void GenReturnByStoreToElisionRetSlot(Expr* Value);
 
 		void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
+
+		void GenConstructorBodyFieldAssignments(StructDecl* Struct);
 
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already

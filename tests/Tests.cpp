@@ -22,7 +22,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 	arco::Compiler Compiler;
 	Compiler.StandAlone = true;
-	//Compiler.DisplayLLVMIR = true;
+	Compiler.DisplayLLVMIR = true;
 	//Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);
 
@@ -118,6 +118,7 @@ int main() {
 	RunTest(SRC("member_functions/member_functions2.arco"), "1234");
 	RunTest(SRC("member_functions/member_functions3.arco"), "foo1foo2");
 	RunTest(SRC("member_functions/member_functions4.arco"), "22");
+	RunTest(SRC("member_functions/constructors1.arco"), "53");
 
 	//RunTest(SRC("workpad/main.arco"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");

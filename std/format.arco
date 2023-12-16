@@ -1,12 +1,4 @@
 
-fn strlen(s cstr) int {
-	length int = 0;
-	loop ptr cstr = s; *ptr != '\0'; ++ptr {
-		++length;
-	}
-	return length;
-}
-
 fn print(i int64) {
 	if i < 0 {
 		i = -i;

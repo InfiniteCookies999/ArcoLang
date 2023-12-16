@@ -1,0 +1,12 @@
+
+String struct {
+
+	length int;
+	buffer char*;
+
+	fn String(s cstr) {
+		this.length = strlen(s);
+		// TODO: Need support for 'new'             this.buffer = new char[length + 1];
+		// TODO: Need support for memcpy intrinsic  memcpy(this.buffer, buffer, length + 1);
+	}
+}
