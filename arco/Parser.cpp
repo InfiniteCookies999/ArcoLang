@@ -726,7 +726,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 
 			Match('}', "for struct initializer");
 
-			return StructInit;
+			return ParseIdentPostfix(StructInit);
 		} else {
 
 			IdentRef* IRef = NewNode<IdentRef>(CTok);

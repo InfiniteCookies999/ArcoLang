@@ -471,6 +471,13 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 		}
 		break;
 	}
+	case AstKind::STRUCT_INITIALIZER: {
+		// Since an unseen allocation must have been generated to
+		// create the allocation of the struct the struct is currently
+		// a l-value.
+		LLValue = CreateLoad(LLValue);
+		break;
+	}
 	}
 	
 	if (E->CastTy) {

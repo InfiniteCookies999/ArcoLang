@@ -1,0 +1,28 @@
+// -- Test to make sure that the implicit parameter
+//    of the member function's 'this' variable is 
+//    compatible with the implicit return parameter.
+
+B struct {
+	val1 int;
+	val2 int;
+	val3 int;
+	val4 int;
+}
+
+A struct {
+	b B;
+
+	fn setv(v B) {
+		b = v;
+	}
+
+	fn getv() B {
+		return b;
+	}
+}
+
+fn main() {
+	a A;
+	a.setv(B{ 22 });
+	print(a.getv().val1);
+}
