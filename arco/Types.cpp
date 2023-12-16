@@ -259,3 +259,11 @@ arco::StructType* arco::StructType::Create(Identifier StructName, SourceLoc Erro
 	Ty->ErrorLoc   = ErrorLoc;
 	return Ty;
 }
+
+arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Context) {
+	// TODO: Caching?
+	StructType* Ty = new StructType;
+	Ty->StructName = Struct->Name;
+	Ty->Struct     = Struct;
+	return Ty;
+}

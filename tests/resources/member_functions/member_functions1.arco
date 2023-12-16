@@ -1,0 +1,20 @@
+// -- Test to make sure that calling member functions
+//    works.
+
+A struct {
+	a int;
+
+	fn setv(v int) {
+		a = v;
+	}
+
+	fn getv() int {
+		return a;
+	}
+}
+
+fn main() {
+	a A;
+	a.setv(1234);
+	print(a.getv());
+}

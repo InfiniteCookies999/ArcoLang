@@ -147,6 +147,7 @@ namespace arco {
 	public:
 
 		static StructType* Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context);
+		static StructType* Create(StructDecl* Struct, ArcoContext& Context);
 
 		StructDecl* GetStruct() const { return Struct; }
 		void AssignStruct(StructDecl* Struct) {

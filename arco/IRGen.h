@@ -167,7 +167,7 @@ namespace arco {
 
 		llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name);
 
-		llvm::Value* GetElisionRetSlotAddr(llvm::Function* LLFunc);
+		llvm::Value* GetElisionRetSlotAddr(FuncDecl* Func);
 
 		void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr);
 

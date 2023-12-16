@@ -22,8 +22,9 @@ namespace arco {
 		Module*      Mod;
 		Logger       Log;
 
-		FuncDecl*  CFunc;
-		FileScope* FScope;
+		FuncDecl*   CFunc;
+		StructDecl* CStruct;
+		FileScope*  FScope;
 
 		// Every time a loop is entered this is incremented,
 		// and decremented when existed
@@ -71,6 +72,7 @@ namespace arco {
 			               Module* ModToLookup,
 			               StructDecl* StructToLookup = nullptr);
 		void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
+		void CheckThisRef(ThisRef* This);
 		void CheckFuncCall(FuncCall* Call);
 		FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
 			                               llvm::SmallVector<NonNamedValue, 2>& Args);

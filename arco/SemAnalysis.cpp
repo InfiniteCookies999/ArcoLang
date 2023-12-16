@@ -31,8 +31,9 @@ arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (Func->ParsingError) return;
 
-	CFunc  = Func;
-	FScope = Func->FScope;
+	CFunc   = Func;
+	CStruct = Func->Struct;
+	FScope  = Func->FScope;
 
 	// -- DEBUG
 	// llvm::outs() << "Checking function: " << Func->Name << "\n";
@@ -46,7 +47,8 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 	if (Struct->ParsingError) return;
 
-	FScope = Struct->FScope;
+	FScope  = Struct->FScope;
+	CStruct = Struct;
 
 	for (VarDecl* Field : Struct->Fields) {
 		CheckVarDecl(Field);
@@ -108,6 +110,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 		break;
 	case AstKind::FIELD_ACCESSOR:
 		CheckFieldAccessor(static_cast<FieldAccessor*>(Node), false);
+		break;
+	case AstKind::THIS_REF:
+		CheckThisRef(static_cast<ThisRef*>(Node));
 		break;
 	case AstKind::FUNC_CALL:
 		CheckFuncCall(static_cast<FuncCall*>(Node));
@@ -728,7 +733,11 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 
 	auto SearchForFuncs = [=]() {
 		if (StructToLookup) {
-			// TODO: Search for member functions!
+			auto Itr = StructToLookup->Funcs.find(IRef->Ident);
+			if (Itr != StructToLookup->Funcs.end()) {
+				IRef->Funcs   = &Itr->second;
+				IRef->RefKind = IdentRef::RK::Funcs;
+			}
 		} else {
 			auto Itr = ModToLookup->Funcs.find(IRef->Ident);
 			if (Itr != ModToLookup->Funcs.end()) {
@@ -845,6 +854,15 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 	StructDecl* Struct = StructTy->GetStruct();
 
 	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod, Struct);
+}
+
+void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
+	if (!CStruct) {
+		Error(This, "Cannot use 'this' outside a struct scope");
+		YIELD_ERROR(This);
+	}
+	This->IsFoldable = false;
+	This->Ty = StructType::Create(CStruct, Context);
 }
 
 void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {

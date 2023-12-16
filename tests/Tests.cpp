@@ -97,7 +97,7 @@ int main() {
 	RunTest(SRC("arrays/arrays13.arco"), "25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 ");
 	RunTest(SRC("arrays/arrays14.arco"), "1 2 3 4 5 6 7 8 9 10 11 99 ");
 	RunTest(SRC("arrays/decay_testing.arco"), "9 14 235 11 5 77 22 76 11 9");
-
+	
 	RunTest(SRC("structs/structs1.arco"), "55 44");
 	RunTest(SRC("structs/structs2.arco"), "55 44");
 	RunTest(SRC("structs/structs3.arco"), "55 44");
@@ -112,6 +112,9 @@ int main() {
 	RunTest(SRC("returns/returns4.arco"), "55 55");
 	RunTest(SRC("returns/returns5.arco"), "55 55");
 	RunTest(SRC("returns/returns6.arco"), "55 55");
+	
+	RunTest(SRC("member_functions/member_functions1.arco"), "1234");
+	RunTest(SRC("member_functions/member_functions2.arco"), "1234");
 
 	//RunTest(SRC("workpad/main.arco"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");

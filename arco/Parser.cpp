@@ -314,6 +314,14 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 			VarDecl* Field = static_cast<VarDecl*>(Stmt);
 			Field->FieldIdx = FieldCount++;
 			Struct->Fields.push_back(Field);
+		} else if (Stmt->Is(AstKind::FUNC_DECL)) {
+			FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
+			if (!Func->Name.IsNull()) {
+				Func->Struct = Struct;
+				Struct->Funcs[Func->Name].push_back(Func);
+			}
+		} else {
+			// TODO: Place in a list of invalid statements and report later
 		}
 	}
 	Match('}');
@@ -828,6 +836,11 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		NextToken(); // Consuming 'null'
 		Null->Ty = Context.NullType;
 		return Null;
+	}
+	case TokenKind::KW_THIS: {
+		ThisRef* This = NewNode<ThisRef>(CTok);
+		NextToken(); // Consuming 'this'
+		return ParseIdentPostfix(This);
 	}
 	default:
 		Error(CTok.Loc, "Expected an expression");

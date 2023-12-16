@@ -240,6 +240,13 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 	llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
 	ulen ImplicitParams = 0;
 
+	if (Func->Struct) {
+		// Member functions recieve pointers to the struct they
+		// are contained inside of.
+
+		LLParamTypes.push_back(llvm::PointerType::get(GenStructType(Func->Struct), 0));
+		++ImplicitParams;
+	}
 	if (Func->UsesParamRetSlot) {
 		LLParamTypes.push_back(llvm::PointerType::get(GenType(Func->RetTy), 0));
 		++ImplicitParams;
@@ -276,15 +283,14 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		LLFunc->setDSOLocal(true);
 	}
 
+	Func->LLFunction = LLFunc;
 	
 	if (Func->UsesParamRetSlot) {
-		GetElisionRetSlotAddr(LLFunc)->setName("ret.addr");
+		GetElisionRetSlotAddr(Func)->setName("ret.addr");
 	}
 	for (ulen i = 0; i < Func->Params.size(); i++) {
 		LLFunc->getArg(i + ImplicitParams)->setName(llvm::Twine(Func->Params[i]->Name.Text).concat(".param"));
 	}
-
-	Func->LLFunction = LLFunc;
 
 }
 
@@ -316,7 +322,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 			// of the function since it is returned by the function and the
 			// function uses a parameter for a return slot the variable may use
 			// the address of the return slot instead.
-			Var->LLAddress = GetElisionRetSlotAddr(LLFunc);
+			Var->LLAddress = GetElisionRetSlotAddr(CFunc);
 		} else {
 			llvm::Type* LLTy;
 			if (Var->IsParam() && Var->Ty->GetKind() == TypeKind::Array) {
@@ -335,6 +341,13 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	// Storing the incoming parameters
 	//
 	ulen LLParamIndex = 0;
+	if (Func->Struct) {
+		// Member function pointer.
+		llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this.addr");
+		Builder.CreateStore(LLFunc->getArg(LLParamIndex++), LLThisAddr);
+		LLThis = CreateLoad(LLThisAddr);
+		LLThis->setName("this");
+	}
 	if (Func->UsesParamRetSlot) {
 		++LLParamIndex;
 	}
@@ -410,6 +423,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenIdentRef(static_cast<IdentRef*>(Node));
 	case AstKind::FIELD_ACCESSOR:
 		return GenFieldAccessor(static_cast<FieldAccessor*>(Node));
+	case AstKind::THIS_REF:
+		return LLThis;
 	case AstKind::FUNC_CALL:
 		return GenFuncCall(static_cast<FuncCall*>(Node), nullptr);
 	case AstKind::ARRAY:
@@ -497,7 +512,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 				 !static_cast<IdentRef*>(Ret->Value)->Var->IsLocalRetValue) ||
 				(Ret->Value->Is(AstKind::UNARY_OP))  // dereferencing another object need to copy.
 					) {
-				llvm::Value* LLToAddr   = GetElisionRetSlotAddr(LLFunc);
+				llvm::Value* LLToAddr   = GetElisionRetSlotAddr(CFunc);
 				llvm::Value* LLFromAddr = GenNode(Ret->Value);
 
 				// TODO: In the future if the object has a move constructor that would
@@ -537,7 +552,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 			// returning the bitcasting will then occur at the LLFuncEndBB block.
 
 			llvm::Value* LLToAddr = CFunc->UsesParamRetSlot
-				                          ? GetElisionRetSlotAddr(LLFunc)
+				                          ? GetElisionRetSlotAddr(CFunc)
 				                          : LLRetAddr;
 			llvm::Value* LLFromAddr = GenNode(Ret->Value);
 			// TODO: Move constructors if supported
@@ -1138,12 +1153,18 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	}
 
 	// Automatically dereference pointers!
-	if (Site->Ty->GetKind() == TypeKind::Pointer) {
+	if (Site->Ty->GetKind() == TypeKind::Pointer &&
+		Site->IsNot(AstKind::THIS_REF) /* Reference is already loaded. */) {
 		LLSite = CreateLoad(LLSite);
 		LLSite->setName("ptr.deref");
 	}
 
-	return CreateStructGEP(LLSite, FieldAcc->Var->FieldIdx);
+	if (FieldAcc->RefKind == IdentRef::RK::Funcs) {
+		// Calling a member function. Ex.  'a.b()'
+		return LLSite;
+	} else {
+		return CreateStructGEP(LLSite, FieldAcc->Var->FieldIdx);
+	}
 }
 
 llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr) {
@@ -1151,6 +1172,9 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 	GenFuncDecl(Call->CalledFunc);
 
 	ulen NumArgs = Call->Args.size();
+	if (Call->CalledFunc->Struct) {
+		++NumArgs;
+	}
 	if (Call->CalledFunc->UsesParamRetSlot) {
 		++NumArgs;
 	}
@@ -1159,6 +1183,11 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 	LLArgs.resize(NumArgs);
 
 	ulen ArgIdx = 0;
+	if (Call->CalledFunc->Struct) {
+		// Calling a member function from a variable so
+		// that the variable's address gets passed in.
+		LLArgs[ArgIdx++] = GenNode(Call->Site);
+	}
 	if (Call->CalledFunc->UsesParamRetSlot) {
 		if (LLAddr) {
 			LLArgs[ArgIdx++] = LLAddr;
@@ -1660,11 +1689,11 @@ void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value) {
 	if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
 		// Ex.  'return StructName{ 43, 22 };'
 		GenStructInitializer(static_cast<StructInitializer*>(Value),
-							 GetElisionRetSlotAddr(LLFunc));
+							 GetElisionRetSlotAddr(CFunc));
 	} else if (Value->Is(AstKind::FUNC_CALL)) {
 		// Ex.  'fn foo() StructName { return bar(); }
 		GenFuncCall(static_cast<FuncCall*>(Value),
-			        GetElisionRetSlotAddr(LLFunc));
+			        GetElisionRetSlotAddr(CFunc));
 	} // else the remaining case should be that Value is AstKind::IDENT_REF
 	// in which the identifier reference should already point to the elision
 	// return address.
@@ -1819,10 +1848,8 @@ llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char*
 	return LLAddr;
 }
 
-llvm::Value* arco::IRGenerator::GetElisionRetSlotAddr(llvm::Function* LLFunc) {
-	// TODO: Check if a member function and return argument slot 2
-	// if it's a member function.
-	return LLFunc->getArg(0);
+llvm::Value* arco::IRGenerator::GetElisionRetSlotAddr(FuncDecl* Func) {
+	return Func->Struct ? Func->LLFunction->getArg(1) : Func->LLFunction->getArg(0);
 }
 
 void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr) {

@@ -38,6 +38,7 @@ namespace arco {
 		KW_CONST,
 		KW_PRIVATE,
 
+		KW_THIS,
 		KW_IMPORT,
 		KW_NULL,
 		KW_FN,

@@ -46,6 +46,7 @@ namespace arco {
 		UNARY_OP,
 		IDENT_REF,
 		FIELD_ACCESSOR,
+		THIS_REF,
 		FUNC_CALL,
 		ARRAY,
 		ARRAY_ACCESS,
@@ -125,6 +126,9 @@ namespace arco {
 		// returning it.
 		bool UsesParamRetSlot    = false;
 
+		// Non-nullptr if the function is a member function.
+		StructDecl* Struct = nullptr;
+
 		Type*                          RetTy;
 		llvm::SmallVector<VarDecl*, 2> Params;
 
@@ -168,6 +172,7 @@ namespace arco {
 		StructDecl() : Decl(AstKind::STRUCT_DECL) {}
 
 		llvm::SmallVector<VarDecl*> Fields;
+		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
 		llvm::StructType* LLStructTy         = nullptr;
 		llvm::Function* LLDefaultConstructor = nullptr;
@@ -345,6 +350,11 @@ namespace arco {
 		bool IsArrayLength = false;
 
 		Expr* Site;
+	};
+
+	// Ex.  'this'
+	struct ThisRef : Expr {
+		ThisRef() : Expr(AstKind::THIS_REF) {}
 	};
 
 	struct NonNamedValue {
