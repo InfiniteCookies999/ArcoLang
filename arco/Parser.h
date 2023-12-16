@@ -42,6 +42,8 @@ namespace arco {
 		// Current function being parsed.
 		FuncDecl*   CFunc   = nullptr;
 
+		bool AllowStructInitializer = true;
+
 		/*
 		 * Used to keep track of variables
 		 * within the scope of functions.

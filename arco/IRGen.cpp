@@ -160,7 +160,7 @@ arco::IRGenerator::IRGenerator(ArcoContext& Context)
 void arco::IRGenerator::GenFunc(FuncDecl* Func) {
 
 	// -- DEBUG
-	//llvm::outs() << "generating function: " << Func->Name << '\n';
+	// llvm::outs() << "generating function: " << Func->Name << '\n';
 
 	GenFuncDecl(Func);
 	GenFuncBody(Func);
@@ -450,6 +450,12 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 		}
 		break;
 	}
+	case AstKind::UNARY_OP: {
+		if (static_cast<UnaryOp*>(E)->Op == '*') {
+			LLValue = CreateLoad(LLValue);
+		}
+		break;
+	}
 	}
 	
 	if (E->CastTy) {
@@ -685,14 +691,42 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	case '+': {
 		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+		if (BinOp->Ty->IsPointer()) {
+			// Pointer arithmetic
 
-		return GenAdd(LLLHS, LLRHS, BinOp->Ty);
+			llvm::Value* PtrAddr, *Add;
+			bool LArray = BinOp->LHS->Ty->GetKind() == TypeKind::Array;
+			bool RArray = BinOp->RHS->Ty->GetKind() == TypeKind::Array;
+
+			if (LArray || RArray) {
+				PtrAddr = LArray ? ArrayToPointer(LLLHS) : LLRHS;
+				Add     = LArray ? LLRHS : LLLHS;
+			} else {
+				PtrAddr = BinOp->LHS->Ty->IsPointer() ? LLLHS : LLRHS;
+				Add     = BinOp->LHS->Ty->IsPointer() ? LLRHS : LLLHS;
+			}
+ 
+			return CreateInBoundsGEP(PtrAddr, { Add });
+		} else {
+			return GenAdd(LLLHS, LLRHS, BinOp->Ty);
+		}
 	}
 	case '-': {
 		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-		return GenSub(LLLHS, LLRHS, BinOp->Ty);
+		if (BinOp->Ty->IsPointer()) {
+
+			llvm::Value* PtrAddr = LLLHS;
+			if (BinOp->LHS->Ty->GetKind() == TypeKind::Array) {
+				PtrAddr = ArrayToPointer(PtrAddr);
+			}
+
+			llvm::Value* Sub = Builder.CreateNeg(LLRHS);
+			return CreateInBoundsGEP(PtrAddr, { Sub });
+		} else {
+			return GenSub(LLLHS, LLRHS, BinOp->Ty);
+		}
 	}
 	case '*': {
 		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
@@ -719,21 +753,34 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		llvm::Value* LLLHS = GenNode(BinOp->LHS);
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-		llvm::Value* LLLHSRV = CreateLoad(LLLHS);
-		llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateAdd(LLLHSRV, LLRHS)
-											: Builder.CreateFAdd(LLLHSRV, LLRHS);
-		Builder.CreateStore(V, LLLHS);
-		return V;
+		if (BinOp->Ty->IsPointer()) {
+			// Pointer arithmetic
+			llvm::Value* V = CreateInBoundsGEP(CreateLoad(LLLHS), { LLRHS });
+			Builder.CreateStore(V, LLLHS);
+			return V;
+		} else {
+			llvm::Value* LLLHSRV = CreateLoad(LLLHS);
+			llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateAdd(LLLHSRV, LLRHS)
+												: Builder.CreateFAdd(LLLHSRV, LLRHS);
+			Builder.CreateStore(V, LLLHS);
+			return V;
+		}
 	}
 	case TokenKind::MINUS_EQ: { // -=
 		llvm::Value* LLLHS = GenNode(BinOp->LHS);
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-		llvm::Value* LLLHSRV = CreateLoad(LLLHS);
-		llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateSub(LLLHSRV, LLRHS)
-											: Builder.CreateFSub(LLLHSRV, LLRHS);
-		Builder.CreateStore(V, LLLHS);
-		return V;
+		if (BinOp->Ty->IsPointer()) {
+			llvm::Value* V = CreateInBoundsGEP(CreateLoad(LLLHS), { Builder.CreateNeg(LLRHS) });
+			Builder.CreateStore(V, LLLHS);
+			return V;
+		} else {
+			llvm::Value* LLLHSRV = CreateLoad(LLLHS);
+			llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateSub(LLLHSRV, LLRHS)
+												: Builder.CreateFSub(LLLHSRV, LLRHS);
+			Builder.CreateStore(V, LLLHS);
+			return V;
+		}
 	}
 	case TokenKind::STAR_EQ: { // *=
 		llvm::Value* LLLHS = GenNode(BinOp->LHS);
@@ -881,6 +928,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 		return Builder.CreateICmpEQ(LLLHS, LLRHS);
 	}
+	case TokenKind::EXL_EQ: {
+		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+		return Builder.CreateICmpNE(LLLHS, LLRHS);
+	}
 	default:
 		assert(!"Failed to implement GenBinaryOp() case!");
 		return nullptr;
@@ -893,6 +945,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 		llvm::Value* LLOne = nullptr;
 		switch (Ty->GetKind()) {
 		case TypeKind::Int8:
+		case TypeKind::Char:
 			LLOne = GetLLInt8(1, LLContext);
 			break;
 		case TypeKind::UnsignedInt8:
@@ -931,14 +984,26 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 	case TokenKind::PLUS_PLUS: case TokenKind::POST_PLUS_PLUS: {
 		llvm::Value* LLVal  = GenNode(UniOp->Value);
 		llvm::Value* LLRVal = CreateLoad(LLVal);
-		llvm::Value* IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		llvm::Value* IncRes;
+		if (UniOp->Ty->IsPointer()) {
+			// Pointer arithemtic
+			IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(1,  LLContext) });
+		} else {
+			IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		}
 		Builder.CreateStore(IncRes, LLVal);
 		return UniOp->Op == TokenKind::PLUS_PLUS ? IncRes : LLRVal;
 	}
 	case TokenKind::MINUS_MINUS: case TokenKind::POST_MINUS_MINUS: {
 		llvm::Value* LLVal  = GenNode(UniOp->Value);
 		llvm::Value* LLRVal = CreateLoad(LLVal);
-		llvm::Value* IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		llvm::Value* IncRes;
+		if (UniOp->Ty->IsPointer()) {
+			// Pointer arithemtic
+			IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(-1,  LLContext) });
+		} else {
+			IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+		}
 		Builder.CreateStore(IncRes, LLVal);
 		return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
 	}
@@ -959,6 +1024,25 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 	}
 	case '+':
 		return GenRValue(UniOp->Value);
+	case '*': {
+		llvm::Value* LLValue = GenNode(UniOp->Value);
+		// Need to verify that the the value is actually an l-value.
+		//
+		// It is possible that it is not in cases in which its a pointer
+		// as a result of some operation. Examples:
+		// 
+		// Example 1:  '*(a + 4)'    (where 'a' is a pointer)
+		// Example 2:  'int a = *f()'
+		// 
+		// TODO: There is probably a cleaner way of doing this.
+		//       Some type of IsLValue() function?
+		if (UniOp->Value->Is(AstKind::IDENT_REF) || UniOp->Value->Is(AstKind::FIELD_ACCESSOR) ||
+			UniOp->Value->Is(AstKind::ARRAY) ||
+			(UniOp->Value->Is(AstKind::UNARY_OP) || static_cast<UnaryOp*>(UniOp->Value)->Op == '*')) {
+			LLValue = CreateLoad(LLValue);
+		}
+		return LLValue;
+	}
 	default:
 		assert(!"Failed to implement GenUnaryOp() case!");
 		return nullptr;
@@ -966,7 +1050,24 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 }
 
 llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
-	return GetLLInt64(Number->SignedIntValue, LLContext);
+	switch (Number->Ty->GetKind()) {
+	case TypeKind::Char:
+	case TypeKind::Int8:           return GetLLInt8(Number->SignedIntValue, LLContext);
+	case TypeKind::Int16:          return GetLLInt16(Number->SignedIntValue, LLContext);
+	case TypeKind::Int32:          return GetLLInt32(Number->SignedIntValue, LLContext);
+	case TypeKind::Int64:          return GetLLInt64(Number->SignedIntValue, LLContext);
+	case TypeKind::UnsignedInt8:   return GetLLUInt8(Number->UnsignedIntValue, LLContext);
+	case TypeKind::UnsignedInt16:  return GetLLUInt16(Number->UnsignedIntValue, LLContext);
+	case TypeKind::UnsignedInt32:  return GetLLUInt32(Number->UnsignedIntValue, LLContext);
+	case TypeKind::UnsignedInt64:  return GetLLUInt64(Number->UnsignedIntValue, LLContext);
+	case TypeKind::Int:
+		return GetSystemInt(Number->SignedIntValue, LLContext, LLModule);
+	case TypeKind::UnsignedInt:
+		return GetSystemUInt(Number->UnsignedIntValue, LLContext, LLModule);
+	default:
+		assert(!"Unimplemented GenNumberLiteral() case");
+		return nullptr;
+	}
 }
 
 llvm::Value* arco::IRGenerator::GenStringLiteral(StringLiteral* String) {
@@ -1323,7 +1424,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 			if (ToSize < FromSize) {
 				// Signed and unsigned downcasting uses trunc
 				return Builder.CreateTrunc(LLValue, LLCastType);
-			} else {
+			} else if (ToSize > FromSize) {
 				if (ToType->IsSigned()) {
 					// Signed upcasting
 					return Builder.CreateSExt(LLValue, LLCastType);
@@ -1331,6 +1432,10 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 					// Unsigned upcasting
 					return Builder.CreateZExt(LLValue, LLCastType);
 				}
+			} else {
+				// They are actually the same type from LLVM's POV just different
+				// types in the language.
+				return LLValue;
 			}
 		}
 		goto missingCaseLab;
@@ -1339,8 +1444,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 		if (FromType->GetKind() == TypeKind::Null) {
 			return LLValue; // Already handled during generation
 		} else if (FromType->GetKind() == TypeKind::Array) {
-			// TODO:!!
-			return DecayArray(LLValue);
+			return ArrayToPointer(LLValue);
 		}
 		goto missingCaseLab;
 	}
@@ -1348,8 +1452,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 		if (FromType->GetKind() == TypeKind::Null) {
 			return LLValue; // Already handled during generation
 		} else if (FromType->GetKind() == TypeKind::Array) {
-			// TODO:!!
-			return DecayArray(LLValue);
+			return ArrayToPointer(LLValue);
 		}
 		goto missingCaseLab;
 	}
@@ -1449,7 +1552,21 @@ llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
 	return LLValue;
 }
 
+llvm::Value* arco::IRGenerator::ArrayToPointer(llvm::Value* LLArray) {
+
+	llvm::Type* LLType = LLArray->getType();
+	
+	if (LLType->isArrayTy()) {
+		return DecayArray(LLArray);
+	}
+
+	// Already a pointer!
+	return LLArray;
+}
+
 llvm::Value* arco::IRGenerator::MultiDimensionalArrayToPointerOnly(llvm::Value* LLArray, ArrayType* ArrTy) {
+	// TODO: Won't this be wrong in instances in which the array is already partly decayed?
+	// I think this needs to rely explicitly on the LLVM information.
 	ulen Depth = ArrTy->GetDepthLevel();
 	llvm::SmallVector<llvm::Value*, 4> LLIdxs;
 	for (ulen i = 0; i < Depth + 1; i++) {

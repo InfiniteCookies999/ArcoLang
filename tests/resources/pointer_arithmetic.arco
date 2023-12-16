@@ -1,0 +1,16 @@
+
+fn main() {
+	msg cstr = "hello world";
+
+	print(msg, 11);
+	++msg;
+	print(msg, 10);
+	msg += 3;
+	print(msg, 7);
+	msg = msg + 2;
+	print(msg, 5);
+	msg -= 1;
+	print(msg, 6);
+	msg = msg - 4;
+	print(msg, 10);
+}

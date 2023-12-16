@@ -75,6 +75,7 @@ int main() {
 	RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
 	RunTest(SRC("bin_literals.arco"), "941 32767 0 1404243");
 	RunTest(SRC("increments.arco"), "2 0 0 1 1 0 1 0");
+	RunTest(SRC("pointer_arithmetic.arco"), "hello worldello worldo worldworld worldello world");
 	
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
@@ -103,7 +104,7 @@ int main() {
 	RunTest(SRC("structs/structs5.arco"), "124 66 25");
 	RunTest(SRC("structs/structs6.arco"), "124 66 25");
 	RunTest(SRC("structs/structs7.arco"), "55 99");
-
+	
 	RunTest(SRC("returns/returns1.arco"), "55 55");
 	RunTest(SRC("returns/returns2.arco"), "55 55");
 	RunTest(SRC("returns/returns3.arco"), "55 55");
@@ -111,6 +112,7 @@ int main() {
 	RunTest(SRC("returns/returns5.arco"), "55 55");
 	RunTest(SRC("returns/returns6.arco"), "55 55");
 
+	//RunTest(SRC("workpad/main.arco"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 
 	if (Succeeded + Failed > 0) {

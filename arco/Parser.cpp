@@ -360,7 +360,9 @@ arco::IfStmt* arco::Parser::ParseIf() {
 	IfStmt* If = NewNode<IfStmt>(CTok);
 	NextToken(); // Consuming 'if' token
 	
+	AllowStructInitializer = false;
 	If->Cond = ParseExpr();
+	AllowStructInitializer = true;
 
 	PUSH_SCOPE();
 	ParseScopeStmts(If->Scope);
@@ -413,7 +415,9 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
 	PredicateLoopStmt* Loop = NewNode<PredicateLoopStmt>(LoopTok);
 	
 	if (CTok.IsNot('{')) {
+		AllowStructInitializer = false;
 		Loop->Cond = ParseExpr();
+		AllowStructInitializer = true;
 	}
 
 	PUSH_SCOPE();
@@ -438,7 +442,9 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 	Match(';');
 
 	if (CTok.IsNot('{')) {
+		AllowStructInitializer = false;
 		Loop->Incs.push_back(ParseAssignmentAndExprs());
+		AllowStructInitializer = true;
 	}
 
 	ParseScopeStmts(Loop->Scope);
@@ -697,7 +703,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 	case TokenKind::STRING_LITERAL:  return ParseStringLiteral();
 	case TokenKind::IDENT: {
 
-		if (PeekToken(1).Is('{')) {
+		if (AllowStructInitializer && PeekToken(1).Is('{')) {
 			Identifier StructName = Identifier(CTok.GetText());
 			StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
 			NextToken();
@@ -810,7 +816,10 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		return ParseArray();
 	case '(': {
 		NextToken(); // Consuming '(' token.
+		bool PrevAllowStructInitializer = AllowStructInitializer;
+		AllowStructInitializer = true;
 		Expr* E = ParseExpr();
+		AllowStructInitializer =PrevAllowStructInitializer;
 		Match(')');
 		return ParseIdentPostfix(E);
 	}

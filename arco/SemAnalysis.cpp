@@ -35,7 +35,7 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	FScope = Func->FScope;
 
 	// -- DEBUG
-	//llvm::outs() << "Checking function: " << Func->Name << "\n";
+	// llvm::outs() << "Checking function: " << Func->Name << "\n";
 
 	CheckFuncParamTypes(Func);
 
@@ -397,6 +397,60 @@ YIELD_ERROR(BinOp)
 		
 		CheckModifibility(BinOp->LHS);
 
+		bool UsesPointerArithmetic = false;
+		switch (BinOp->Op) {
+		case TokenKind::PLUS_EQ: case TokenKind::MINUS_EQ: {
+			if (LTy->IsPointer()) {
+				if (!RTy->IsInt()) {
+					Error(BinOp->RHS, "Pointer arithmetic expects integer value");
+					YIELD_ERROR(BinOp);
+				}
+				UsesPointerArithmetic = true;
+			} else {
+				if (!RTy->IsNumber()) {
+					OPERATOR_CANNOT_APPLY(RTy);
+				}
+				if (!LTy->IsNumber()) {
+					OPERATOR_CANNOT_APPLY(LTy);
+				}
+			}
+			break;
+		}
+		case TokenKind::STAR_EQ: case TokenKind::SLASH_EQ: {
+			if (!RTy->IsNumber()) {
+				OPERATOR_CANNOT_APPLY(RTy);
+			}
+			if (!LTy->IsNumber()) {
+				OPERATOR_CANNOT_APPLY(LTy);
+			}
+			break;
+		}
+		case TokenKind::MOD_EQ:
+		case TokenKind::LT_LT_EQ: case TokenKind::GT_GT_EQ: {
+			if (!RTy->IsInt()) {
+				OPERATOR_CANNOT_APPLY(RTy);
+			}
+			if (!LTy->IsInt()) {
+				OPERATOR_CANNOT_APPLY(LTy);
+			}
+			break;
+		}
+		case TokenKind::BAR_EQ: case TokenKind::AMP_EQ:
+		case TokenKind::CRT_EQ: {
+			// TODO: Support boolean modifications.
+			if (!RTy->IsInt()) {
+				OPERATOR_CANNOT_APPLY(RTy);
+			}
+			if (!LTy->IsInt()) {
+				OPERATOR_CANNOT_APPLY(LTy);
+			}
+			break;
+		}
+		default:
+			break;
+		}
+
+
 		if (BinOp->Op == TokenKind::SLASH_EQ || BinOp->Op == TokenKind::MOD_EQ) {
 			if (BinOp->RHS->IsFoldable) {
 				IRGenerator IRGen(Context);
@@ -407,19 +461,21 @@ YIELD_ERROR(BinOp)
 			}
 		}
 
-		if (LTy->GetKind() == TypeKind::Array) {
-			// TODO: May want to change this requirement.
-			Error(BinOp, "Cannot reassign the value of an array");
-			YIELD_ERROR(BinOp);
-		}
+		if (!UsesPointerArithmetic) {
+			if (LTy->GetKind() == TypeKind::Array) {
+				// TODO: May want to change this requirement.
+				Error(BinOp, "Cannot reassign the value of an array");
+				YIELD_ERROR(BinOp);
+			}
 		
-		if (!IsAssignableTo(LTy, BinOp->RHS)) {
-			Error(BinOp, "Cannot assign value of type '%s' to variable of type '%s'",
-				RTy->ToString(), LTy->ToString());
-			YIELD_ERROR(BinOp);
-		}
+			if (!IsAssignableTo(LTy, BinOp->RHS)) {
+				Error(BinOp, "Cannot assign value of type '%s' to variable of type '%s'",
+					RTy->ToString(), LTy->ToString());
+				YIELD_ERROR(BinOp);
+			}
 
-		CreateCast(BinOp->RHS, LTy);
+			CreateCast(BinOp->RHS, LTy);
+		}
 
 		BinOp->Ty = LTy;
 		break;
@@ -427,20 +483,54 @@ YIELD_ERROR(BinOp)
 	case '+': case '-': {
 		// Pointers/arrays are included so that pointer arithmetic
 		// can be performed.
-		TypeKind LK = LTy->GetKind();
-		TypeKind RK = RTy->GetKind();
+		
+		bool LPtrLike = LTy->IsPointer() || LTy->GetKind() == TypeKind::Array;
+		bool RPtrLike = RTy->IsPointer() || RTy->GetKind() == TypeKind::Array;
 
-		if (!(LTy->IsNumber() || LK == TypeKind::Pointer || LK == TypeKind::Array)) {
+		if (!(LTy->IsNumber() || LPtrLike)) {
 			OPERATOR_CANNOT_APPLY(LTy);
 		}
-		if (!(RTy->IsNumber() || RK == TypeKind::Pointer || RK == TypeKind::Array)) {
+		if (!(RTy->IsNumber() || RPtrLike)) {
 			OPERATOR_CANNOT_APPLY(RTy);
 		}
 
-		if (LK == TypeKind::Pointer || RK == TypeKind::Pointer ||
-			LK == TypeKind::Array   || RK == TypeKind::Array) {
+		if (LPtrLike || RPtrLike) {
 			// Pointer arithmetic
-			assert(!"pointer arithmetic not supported yet!");
+
+			if (BinOp->Op == '-' && LTy->IsNumber()) {
+				Error(BinOp, "Cannot subtract a %s from a number",
+					RTy->IsPointer() ? "pointer" : "array");
+				YIELD_ERROR(BinOp);
+			}
+
+			if (LPtrLike) {
+				// LHS has memory
+
+				if (!RTy->IsInt()) {
+					Error(BinOp, "Pointer arithmetic expects integer value");
+					YIELD_ERROR(BinOp);
+				}
+
+				if (LTy->IsPointer()) {
+					BinOp->Ty = LTy;
+				} else {
+					BinOp->Ty = PointerType::Create(static_cast<ArrayType*>(LTy)->GetElementType(), Context);
+				}
+			} else {
+				// RHS has memory
+
+				if (!LTy->IsInt()) {
+					Error(BinOp, "Pointer arithmetic expects integer value");
+					YIELD_ERROR(BinOp);
+				}
+
+				if (RTy->IsPointer()) {
+					BinOp->Ty = RTy;
+				} else {
+					BinOp->Ty = PointerType::Create(static_cast<ArrayType*>(RTy)->GetElementType(), Context);
+				}
+			}
+
 		} else {
 			// Not pointer arithmetic
 			Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
@@ -589,7 +679,7 @@ YIELD_ERROR(UniOp);
 	switch (UniOp->Op) {
 	case TokenKind::PLUS_PLUS:   case TokenKind::POST_PLUS_PLUS:
 	case TokenKind::MINUS_MINUS: case TokenKind::POST_MINUS_MINUS: {
-		if (!ValTy->IsInt()) {
+		if (!(ValTy->IsInt() || ValTy->IsPointer())) {
 			OPERATOR_CANNOT_APPLY(ValTy);
 		}
 
@@ -608,11 +698,11 @@ YIELD_ERROR(UniOp);
 		break;
 	}
 	case '*': {
-		if (ValTy->GetKind() != TypeKind::Pointer) {
+		if (!ValTy->IsPointer()) {
 			OPERATOR_CANNOT_APPLY(ValTy);
 		}
 
-		UniOp->Ty = static_cast<PointerType*>(ValTy)->GetElementType();
+		UniOp->Ty = ValTy->GetPointerElementType(Context);
 		break;
 	}
 	case '-': case '+': case '~': {
@@ -947,6 +1037,7 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
 		Error(Access, "Expected int type for index. Found type '%s'", Access->Index->Ty->ToString());
 	}
 
+	// TODO: Expand to support access cstr types.
 	TypeKind Kind = Access->Site->Ty->GetKind();
 	if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer)) {
 		Error(Access, "Cannot index non-array or pointer type. Type was '%s'",

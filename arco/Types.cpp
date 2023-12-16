@@ -89,6 +89,18 @@ bool arco::Type::IsSystemInt() const {
 	return Kind == TypeKind::Int || Kind == TypeKind::UnsignedInt;
 }
 
+bool arco::Type::IsPointer() const {
+	TypeKind Kind = GetKind();
+	return Kind == TypeKind::Pointer || Kind == TypeKind::CStr;
+}
+
+arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
+	if (GetKind() == TypeKind::CStr) {
+		return Context.CharType;
+	}
+	return static_cast<const PointerType*>(this)->GetElementType();
+}
+
 ulen arco::Type::GetTrivialTypeSizeInBytes() const {
 	switch (GetKind()) {
 	case TypeKind::Int8:

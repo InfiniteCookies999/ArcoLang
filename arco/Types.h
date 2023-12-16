@@ -62,6 +62,9 @@ namespace arco {
 		bool IsInt() const;
 		bool IsSigned() const;
 		bool IsSystemInt() const;
+		bool IsPointer() const;
+
+		Type* GetPointerElementType(ArcoContext& Context) const;
 
 		ulen GetTrivialTypeSizeInBytes() const;
 		ulen GetSizeInBytes(llvm::Module& LLModule) const;
