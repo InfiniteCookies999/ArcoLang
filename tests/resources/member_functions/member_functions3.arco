@@ -1,0 +1,19 @@
+A struct {
+	fn foo1(msg cstr) {
+		bar(msg);
+	}
+
+	fn foo2(msg cstr) {
+		this.bar(msg);
+	}
+
+	fn bar(msg cstr) {
+		print(msg, 4);
+	}
+}
+
+fn main() {
+	a A;
+	a.foo1("foo1");
+	a.foo2("foo2");
+}

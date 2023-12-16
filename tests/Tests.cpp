@@ -115,6 +115,7 @@ int main() {
 	
 	RunTest(SRC("member_functions/member_functions1.arco"), "1234");
 	RunTest(SRC("member_functions/member_functions2.arco"), "1234");
+	RunTest(SRC("member_functions/member_functions3.arco"), "foo1foo2");
 
 	//RunTest(SRC("workpad/main.arco"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");

@@ -1184,9 +1184,14 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 
 	ulen ArgIdx = 0;
 	if (Call->CalledFunc->Struct) {
-		// Calling a member function from a variable so
-		// that the variable's address gets passed in.
-		LLArgs[ArgIdx++] = GenNode(Call->Site);
+		if (LLThis && CFunc && Call->CalledFunc->Struct == CFunc->Struct) {
+			// Calling one member function from another.
+			LLArgs[ArgIdx++] = LLThis;
+		} else {
+			// Calling a member function from a variable so
+			// that the variable's address gets passed in.
+			LLArgs[ArgIdx++] = GenNode(Call->Site);
+		}
 	}
 	if (Call->CalledFunc->UsesParamRetSlot) {
 		if (LLAddr) {

@@ -739,6 +739,16 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				IRef->RefKind = IdentRef::RK::Funcs;
 			}
 		} else {
+			// Relative member functions.
+			if (CStruct) {
+				auto Itr = CStruct->Funcs.find(IRef->Ident);
+				if (Itr != CStruct->Funcs.end()) {
+					IRef->Funcs   = &Itr->second;
+					IRef->RefKind = IdentRef::RK::Funcs;
+					return;
+				}
+			}
+			
 			auto Itr = ModToLookup->Funcs.find(IRef->Ident);
 			if (Itr != ModToLookup->Funcs.end()) {
 				IRef->Funcs   = &Itr->second;
