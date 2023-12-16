@@ -7,6 +7,43 @@ fn strlen(s cstr) int {
 	return length;
 }
 
+fn print(i int64) {
+	if i < 0 {
+		i = -i;
+		print("-");
+	}
+
+	print(cast(uint64) i);
+}
+
+fn print(i uint64) {
+	if i == 0 {
+		print("0");
+		return;
+	}
+
+	// TODO: Performance wise this can be improved just writing
+	//       backwards into the buffer using pointer arithmetic.
+	length int = 0;
+	buffer char[21];
+
+	v int = i;
+	loop v > 0 {
+		v = v / 10;
+		length = length + 1;
+	}
+
+	scan int = length - 1;
+	loop i > 0 {
+		val int = (i % 10) + 48;
+		buffer[scan] = cast(char) val;
+		scan = scan - 1;
+		i = i / 10;
+	}
+
+	print(buffer, length);
+}
+
 fn print(msg cstr, length int) {
 	handle        void* = GetStdHandle(-11);
 	bytes_written uint32;
@@ -17,7 +54,20 @@ fn print(msg cstr) {
 	print(msg, strlen(msg));
 }
 
+// TODO: Functions are redundent because there is no support for
+//       templating yet!
+
 fn println(msg cstr) {
 	print(msg, strlen(msg));
+	print("\n", 1);
+}
+
+fn println(i int) {
+	print(cast(int64) i);
+	print("\n", 1);
+}
+
+fn println(i uint) {
+	print(cast(uint64) i);
 	print("\n", 1);
 }

@@ -933,6 +933,28 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 		return Builder.CreateICmpNE(LLLHS, LLRHS);
 	}
+	case TokenKind::LT_EQ: {
+		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+		if (BinOp->LHS->Ty->IsSigned() ||
+			BinOp->RHS->Ty->IsSigned()) {
+			return Builder.CreateICmpSLE(LLLHS, LLRHS);
+		} else {
+			return Builder.CreateICmpULE(LLLHS, LLRHS);
+		}
+	}
+	case TokenKind::GT_EQ: {
+		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+		if (BinOp->LHS->Ty->IsSigned() ||
+			BinOp->RHS->Ty->IsSigned()) {
+			return Builder.CreateICmpSGE(LLLHS, LLRHS);
+		} else {
+			return Builder.CreateICmpUGE(LLLHS, LLRHS);
+		}
+	}
 	default:
 		assert(!"Failed to implement GenBinaryOp() case!");
 		return nullptr;

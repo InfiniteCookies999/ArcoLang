@@ -75,7 +75,8 @@ namespace arco {
 		FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
 			                               llvm::SmallVector<NonNamedValue, 2>& Args);
 		bool CompareAsCanidate(FuncDecl* Canidate,
-			                   llvm::SmallVector<NonNamedValue, 2>& Args);
+			                   llvm::SmallVector<NonNamedValue, 2>& Args,
+			                   ulen& NumConflicts);
 		void DisplayErrorForNoMatchingFuncCall(FuncCall* Call, FuncsList* Canidates);
 		void CheckArray(Array* Arr);
 		void CheckArrayAccess(ArrayAccess* Access);

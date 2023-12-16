@@ -343,7 +343,7 @@ static Type* DetermineTypeFromIntTypes(ArcoContext& Context, Type* LTy, Type* RT
 		return Type::GetIntTypeBasedOnByteSize(RTy->GetTrivialTypeSizeInBytes(), IsSigned, Context);
 	} else if (RTy->IsSystemInt()) {
 		// Want to take on the type of the explicit type.
-		return Type::GetIntTypeBasedOnByteSize(RTy->GetTrivialTypeSizeInBytes(), IsSigned, Context);
+		return Type::GetIntTypeBasedOnByteSize(LTy->GetTrivialTypeSizeInBytes(), IsSigned, Context);
 	} else {
 		ulen LargerMemSize = max(LTy->GetTrivialTypeSizeInBytes(), RTy->GetTrivialTypeSizeInBytes());
 		return Type::GetIntTypeBasedOnByteSize(LargerMemSize, IsSigned, Context);
@@ -898,20 +898,30 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 	if (!Canidates) return nullptr;
 
 	FuncDecl* Selection = nullptr;
-	
+
+	// TODO: Should select canidates based on if signs match or not?
+
+	ulen LeastConflicts = std::numeric_limits<ulen>::max();
 	for (ulen i = 0; i < Canidates->size(); i++) {
 		FuncDecl* Canidate = (*Canidates)[i];
 		CheckFuncParamTypes(Canidate);
 
-		if (CompareAsCanidate(Canidate, Args)) {
+		ulen NumConflicts = 0;
+		if (!CompareAsCanidate(Canidate, Args, NumConflicts)) {
+			continue;
+		}
+
+		if (NumConflicts < LeastConflicts) {
 			Selection = Canidate;
+			LeastConflicts = NumConflicts;
 		}
 	}
 	return Selection;
 }
 
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
-	                                      llvm::SmallVector<NonNamedValue, 2>& Args) {
+	                                      llvm::SmallVector<NonNamedValue, 2>& Args,
+	                                      ulen& NumConflicts) {
 	if (Canidate->Params.size() != Args.size()) {
 		return false;
 	}
@@ -921,6 +931,9 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 		VarDecl* Param = Canidate->Params[i];
 		if (!IsAssignableTo(Param->Ty, Arg)) {
 			return false;
+		}
+		if (!Param->Ty->Equals(Arg->Ty)) {
+			++NumConflicts;
 		}
 	}
 
