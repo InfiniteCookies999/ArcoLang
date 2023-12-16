@@ -1059,7 +1059,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 		// TODO: There is probably a cleaner way of doing this.
 		//       Some type of IsLValue() function?
 		if (UniOp->Value->Is(AstKind::IDENT_REF) || UniOp->Value->Is(AstKind::FIELD_ACCESSOR) ||
-			UniOp->Value->Is(AstKind::ARRAY) ||
+			UniOp->Value->Is(AstKind::ARRAY_ACCESS) ||
 			(UniOp->Value->Is(AstKind::UNARY_OP) || static_cast<UnaryOp*>(UniOp->Value)->Op == '*')) {
 			LLValue = CreateLoad(LLValue);
 		}
@@ -1188,14 +1188,9 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 			LLArg = GenRValue(Arg);
 			
 			if (Arg->Ty->GetKind() == TypeKind::Array) {
-				// If not already decayed, decay.
-				if (LLArg->getType()->isPointerTy() &&
-					LLArg->getType()->getPointerElementType()->isArrayTy()
-					) {
-					LLArg = DecayArray(LLArg);
-				} else {
-					// TODO: Load?
-				}
+				// Arrays are passed as pointers. Cannot simply decay though
+				// because the argument might be an already decayed array.
+				LLArg = ArrayToPointer(LLArg);
 			}
 		}
 		LLArgs[ArgIdx++] = LLArg;
@@ -1578,8 +1573,19 @@ llvm::Value* arco::IRGenerator::ArrayToPointer(llvm::Value* LLArray) {
 
 	llvm::Type* LLType = LLArray->getType();
 	
-	if (LLType->isArrayTy()) {
+	// case 1: [n x BaseType]*    Happens when LLArray is the address to an array.
+	// case 2: [n x BaseType]     Could happen if the array is a constantly global array.
+	if ((LLType->isPointerTy() && LLType->getPointerElementType()->isArrayTy()) ||
+		LLType->isArrayTy()) {
 		return DecayArray(LLArray);
+	}
+
+	// The array may be represented as:   BaseType**
+	// This can happen because when arrays are passed to functions they are decayed
+	// and the pointer to that array is stored in a local variable. So LLArray would
+	// be the address of the variable storing the pointer to the array.
+	if (LLType->isPointerTy() && LLType->getPointerElementType()->isPointerTy()) {
+		return CreateLoad(LLArray);
 	}
 
 	// Already a pointer!
