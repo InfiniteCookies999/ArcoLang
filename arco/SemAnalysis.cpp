@@ -587,6 +587,8 @@ YIELD_ERROR(BinOp)
 					YIELD_ERROR(BinOp);
 				}
 
+				BinOp->HasConstAddress = BinOp->LHS->HasConstAddress;
+
 				if (LTy->IsPointer()) {
 					BinOp->Ty = LTy;
 				} else {
@@ -599,6 +601,8 @@ YIELD_ERROR(BinOp)
 					Error(BinOp, "Pointer arithmetic expects integer value");
 					YIELD_ERROR(BinOp);
 				}
+
+				BinOp->HasConstAddress = BinOp->RHS->HasConstAddress;
 
 				if (RTy->IsPointer()) {
 					BinOp->Ty = RTy;
@@ -761,6 +765,7 @@ YIELD_ERROR(UniOp);
 
 		CheckModifibility(UniOp->Value);
 
+		UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
 		UniOp->Ty = ValTy;
 		break;
 	}
@@ -770,6 +775,7 @@ YIELD_ERROR(UniOp);
 				Token::TokenKindToString(UniOp->Op, Context));
 		}
 
+		UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
 		UniOp->Ty = PointerType::Create(ValTy, Context);
 		break;
 	}
@@ -778,6 +784,7 @@ YIELD_ERROR(UniOp);
 			OPERATOR_CANNOT_APPLY(ValTy);
 		}
 
+		UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
 		UniOp->Ty = ValTy->GetPointerElementType(Context);
 		break;
 	}
@@ -872,6 +879,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
 		IRef->Ty = VarRef->Ty;
+		// TODO: In the future could check if the variable is marked const as well.
+		IRef->HasConstAddress = VarRef->Ty->GetKind() == TypeKind::CStr;
 		break;
 	}
 	case IdentRef::RK::Import: {
@@ -910,6 +919,8 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 		CheckNode(Site);
 	}
 	YIELD_ERROR_WHEN(FieldAcc, Site);
+	FieldAcc->HasConstAddress = Site->HasConstAddress;
+	FieldAcc->IsFoldable      = Site->IsFoldable;
 
 	// Checking for .length operator
 	if (Site->Ty->GetKind() == TypeKind::Array) {
@@ -1429,8 +1440,18 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 void arco::SemAnalyzer::CheckModifibility(Expr* LValue) {
 	if (!IsLValue(LValue)) {
 		Error(LValue, "Expected to be a modifiable value");
+	} else {
+		if (LValue->HasConstAddress) {
+			// We only want to prevent modification of underlying memory.
+			TypeKind K = LValue->Ty->GetKind();
+			if (K != TypeKind::Pointer &&
+				K != TypeKind::CStr &&
+				K != TypeKind::Array
+				) {
+				Error(LValue, "Cannot modify a variable with const memory");
+			}
+		}
 	}
-	// TODO: In future check for constness
 }
 
 bool arco::SemAnalyzer::IsLValue(Expr* E) {

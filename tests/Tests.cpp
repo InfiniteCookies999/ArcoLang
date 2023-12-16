@@ -21,7 +21,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 	Sources.push_back(arco::Source{ "default.program.module", TestSource });
 
 	arco::Compiler Compiler;
-	Compiler.StandAlone = true;
+	//Compiler.StandAlone = true;
 	//Compiler.DisplayLLVMIR = true;
 	//Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);

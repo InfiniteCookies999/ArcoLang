@@ -282,6 +282,11 @@ namespace arco {
 		// result.
 		bool IsFoldable = true;
 
+		// If the expression results in an lvalue
+		// for an address marked const then this
+		// is true.
+		bool HasConstAddress = false;
+
 	};
 
 	struct ErrorNode : Expr {
