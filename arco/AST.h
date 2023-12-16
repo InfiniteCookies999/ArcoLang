@@ -75,6 +75,19 @@ namespace arco {
 		SourceBuf                           Buffer;
 		llvm::DenseMap<Identifier, Module*> ModImports;
 
+		bool ParsingErrors = false;
+
+		enum class InvalidScopeKind {
+			GLOBAL,
+			STRUCT
+		};
+
+		// When encountering statements it is possible
+		// that the statement is not considered valid in the
+		// given context. If it is not, it is placed here and
+		// reported about after parsing is completed.
+		llvm::SmallVector<std::tuple<InvalidScopeKind, AstNode*>, 8> InvalidStmts;
+
 		FileScope(std::string Path, SourceBuf Buffer)
 			: Path(Path), Buffer(Buffer) {}
 	};

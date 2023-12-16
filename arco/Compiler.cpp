@@ -268,7 +268,11 @@ void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, con
 	}
 
 	Parser Parser(Context, Mod, RelativePath.c_str(), Buffer);
-	Parser.Parse();
+	FileScope* FScope = Parser.Parse();
+
+	if (!FScope->ParsingErrors) {
+		SemAnalyzer::ReportStatementsInInvalidContext(FScope);
+	}
 }
 
 const char* arco::Compiler::GetStdLibPath() {

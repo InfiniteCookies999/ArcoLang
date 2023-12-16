@@ -13,6 +13,8 @@ namespace arco {
 
 		explicit SemAnalyzer(ArcoContext& Context, Decl* D);
 
+		static void ReportStatementsInInvalidContext(FileScope* FScope);
+
 		void CheckFuncDecl(FuncDecl* Func);
 		
 		void CheckStructDecl(StructDecl* Struct);

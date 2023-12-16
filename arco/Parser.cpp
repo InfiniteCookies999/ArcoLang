@@ -76,7 +76,11 @@ arco::Parser::Parser(ArcoContext& Context, Module* Mod, const char* FilePath, co
 {
 }
 
-void arco::Parser::Parse() {
+arco::FileScope* arco::Parser::Parse() {
+	// TODO: If this ever becomes multithreaded this won't
+	// work here. Same goes for any other uses of this.
+	bool PrevNumErrors = TotalAccumulatedErrors;
+
 	NextToken(); // Prime the parser.
 
 	// Parsing imports.
@@ -114,8 +118,19 @@ void arco::Parser::Parse() {
 			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
 			
 			Mod->Structs[Struct->Name] = Struct;
+		} else {
+			FScope->InvalidStmts.push_back({
+				FileScope::InvalidScopeKind::GLOBAL,
+				Stmt
+				});
 		}
 	}
+
+	if (PrevNumErrors != TotalAccumulatedErrors) {
+		FScope->ParsingErrors = true;
+	}
+
+	return FScope;
 }
 
 void arco::Parser::ParseImport() {
@@ -329,7 +344,10 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 				}
 			}
 		} else {
-			// TODO: Place in a list of invalid statements and report later
+			FScope->InvalidStmts.push_back({
+				FileScope::InvalidScopeKind::STRUCT,
+				Stmt
+				});
 		}
 	}
 	Match('}');

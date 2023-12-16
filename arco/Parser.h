@@ -20,7 +20,7 @@ namespace arco {
 
 		explicit Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer);
 
-		void Parse();
+		FileScope* Parse();
 
 	private:
 		static const ulen MAX_SAVED_TOKENS = 8;

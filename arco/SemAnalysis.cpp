@@ -28,6 +28,23 @@ arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
 {
 }
 
+void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
+	for (auto [Kind, InvalidStmt] : FScope->InvalidStmts) {
+		std::string ScopeKind;
+		if (Kind == FileScope::InvalidScopeKind::GLOBAL) {
+			ScopeKind = "global";
+		} else if (Kind == FileScope::InvalidScopeKind::STRUCT) {
+			ScopeKind = "struct";
+		} else {
+			assert(!"Unhandled case");
+		}
+		Logger Log(FScope->Path.c_str(), FScope->Buffer);
+		Log.BeginError(InvalidStmt->Loc, "Statement does not belong at %s scope",
+			ScopeKind);
+		Log.EndError();
+	}
+}
+
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (Func->ParsingError) return;
 
@@ -151,6 +168,60 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 		if (LocScope->FoundTerminal) {
 			Error(Stmt, "Unreachable code");
 			break;
+		}
+
+		// Ensuring that it is actually a valid statement.
+		switch (Stmt->Kind) {
+		case AstKind::VAR_DECL:
+		case AstKind::RETURN:
+		case AstKind::IF:
+		case AstKind::PREDICATE_LOOP:
+		case AstKind::RANGE_LOOP:
+		case AstKind::FUNC_CALL:
+		case AstKind::BREAK:
+		case AstKind::CONTINUE:
+		case AstKind::NESTED_SCOPE:
+			break;
+		case AstKind::BINARY_OP:
+			switch (static_cast<BinaryOp*>(Stmt)->Op) {
+			case '=':
+			case TokenKind::PLUS_EQ:
+			case TokenKind::MINUS_EQ:
+			case TokenKind::STAR_EQ:
+			case TokenKind::SLASH_EQ:
+			case TokenKind::MOD_EQ:
+			case TokenKind::AMP_EQ:
+			case TokenKind::BAR_EQ:
+			case TokenKind::CRT_EQ:
+			case TokenKind::LT_LT_EQ:
+			case TokenKind::GT_GT_EQ:
+				break;
+			default:
+				Error(Stmt, "Incomplete statement");
+				continue;
+			}
+			break;
+		case AstKind::UNARY_OP:
+			switch (static_cast<UnaryOp*>(Stmt)->Op) {
+			case TokenKind::PLUS_PLUS:
+			case TokenKind::POST_PLUS_PLUS:
+			case TokenKind::MINUS_MINUS:
+			case TokenKind::POST_MINUS_MINUS:
+				break;
+			default:
+				Error(Stmt, "Incomplete statement");
+				continue;
+			}
+			break;
+		case AstKind::FUNC_DECL:
+			Error(Stmt, "No support for nested function declarations at this time");
+			continue;
+		case AstKind::STRUCT_DECL:
+			Error(Stmt, "No support for declaring structs within this scope at this time");
+			continue;
+		default:
+			Error(Stmt, "Incomplete statement");
+			continue;
 		}
 
 		CheckNode(Stmt);

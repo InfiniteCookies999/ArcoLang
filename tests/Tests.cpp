@@ -22,7 +22,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 	arco::Compiler Compiler;
 	Compiler.StandAlone = true;
-	Compiler.DisplayLLVMIR = true;
+	//Compiler.DisplayLLVMIR = true;
 	//Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);
 
