@@ -98,6 +98,7 @@ namespace arco {
 
 		bool IsAssignableTo(Type* ToTy, Expr* FromExpr);
 		bool IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr);
+		bool IsCastableTo(Type* ToTy, Type* FromTy);
 
 		bool FixupType(Type* Ty);
 		bool FixupArrayType(ArrayType* ArrayTy);

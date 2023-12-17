@@ -1199,9 +1199,14 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
 	
 	CheckNode(Cast->Value);
 
-	Cast->IsFoldable = Cast->Value->IsFoldable;
 	YIELD_ERROR_WHEN(Cast, Cast->Value);
+	Cast->IsFoldable = Cast->Value->IsFoldable;
+	Cast->HasConstAddress = Cast->Value->HasConstAddress;
 
+	if (!IsCastableTo(Cast->Ty, Cast->Value->Ty)) {
+		Error(Cast, "Cannot cast from type '%s' to type '%s'",
+			Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+	}
 }
 
 void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
@@ -1316,7 +1321,11 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 		else if (FromTy->GetKind() == TypeKind::Array) {
 			PointerType* ToPtrTy     = static_cast<PointerType*>(ToTy);
 			ArrayType*   FromArrayTy = static_cast<ArrayType*>(FromTy);
-			return ToPtrTy->GetElementType()->Equals(FromArrayTy->GetElementType());
+			if (FromArrayTy->GetDepthLevel() == 1) {
+				return ToPtrTy->GetElementType()->Equals(FromArrayTy->GetElementType()) ||
+					   ToPtrTy->Equals(Context.VoidPtrType);
+			}
+			return false;
 		}
 		return ToTy->Equals(FromTy);
 	}
@@ -1367,6 +1376,34 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 	}
 	default:
 		return ToTy->Equals(FromTy);
+	}
+}
+
+bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
+	switch (ToTy->GetKind()) {
+	case TypeKind::Int8:
+	case TypeKind::Int16:
+	case TypeKind::Int32:
+	case TypeKind::Int64:
+	case TypeKind::UnsignedInt8:
+	case TypeKind::UnsignedInt16:
+	case TypeKind::UnsignedInt32:
+	case TypeKind::UnsignedInt64:
+	case TypeKind::Int:
+	case TypeKind::UnsignedInt:
+		if (FromTy->IsNumber() || FromTy->IsPointer() || FromTy->GetKind() == TypeKind::Bool) {
+			// Allow pointers/numbers/bools to cast to integers.
+			return true;
+		}
+		return false;
+	case TypeKind::Pointer:
+		if (FromTy->IsNumber() || FromTy->IsPointer()) {
+			// Allow numbers/pointers to cast to pointers.
+			return true;
+		}
+		return IsAssignableTo(ToTy, FromTy, nullptr);
+	default:
+		return IsAssignableTo(ToTy, FromTy, nullptr);
 	}
 }
 
