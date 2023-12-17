@@ -177,6 +177,9 @@ namespace arco {
 
 		void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr);
 
+		llvm::Value* GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
+			                              const llvm::SmallVector<NonNamedValue, 2>& Args);
+
 		inline llvm::Type* GenType(Type* Ty) {
 			return arco::GenType(Context, Ty);
 		}

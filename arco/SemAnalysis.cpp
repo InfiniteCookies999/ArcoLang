@@ -1081,8 +1081,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 		
 		FuncDecl* SingleCanidate = (*Canidates)[0];
 
-		const llvm::SmallVector<VarDecl*, 2>&      Params = SingleCanidate->Params;
-		for (ulen ArgCount = 0; Args.size(); ArgCount++) {
+		const auto& Params = SingleCanidate->Params;
+		for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
 			if (ArgCount >= Params.size()) {
 				Error(ErrorLoc, "Too many arguments for %s call", CallType);
 				EncounteredError = true;

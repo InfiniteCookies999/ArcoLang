@@ -197,6 +197,14 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 
 void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 	if (Func->LLFunction) return;
+
+	if (Func->Mods & ModKinds::NATIVE) {
+		auto Itr = Context.LLVMIntrinsicsTable.find(Func->Name);
+		if (Itr != Context.LLVMIntrinsicsTable.end()) {
+			Func->LLVMIntrinsicID = Itr->second;
+			return;
+		}
+	}
 	
 	// TODO: Native functions will not need to return data structures
 	//       in the same way.
@@ -1193,6 +1201,10 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 	                                               llvm::Value* LLAddr) {
 	GenFuncDecl(CalledFunc);
 	
+	if (CalledFunc->LLVMIntrinsicID) {
+		return GenLLVMIntrinsicCall(CalledFunc, Args);
+	}
+
 	ulen NumArgs = Args.size();
 	if (CalledFunc->Struct) {
 		++NumArgs;
@@ -1529,7 +1541,12 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 		if (FromType->GetKind() == TypeKind::Null) {
 			return LLValue; // Already handled during generation
 		} else if (FromType->GetKind() == TypeKind::Array) {
-			return ArrayToPointer(LLValue);
+			llvm::Value* LLPtrValue = ArrayToPointer(LLValue);
+			if (ToType->Equals(Context.VoidPtrType)) {
+				LLPtrValue = Builder.CreateBitCast(LLPtrValue,
+					                               llvm::Type::getInt8PtrTy(LLContext));
+			}
+			return LLPtrValue;
 		}
 		goto missingCaseLab;
 	}
@@ -1917,4 +1934,32 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 		// Needs to be passed as a parameter.
 		GenFuncCall(Call, LLAddr);
 	}
+}
+
+// For reference:
+// https://github.com/llvm/llvm-project/blob/main/clang/lib/CodeGen/CGBuiltin.cpp
+// https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
+llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
+			                                         const llvm::SmallVector<NonNamedValue, 2>& Args) {
+	
+	switch (CalledFunc->LLVMIntrinsicID) {
+	case llvm::Intrinsic::memcpy: {
+		llvm::Align LLAlignment = llvm::Align();
+		return Builder.CreateMemCpy(
+			GenRValue(Args[0].E), LLAlignment,
+			GenRValue(Args[1].E), LLAlignment,
+			GenRValue(Args[2].E)
+		);
+	}
+	case llvm::Intrinsic::memset: {
+		llvm::Align LLAlignment = llvm::Align();
+		return Builder.CreateMemSet(
+			GenRValue(Args[0].E),
+			GenRValue(Args[1].E),
+			GenRValue(Args[2].E),
+			LLAlignment
+		);
+	}
+	}
+	return nullptr;
 }

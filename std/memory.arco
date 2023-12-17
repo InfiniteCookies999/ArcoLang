@@ -1,4 +1,26 @@
 
+/*
+ * Copies the count amount of bytes from the src
+ * to the dest.
+ *
+ * Warning: This is not a safe function. Use with caution.
+ */
+native fn memcpy(dest void*, src void*, count uint) void;
+
+/*
+ * Sets n copies of the value c to the dest.
+ *
+ * Warning: This is not a safe function. Use with caution.
+ */
+native fn memset(dest void*, c int8, n uint) void*;
+
+/*
+ * Counts the number of characters until
+ * it finds a null terminator in the c-string.
+ *
+ * @return  length of the null terminated
+ *          c-string.
+ */
 fn strlen(s cstr) int {
 	length int = 0;
 	loop ptr cstr = s; *ptr != '\0'; ++ptr {

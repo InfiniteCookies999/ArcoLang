@@ -12,6 +12,9 @@ namespace llvm {
 	class Function;
 	class Value;
 	class StructType;
+	namespace Intrinsic {
+		typedef unsigned ID;
+	}
 }
 
 namespace arco {
@@ -128,6 +131,9 @@ namespace arco {
 		FuncDecl() : Decl(AstKind::FUNC_DECL) {}
 
 		llvm::Function* LLFunction = nullptr;
+
+		// Zero means it is not a LLVMIntrinsic.
+		llvm::Intrinsic::ID LLVMIntrinsicID = 0;
 
 		bool ParamTypesChecked   = false;
 		// If this is true then the function will return

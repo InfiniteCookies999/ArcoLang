@@ -63,6 +63,7 @@ namespace arco {
 		Type* ErrorType;
 		Type* EmptyArrayElmType;
 		Type* ImportType;
+		Type* VoidPtrType;
 
 		// Maps a binary operator to its precedence.
 		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
@@ -73,6 +74,7 @@ namespace arco {
 		llvm::LLVMContext& LLContext;
 		llvm::Module&      LLArcoModule;
 		ulen               NumGeneratedGlobalVars = 0;
+		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
 
 		llvm::DenseMap<Type*, PointerType*>                PointerCache;
 		llvm::DenseMap<std::pair<Type*, ulen>, ArrayType*> ArrayCache;

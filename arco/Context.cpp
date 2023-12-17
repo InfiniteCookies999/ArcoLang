@@ -1,6 +1,7 @@
 #include "Context.h"
 
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Intrinsics.h>
 
 arco::ArcoContext::ArcoContext()
 	:
@@ -28,6 +29,11 @@ arco::ArcoContext::ArcoContext()
 	ErrorType(new Type(TypeKind::Error)),
 	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
 	ImportType(new Type(TypeKind::Import)),
+
+	LLVMIntrinsicsTable({
+		{ Identifier("memcpy"), llvm::Intrinsic::IndependentIntrinsics::memcpy },
+		{ Identifier("memset"), llvm::Intrinsic::IndependentIntrinsics::memset },
+		}),
 
 	BinaryOpsPrecedence({
 		
@@ -84,6 +90,7 @@ arco::ArcoContext::~ArcoContext() {
 	delete ErrorType;
 	delete EmptyArrayElmType;
 	delete ImportType;
+	delete VoidPtrType;
 
 }
 
@@ -121,6 +128,8 @@ void arco::ArcoContext::Initialize() {
 	for (const auto& [Text, Kind] : TokenKeywordMap) {
 		TokenKeywordInvertedMap.insert({ static_cast<u32>(Kind), Text });
 	}
+
+	VoidPtrType = PointerType::Create(VoidType, *this);
 }
 
 arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {
