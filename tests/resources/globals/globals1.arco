@@ -1,0 +1,8 @@
+// -- Test to make sure that simple global
+//    declaration and access works.
+
+a int = 44;
+
+fn main() {
+	print(a);
+}

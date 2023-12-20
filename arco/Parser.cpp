@@ -118,6 +118,11 @@ arco::FileScope* arco::Parser::Parse() {
 			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
 			
 			Mod->Structs[Struct->Name] = Struct;
+		} else if (Stmt->Is(AstKind::VAR_DECL)) {
+			VarDecl* Global = static_cast<VarDecl*>(Stmt);
+			Global->IsGlobal = true;
+
+			Mod->GlobalVars[Global->Name] = Global;
 		} else {
 			FScope->InvalidStmts.push_back({
 				FileScope::InvalidScopeKind::GLOBAL,

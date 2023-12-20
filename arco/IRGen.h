@@ -19,7 +19,11 @@ namespace arco {
 
 		void GenFunc(FuncDecl* Func);
 
+		void GenGlobalVar(VarDecl* Global);
+
 		void GenImplicitDefaultConstructorBody(StructDecl* Struct);
+
+		void GenGlobalInitFuncBody();
 
 		llvm::Value* GenRValue(Expr* E);
 
@@ -53,7 +57,11 @@ namespace arco {
 		void GenFuncDecl(FuncDecl* Func);
 		void GenFuncBody(FuncDecl* Func);
 
+		llvm::Function* GenGlobalInitFuncDecl();
+
 		llvm::Value* GenNode(AstNode* Node);
+
+		void GenGlobalVarDecl(VarDecl* Global);
 
 		//===-------------------------------===//
 		// Statements
@@ -140,6 +148,8 @@ namespace arco {
 		void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 
 		void GenConstructorBodyFieldAssignments(StructDecl* Struct);
+
+		std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already

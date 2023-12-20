@@ -71,10 +71,18 @@ namespace arco {
 
 		std::queue<Decl*> QueuedDeclsToGen;
 
+		/// When the assignment of a global variable is not foldable
+		/// it must be assigned at the start of the program. The variables
+		/// that need assignment are stored here until their assignments
+		/// are generated.
+		///
+		llvm::SmallVector<VarDecl*, 16> GlobalPostponedAssignments;
+
 		// ----- LLVM -----
 		llvm::LLVMContext& LLContext;
 		llvm::Module&      LLArcoModule;
 		ulen               NumGeneratedGlobalVars = 0;
+		llvm::Function*    LLInitGlobalFunc;
 		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
 
 		llvm::DenseMap<Type*, PointerType*>                PointerCache;

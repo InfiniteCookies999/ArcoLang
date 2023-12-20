@@ -256,10 +256,16 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 	if (Var->ParsingError) return;
 
+	FScope = Var->FScope;
+
 	if (!FixupType(Var->Ty)) {
 		YIELD_ERROR(Var);
 	}
 	
+	if (Var->IsGlobal) {
+		Context.RequestGen(Var);
+	}
+
 	if (Var->Assignment) {
 		CheckNode(Var->Assignment);
 		YIELD_ERROR_WHEN(Var, Var->Assignment);
@@ -341,8 +347,7 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
 			IdentRef* IRef = static_cast<IdentRef*>(Return->Value);
 			if (IRef->RefKind == IdentRef::RK::Var) {
 				VarDecl* Var = IRef->Var;
-				// TODO: Will also want to make sure it is not global!
-				if (!Var->IsParam() && !Var->IsField()) {
+				if (!Var->IsParam() && !Var->IsField() && !Var->IsGlobal) {
 					Var->IsLocalRetValue = true;
 				}
 			}
@@ -881,7 +886,11 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				IRef->RefKind = IdentRef::RK::Var;
 			}
 		} else {
-			// TODO: Search for global variables!
+			auto Itr = ModToLookup->GlobalVars.find(IRef->Ident);
+			if (Itr != ModToLookup->GlobalVars.end()) {
+				IRef->Var     = Itr->second;
+				IRef->RefKind = IdentRef::RK::Var;
+			}
 		}
 	};
 
@@ -912,6 +921,12 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
 		IRef->Ty = VarRef->Ty;
+		// TODO: Check if field as well?
+		if (VarRef->IsGlobal) {
+			SemAnalyzer Analyzer(Context, VarRef);
+			Analyzer.CheckVarDecl(VarRef);
+		}
+
 		// TODO: In the future could check if the variable is marked const as well.
 		IRef->HasConstAddress = VarRef->Ty->GetKind() == TypeKind::CStr;
 		break;

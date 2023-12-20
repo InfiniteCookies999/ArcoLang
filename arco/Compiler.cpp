@@ -142,6 +142,8 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		IRGenerator IRGen(Context);	
 		if (D->Is(AstKind::FUNC_DECL)) {
 			IRGen.GenFunc(static_cast<FuncDecl*>(D));
+		} else if (D->Is(AstKind::VAR_DECL)) {
+			IRGen.GenGlobalVar(static_cast<VarDecl*>(D));
 		}
 	}
 
@@ -149,12 +151,14 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		return;
 	}
 
+	IRGenerator IRGen(Context);
 	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
 		StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
 		Context.DefaultConstrucorsNeedingCreated.pop();
-		IRGenerator IRGen(Context);
 		IRGen.GenImplicitDefaultConstructorBody(Struct);
 	}
+
+	IRGen.GenGlobalInitFuncBody();
 
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
 	i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();

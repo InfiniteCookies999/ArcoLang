@@ -26,9 +26,9 @@ namespace arco {
 		Module*      Mod;
 		Logger       Log;
 
-		FuncDecl*   CFunc;
-		StructDecl* CStruct;
 		FileScope*  FScope;
+		FuncDecl*   CFunc   = nullptr;
+		StructDecl* CStruct = nullptr;
 
 		// Every time a loop is entered this is incremented,
 		// and decremented when existed

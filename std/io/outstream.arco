@@ -1,0 +1,88 @@
+
+/**
+ * An output stream for writing to files or other writable
+ * objects.
+ */
+OutStream struct {
+	
+	handle void*;
+
+	fn OutStream(handle void*) {
+		this.handle = handle;
+	}
+
+	fn write(msg cstr, length int) {
+		bytes_written uint32;
+		WriteFile(handle, msg, length, &bytes_written, null);
+	}
+
+	fn write(msg cstr) {
+		write(msg, strlen(msg));
+	}
+
+	// TODO: Should be pass by const ref once supported.
+	fn write(msg String) {
+		write(msg.buffer, msg.length);
+	}
+
+	fn write(i int64) {
+		if i < 0 {
+			i = -i;
+			write("-");
+		}
+
+		write(cast(uint64) i);
+	}
+
+	fn write(i uint64) {
+		if i == 0 {
+			write("0");
+			return;
+		}
+
+		// TODO: Performance wise this can be improved just writing
+		//       backwards into the buffer using pointer arithmetic.
+		length int = 0;
+		buffer char[21];
+
+		v int = i;
+		loop v > 0 {
+			v = v / 10;
+			length = length + 1;
+		}
+
+		scan int = length - 1;
+		loop i > 0 {
+			val int = (i % 10) + 48;
+			buffer[scan] = cast(char) val;
+			scan = scan - 1;
+			i = i / 10;
+		}
+
+		write(buffer, length);
+	}
+
+	// ----------------------------------------
+	// writeln functions
+
+	fn writeln(msg cstr) {
+		write(msg, strlen(msg));
+		write("\n", 1);
+	}
+
+	// TODO: Should be pass by const ref once supported.
+	fn println(msg String) {
+		write(msg);
+		write("\n", 1);
+	}
+
+	fn writeln(i int) {
+		write(cast(int64) i);
+		write("\n", 1);
+	}
+
+	fn println(i uint) {
+		write(cast(uint64) i);
+		write("\n", 1);
+	}
+}

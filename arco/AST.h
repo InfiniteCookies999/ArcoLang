@@ -72,6 +72,8 @@ namespace arco {
 
 		llvm::DenseMap<Identifier, StructDecl*> Structs;
 
+		llvm::DenseMap<Identifier, VarDecl*>    GlobalVars;
+
 	};
 
 	struct FileScope {
@@ -184,6 +186,8 @@ namespace arco {
 		// If the variable is declared inside a function
 		// and returned.
 		bool IsLocalRetValue = false;
+
+		bool IsGlobal = false;
 
 		llvm::Value* LLAddress = nullptr;
 

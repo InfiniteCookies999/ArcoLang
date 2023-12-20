@@ -167,6 +167,21 @@ void arco::IRGenerator::GenFunc(FuncDecl* Func) {
 
 }
 
+void arco::IRGenerator::GenGlobalVar(VarDecl* Global) {
+
+	GenGlobalVarDecl(Global);
+
+	llvm::GlobalVariable* LLGVar =
+		llvm::cast<llvm::GlobalVariable>(Global->LLAddress);
+	auto [NoFurtherInit, InitValue] = GenGlobalVarInitializeValue(Global);
+
+	LLGVar->setInitializer(InitValue);
+
+	if (!NoFurtherInit) {
+		Context.GlobalPostponedAssignments.push_back(Global);
+	}
+}
+
 void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 	LLFunc = Struct->LLDefaultConstructor;
 
@@ -193,6 +208,23 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 
 	Builder.CreateRetVoid();
 
+}
+
+void arco::IRGenerator::GenGlobalInitFuncBody() {
+	llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "entry.block", Context.LLInitGlobalFunc);
+
+	LLFunc = Context.LLInitGlobalFunc;	
+	Builder.SetInsertPoint(LLEntryBlock);
+
+	// Iterator since it is modifiable during generation.
+	auto Itr = Context.GlobalPostponedAssignments.begin();
+	while (Itr != Context.GlobalPostponedAssignments.end()) {
+		VarDecl* Global = *Itr;
+		GenAssignment(Global->LLAddress, Global->Assignment);
+		++Itr;
+	}
+	
+	Builder.CreateRetVoid();
 }
 
 void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
@@ -367,6 +399,11 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		GenConstructorBodyFieldAssignments(Func->Struct);
 	}
 
+	if (Func == Context.MainEntryFunc) {
+		Context.LLInitGlobalFunc = GenGlobalInitFuncDecl();
+		Builder.CreateCall(Context.LLInitGlobalFunc);
+	}
+
 	// Generating the statements of the function.
 	for (AstNode* Stmt : Func->Scope.Stmts) {
 		GenNode(Stmt);
@@ -402,6 +439,19 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 			}
 		}
 	}
+}
+
+llvm::Function* arco::IRGenerator::GenGlobalInitFuncDecl() {
+	llvm::FunctionType* LLFuncType =
+		llvm::FunctionType::get(llvm::Type::getVoidTy(LLContext), false);
+	llvm::Function* LLInitFunc =
+		llvm::Function::Create(
+			LLFuncType,
+			llvm::Function::ExternalLinkage,
+			"__arco.init.globals",
+			LLModule
+		);
+	return LLInitFunc;
 }
 
 llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
@@ -452,6 +502,24 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;
+	}
+}
+
+void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
+	if (Global->LLAddress) return; // Do not generate it twice
+
+	std::string Name = "__global." + Global->Name.Text.str();
+	Name += "." + std::to_string(Context.NumGeneratedGlobalVars++);
+
+	llvm::GlobalVariable* LLGVar = GenLLVMGlobalVariable(Name, GenType(Global->Ty));
+	Global->LLAddress = LLGVar;
+
+	if (Global->Mods & ModKinds::NATIVE) {
+#ifdef _WIN32
+		LLGVar->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+#endif
+	} else {
+		LLGVar->setDSOLocal(true);
 	}
 }
 
@@ -1147,10 +1215,15 @@ llvm::Value* arco::IRGenerator::GenStringLiteral(StringLiteral* String) {
 }
 
 llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
-	if (IRef->Var->IsField()) {
-		return CreateStructGEP(LLThis, IRef->Var->FieldIdx);
+	VarDecl* Var = IRef->Var;
+	if (Var->IsGlobal) {
+		GenGlobalVarDecl(Var);
+	}
+	
+	if (Var->IsField()) {
+		return CreateStructGEP(LLThis, Var->FieldIdx);
 	} else {
-		return IRef->Var->LLAddress;
+		return Var->LLAddress;
 	}
 }
 
@@ -1635,6 +1708,7 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 	case TypeKind::CStr:
 		return llvm::Constant::getNullValue(GenType(Ty));
 	case TypeKind::Array:
+	case TypeKind::Struct:
 		return llvm::ConstantAggregateZero::get(GenType(Ty));
 	default:
 		assert(!"Failed to implement GenZeroedValue() case!");
@@ -1843,6 +1917,22 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(StructDecl* Struct) {
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);
 		}
+	}
+}
+
+std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue(VarDecl* Global) {
+	Type* Ty = Global->Ty;
+	Expr* Assignment = Global->Assignment;
+	if (Assignment) {
+		if (Assignment->IsFoldable) {
+			return { true, llvm::cast<llvm::Constant>(GenRValue(Assignment)) };
+		} else {
+			return { false, GenZeroedValue(Ty) };
+		}
+	} else {
+		// Assignment == nullptr
+
+		return { true, GenZeroedValue(Ty) };
 	}
 }
 
