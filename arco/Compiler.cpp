@@ -182,19 +182,23 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	
 	SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
 
-	std::string ObjFileName = "program.o";
+	if (OutputName.ends_with(".exe")) {
+		OutputName = OutputName.substr(0, OutputName.length() - 4);
+	}
+
+	std::string ObjFileName = OutputName + ".o";
 	if (!WriteObjFile(ObjFileName.c_str(), Context.LLArcoModule, LLMachineTarget)) {
 		FoundCompileError = true;
 		return;
 	}
 
-	std::string ExecutableName = "program";
+	std::string ExecutableName = OutputName;
 #ifdef _WIN32
 	ExecutableName += ".exe";
 #endif
 
 	std::string ClangCommand = "clang ";
-	ClangCommand += "program.o";
+	ClangCommand += ObjFileName;
 	ClangCommand += " -o ";
 	ClangCommand += ExecutableName;
 
@@ -246,6 +250,12 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	llvm::outs() << "Wrote program to: "
 		<< std::filesystem::absolute(std::filesystem::current_path()).generic_string().c_str()
 		<< '/' << ExecutableName << '\n';
+
+	if (RunProgram) {
+#ifdef _WIN32
+		system(ExecutableName.c_str());
+#endif
+	}
 }
 
 void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen) {

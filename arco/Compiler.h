@@ -53,10 +53,16 @@ namespace arco {
 
 		void Compile(llvm::SmallVector<Source>& Sources);
 	
+		void SetOutputName(const std::string& OutputName) {
+			this->OutputName = OutputName;
+		}
+
 	private:
 		ArcoContext& Context;
 
 		llvm::SmallVector<FileScope*> FileScopes;
+
+		std::string OutputName = "program";
 
 		void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 

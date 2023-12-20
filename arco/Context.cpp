@@ -90,8 +90,7 @@ arco::ArcoContext::~ArcoContext() {
 	delete ErrorType;
 	delete EmptyArrayElmType;
 	delete ImportType;
-	delete VoidPtrType;
-	delete CharPtrType;
+	// TODO: Cleanup other types.
 
 }
 

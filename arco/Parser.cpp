@@ -151,7 +151,7 @@ void arco::Parser::ParseImport() {
 
 	auto Itr = Context.ModNamesToMods.find(ModName.Text);
 	if (Itr == Context.ModNamesToMods.end()) {
-		Error(ImportTok, "Could not find import module for '%s'", ModName.Text.data());
+		Error(ImportTok, "Could not find import module for '%s'", ModName.Text);
 		return;
 	}
 
