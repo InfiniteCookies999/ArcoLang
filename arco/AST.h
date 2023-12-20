@@ -55,6 +55,7 @@ namespace arco {
 		ARRAY_ACCESS,
 		TYPE_CAST,
 		STRUCT_INITIALIZER,
+		HEAP_ALLOC,
 	
 	};
 
@@ -74,9 +75,18 @@ namespace arco {
 	};
 
 	struct FileScope {
-		std::string                         Path;
-		SourceBuf                           Buffer;
-		llvm::DenseMap<Identifier, Module*> ModImports;
+
+		struct StructImport {
+			SourceLoc   ErrorLoc;
+			Module*     Mod;
+			Identifier  StructName;
+			StructDecl* Struct;
+		};
+
+		std::string                              Path;
+		SourceBuf                                Buffer;
+		llvm::DenseMap<Identifier, Module*>      ModImports;
+		llvm::DenseMap<Identifier, StructImport> StructImports;
 
 		bool ParsingErrors = false;
 
@@ -457,6 +467,14 @@ namespace arco {
 		FuncDecl* CalledConstructor = nullptr;
 
 		llvm::SmallVector<NonNamedValue, 2> Args;
+
+	};
+
+	// Ex.  'new int'
+	struct HeapAlloc : Expr {
+		HeapAlloc() : Expr(AstKind::HEAP_ALLOC) {}
+
+		Type* TypeToAlloc;
 
 	};
 }

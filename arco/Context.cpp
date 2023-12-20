@@ -91,6 +91,7 @@ arco::ArcoContext::~ArcoContext() {
 	delete EmptyArrayElmType;
 	delete ImportType;
 	delete VoidPtrType;
+	delete CharPtrType;
 
 }
 
@@ -109,6 +110,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "char"    , TokenKind::KW_CHAR     });
 	TokenKeywordMap.insert({ "void"    , TokenKind::KW_VOID     });
 	TokenKeywordMap.insert({ "cstr"    , TokenKind::KW_CSTR     });
+	TokenKeywordMap.insert({ "new"     , TokenKind::KW_NEW      });
 	TokenKeywordMap.insert({ "this"    , TokenKind::KW_THIS     });
 	TokenKeywordMap.insert({ "import"  , TokenKind::KW_IMPORT   });
 	TokenKeywordMap.insert({ "null"    , TokenKind::KW_NULL     });
@@ -130,6 +132,8 @@ void arco::ArcoContext::Initialize() {
 	}
 
 	VoidPtrType = PointerType::Create(VoidType, *this);
+	CharPtrType = PointerType::Create(CharType, *this);
+
 }
 
 arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {

@@ -3,7 +3,7 @@
 #include "Context.h"
 
 arco::Lexer::Lexer(ArcoContext& Context, Logger& Log ,const SourceBuf Buffer)
-	: Context(Context), Log(Log), CurPtr(Buffer.memory)
+	: Context(Context), Log(Log), CurPtr(Buffer.Memory)
 {}
 
 arco::Token arco::Lexer::NextToken() {

@@ -11,7 +11,7 @@ bool arco::Type::Equals(Type* Ty) const {
 			return false;
 		}
 		
-		const ArrayType* ArrayTy    = static_cast<const ArrayType*>(Ty);
+		const ArrayType* ArrayTy     = static_cast<const ArrayType*>(Ty);
 		const ArrayType* ThisArrayTy = static_cast<const ArrayType*>(this);
 		
 		return ArrayTy->GetLength() == ThisArrayTy->GetLength() &&
@@ -26,6 +26,15 @@ bool arco::Type::Equals(Type* Ty) const {
 		const StructType* ThisStructTy = static_cast<const StructType*>(Ty);
 
 		return StructTy->GetStruct() == ThisStructTy->GetStruct();
+	}
+	case TypeKind::Pointer: {
+		if (this->GetKind() != TypeKind::Pointer) {
+			return false;
+		}
+		
+		const PointerType* PtrTy     = static_cast<const PointerType*>(Ty);
+		const PointerType* ThisPtrTy = static_cast<const PointerType*>(this);
+		return PtrTy->GetElementType()->Equals(ThisPtrTy->GetElementType());
 	}
 	default:
 		return this == Ty;
@@ -175,7 +184,9 @@ std::string arco::Type::ToString() const {
 	case TypeKind::Null:            return "null";
 	case TypeKind::CStr:            return "cstr";
 	case TypeKind::Import:          return "import";
+	case TypeKind::Bool:            return "bool";
 	case TypeKind::EmptyArrayElm:   return "";
+	case TypeKind::Error:           return "error";
 	case TypeKind::Pointer: {
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->ToString() + "*";

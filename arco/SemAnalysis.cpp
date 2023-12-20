@@ -45,6 +45,22 @@ void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
 	}
 }
 
+void arco::SemAnalyzer::ResolveStructImports(FileScope* FScope) {
+	for (auto& [ModName, StructImport] : FScope->StructImports) {
+		auto Itr = StructImport.Mod->Structs.find(StructImport.StructName);
+		if (Itr == StructImport.Mod->Structs.end()) {
+			Logger Log(FScope->Path.c_str(), FScope->Buffer);
+			Log.BeginError(StructImport.ErrorLoc, "Could not find struct '%s' in module '%s'",
+				StructImport.StructName, ModName);
+			Log.EndError();
+			StructImport.Struct = nullptr;
+			continue;
+		}
+
+		StructImport.Struct = Itr->second;
+	}
+}
+
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (Func->ParsingError) return;
 
@@ -79,6 +95,10 @@ void arco::SemAnalyzer::CheckFuncParamTypes(FuncDecl* Func) {
 	if (Func->ParamTypesChecked) return;
 
 	Func->ParamTypesChecked = true;
+
+	CFunc   = Func;
+	CStruct = Func->Struct;
+	FScope  = Func->FScope;
 
 	if (!FixupType(Func->RetTy)) {
 		Func->RetTy = Context.ErrorType;
@@ -145,6 +165,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 		break;
 	case AstKind::STRUCT_INITIALIZER:
 		CheckStructInitializer(static_cast<StructInitializer*>(Node));
+		break;
+	case AstKind::HEAP_ALLOC:
+		CheckHeapAlloc(static_cast<HeapAlloc*>(Node));
 		break;
 	case AstKind::NUMBER_LITERAL:
 	case AstKind::STRING_LITERAL:
@@ -285,6 +308,12 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 			Error(Var, "Cannot assign value of type '%s' to variable of type '%s'",
 				Var->Assignment->Ty->ToString(), Var->Ty->ToString());
 		}
+	} else {
+		// No assignment.
+
+		// TODO: If the variable is a struct type or array type of structs
+		// need to make sure their is a default constructor available!
+
 	}
 }
 
@@ -295,6 +324,10 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
 	if (Return->Value) {
 		CheckNode(Return->Value);
 		YIELD_IF_ERROR(Return->Value);
+	}
+
+	if (CFunc->RetTy == Context.ErrorType) {
+		return;
 	}
 
 	bool ReturnMatched = true;
@@ -937,15 +970,23 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 		return;
 	}
 
-	if (Site->Ty->GetKind() != TypeKind::Struct) {
+	if (!(Site->Ty->GetKind() == TypeKind::Struct ||
+		  (Site->Ty->GetKind() == TypeKind::Pointer &&
+		  static_cast<PointerType*>(Site->Ty)->GetElementType()->GetKind() == TypeKind::Struct)
+		 )) {
 		Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty->ToString());
 		YIELD_ERROR(FieldAcc);
 	}
 
-	StructType* StructTy = static_cast<StructType*>(Site->Ty);
-	StructDecl* Struct = StructTy->GetStruct();
+	StructType* StructTy;
+	if (Site->Ty->GetKind() == TypeKind::Struct) {
+		StructTy = static_cast<StructType*>(Site->Ty);
+	} else {
+		StructTy = static_cast<StructType*>(
+			static_cast<PointerType*>(Site->Ty)->GetElementType());
+	}
 
-	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod, Struct);
+	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod, StructTy->GetStruct());
 }
 
 void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
@@ -1031,7 +1072,10 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 	ulen LeastConflicts = std::numeric_limits<ulen>::max();
 	for (ulen i = 0; i < Canidates->size(); i++) {
 		FuncDecl* Canidate = (*Canidates)[i];
-		CheckFuncParamTypes(Canidate);
+		if (!Canidate->ParamTypesChecked) {
+			SemAnalyzer Analyzer(Context, Canidate);
+			Analyzer.CheckFuncParamTypes(Canidate);
+		}
 
 		ulen NumConflicts = 0;
 		if (!CompareAsCanidate(Canidate, Args, NumConflicts)) {
@@ -1269,6 +1313,26 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 	}
 }
 
+void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
+	Alloc->IsFoldable = false;
+
+	// TODO: Need to make sure that when allocating structs that they
+	// either have an available default constructor or that they
+	// are provided the appropriate arguments for an alternative constructor.
+
+	Type* TypeToAlloc = Alloc->TypeToAlloc;
+
+	if (!FixupType(TypeToAlloc, true)) {
+		YIELD_ERROR(Alloc);
+	}
+
+	if (TypeToAlloc->GetKind() == TypeKind::Array) {
+		Alloc->Ty = PointerType::Create(static_cast<ArrayType*>(TypeToAlloc)->GetBaseType(), Context);
+	} else {
+		Alloc->Ty = PointerType::Create(TypeToAlloc, Context);
+	}
+}
+
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
 	CheckNode(Cond);
 	if (Cond->Ty == Context.ErrorType) return;
@@ -1313,7 +1377,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 			ArrayType* FromArrayTy = static_cast<ArrayType*>(FromTy);
 			return FromArrayTy->GetElementType() == Context.CharType;
 		}
-		return FromTy == Context.CStrType;
+		return FromTy == Context.CStrType || FromTy->Equals(Context.CharPtrType);
 	}
 	case TypeKind::Pointer: {
 		if (FromTy == Context.NullType)
@@ -1326,8 +1390,15 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 					   ToPtrTy->Equals(Context.VoidPtrType);
 			}
 			return false;
+		} else if (FromTy->IsPointer()) {
+			if (ToTy->Equals(Context.VoidPtrType)) {
+				return true; // Can always assign to void*
+			} else {
+				return ToTy->Equals(FromTy);
+			}
+		} else {
+			return false;
 		}
-		return ToTy->Equals(FromTy);
 	}
 	case TypeKind::Array: {
 		if (FromTy->GetKind() != TypeKind::Array) {
@@ -1407,16 +1478,18 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
 	}
 }
 
-bool arco::SemAnalyzer::FixupType(Type* Ty) {
+bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 	if (Ty->GetKind() == TypeKind::Array) {
-		return FixupArrayType(static_cast<ArrayType*>(Ty));
+		return FixupArrayType(static_cast<ArrayType*>(Ty), AllowDynamicArrays);
 	} else if (Ty->GetKind() == TypeKind::Struct) {
 		return FixupStructType(static_cast<StructType*>(Ty));
+	} else if (Ty->GetKind() == TypeKind::Pointer) {
+		return FixupType(static_cast<PointerType*>(Ty)->GetElementType(), AllowDynamicArrays);
 	}
 	return true;
 }
 
-bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
+bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 	Expr* LengthExpr = ArrayTy->GetLengthExpr();
 	if (!LengthExpr) {
 		// If the length expression is nullptr this means that the
@@ -1433,7 +1506,7 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 	
 	SourceLoc ErrorLoc = ArrayTy->GetLengthExprErrorLoc();
 
-	if (!LengthExpr->IsFoldable) {
+	if (!LengthExpr->IsFoldable && !AllowDynamic) {
 		Error(ErrorLoc, "Could not compute the length of the array at compile time");
 		return false;
 	} else if (!LengthExpr->Ty->IsInt()) {
@@ -1442,32 +1515,47 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy) {
 	}
 
 	IRGenerator IRGen(Context);
-	llvm::ConstantInt* LLInt =
+	
+	if (LengthExpr->IsFoldable) {
+		llvm::ConstantInt* LLInt =
 		llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
 
-	if (LLInt->isZero()) {
-		Error(ErrorLoc, "The length of the array cannot be zero");
-		return false;
-	} else if (LengthExpr->Ty->IsSigned() && LLInt->isNegative()) {
-		Error(ErrorLoc, "The length of the array cannot be negative");
-		return false;
+		if (LLInt->isZero()) {
+			Error(ErrorLoc, "The length of the array cannot be zero");
+			return false;
+		} else if (LengthExpr->Ty->IsSigned() && LLInt->isNegative()) {
+			Error(ErrorLoc, "The length of the array cannot be negative");
+			return false;
+		}
+
+		ArrayTy->AssignLength(LLInt->getZExtValue());
 	}
 
-	ArrayTy->AssignLength(LLInt->getZExtValue());
-
-	if (!FixupType(ArrayTy->GetElementType())) {
+	if (!FixupType(ArrayTy->GetElementType(), AllowDynamic)) {
 		return false;
 	}
 	return true;
 }
 
 bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
-	auto Itr = Mod->Structs.find(StructTy->GetStructName());
-	if (Itr == Mod->Structs.end()) {
-		Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
+	Identifier StructName = StructTy->GetStructName();
+	StructDecl* Struct;
+	auto Itr = FScope->StructImports.find(StructName);
+	if (Itr == FScope->StructImports.end()) {
+		auto Itr2 = Mod->Structs.find(StructName);
+		if (Itr2 == Mod->Structs.end()) {
+			Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
+			return false;
+		}
+		Struct = Itr2->second;
+	} else {
+		Struct = Itr->second.Struct;
+	}
+	if (!Struct) {
+		// This happens due to their being a valid import for the struct
+		// but the import does not properly map to a struct.
 		return false;
 	}
-	StructDecl* Struct = Itr->second;
 	SemAnalyzer Analyzer(Context, Struct);
 	Analyzer.CheckStructDecl(Struct);
 	StructTy->AssignStruct(Struct);

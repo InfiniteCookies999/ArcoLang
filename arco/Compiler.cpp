@@ -114,6 +114,11 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
 	i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
 
+	// Mapping the imports to the structs within different files.
+	for (FileScope* FScope : FileScopes) {
+		SemAnalyzer::ResolveStructImports(FScope);
+	}
+
 	if (Context.MainEntryFunc) {
 		Context.RequestGen(Context.MainEntryFunc);
 	} else {
@@ -262,7 +267,7 @@ void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::pat
 
 void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath) {
 	SourceBuf Buffer;
-	if (!ReadFile(AbsolutePath.c_str(), Buffer.memory, Buffer.length)) {
+	if (!ReadFile(AbsolutePath.c_str(), Buffer.Memory, Buffer.length)) {
 		Logger::GlobalError(llvm::errs(), "Failed to read file: %s. Check permissions", AbsolutePath.c_str());	
 		return;
 	}
@@ -273,6 +278,8 @@ void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, con
 	if (!FScope->ParsingErrors) {
 		SemAnalyzer::ReportStatementsInInvalidContext(FScope);
 	}
+
+	FileScopes.push_back(FScope);
 }
 
 const char* arco::Compiler::GetStdLibPath() {

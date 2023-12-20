@@ -88,6 +88,7 @@ namespace arco {
 		llvm::Value* GenArrayAccess(ArrayAccess* Access);
 		llvm::Value* GenTypeCast(TypeCast* Cast);
 		llvm::Value* GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr);
+		llvm::Value* GenHeapAlloc(HeapAlloc* Alloc);
 
 		llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
 		llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
@@ -106,6 +107,8 @@ namespace arco {
 
 		llvm::Constant* GenConstValue(Type* Ty);
 		llvm::Constant* GenZeroedValue(Type* Ty);
+
+		llvm::Value* GenMalloc(llvm::Type* LLType, llvm::Value* LLArrayLength);
 
 		void StructArrayCallDefaultConstructors(Type* BaseTy,
 			                                    llvm::Value* LLArrStartPtr,

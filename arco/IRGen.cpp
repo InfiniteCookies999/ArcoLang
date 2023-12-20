@@ -447,6 +447,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenTypeCast(static_cast<TypeCast*>(Node));
 	case AstKind::STRUCT_INITIALIZER:
 		return GenStructInitializer(static_cast<StructInitializer*>(Node), nullptr);
+	case AstKind::HEAP_ALLOC:
+		return GenHeapAlloc(static_cast<HeapAlloc*>(Node));
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;
@@ -1450,6 +1452,38 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 	return LLAddr;
 }
 
+llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
+	Type* TypeToAlloc = Alloc->TypeToAlloc;
+	if (TypeToAlloc->GetKind() == TypeKind::Array) {
+		ArrayType* ArrayTy = static_cast<ArrayType*>(TypeToAlloc);
+
+		// Calculating how much memory needs to be allocated for the array.
+		llvm::Value* LLTotalLinearLength = GenRValue(ArrayTy->GetLengthExpr());
+		while (ArrayTy->GetElementType()->GetKind() == TypeKind::Array) {
+			ArrayTy = static_cast<ArrayType*>(ArrayTy->GetElementType());
+			LLTotalLinearLength = 
+				Builder.CreateMul(LLTotalLinearLength, GenRValue(ArrayTy->GetLengthExpr()));
+		}
+
+		Type* BaseTy = ArrayTy->GetElementType();
+		llvm::Value* LLArrStartPtr = GenMalloc(GenType(BaseTy), LLTotalLinearLength);
+
+		if (BaseTy->GetKind() == TypeKind::Struct) {
+			// Need to initialize fields so calling the default constructor.
+			StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
+		}
+
+		return LLArrStartPtr;
+	} else {
+		llvm::Value* LLMalloc = GenMalloc(GenType(TypeToAlloc), nullptr);
+		if (TypeToAlloc->GetKind() == TypeKind::Struct) {
+			// Need to initialize fields so calling the default constructor.
+			CallDefaultConstructor(LLMalloc, static_cast<StructType*>(TypeToAlloc));
+		}
+		return LLMalloc;
+	}
+}
+
 llvm::Value* arco::IRGenerator::GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
 	return Builder.CreateAdd(LLLHS, LLRHS);
 }
@@ -1547,6 +1581,12 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 					                               llvm::Type::getInt8PtrTy(LLContext));
 			}
 			return LLPtrValue;
+		} else if (FromType->IsPointer()) {
+			// Pointer to Pointer
+			return Builder.CreateBitCast(LLValue, LLCastType);
+		} else if (FromType->IsInt()) {
+			// Int to Ptr
+			return Builder.CreateIntToPtr(LLValue, LLCastType);
 		}
 		goto missingCaseLab;
 	}
@@ -1555,6 +1595,9 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 			return LLValue; // Already handled during generation
 		} else if (FromType->GetKind() == TypeKind::Array) {
 			return ArrayToPointer(LLValue);
+		} else if (FromType->IsPointer()) {
+			// Pointer to Pointer
+			return Builder.CreateBitCast(LLValue, LLCastType);
 		}
 		goto missingCaseLab;
 	}
@@ -1597,6 +1640,22 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 		assert(!"Failed to implement GenZeroedValue() case!");
 		return nullptr;
 	}
+}
+
+llvm::Value* arco::IRGenerator::GenMalloc(llvm::Type* LLType, llvm::Value* LLArrayLength) {
+	
+	llvm::Value* LLMalloc = llvm::CallInst::CreateMalloc(
+		Builder.GetInsertBlock(),                                      // llvm::BasicBlock *InsertAtEnd
+		llvm::Type::getInt64Ty(LLContext),                             // llvm::Type* IntPtrTy
+		LLType,                                                        // llvm::Type* AllocTy
+		GetSystemUInt(SizeOfTypeInBytes(LLType), LLContext, LLModule), // llvm::Value* AllocSize
+		LLArrayLength,
+		nullptr,
+		""
+	);
+	Builder.Insert(LLMalloc);
+	
+	return LLMalloc;
 }
 
 void arco::IRGenerator::StructArrayCallDefaultConstructors(Type* BaseTy,

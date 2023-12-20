@@ -94,7 +94,7 @@ void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::functio
 void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines) {
 
 	std::string Backwards = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.begin(), -40));
-	std::string Forwards  = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.begin() + Loc.Text.size() - 1, +40));
+	std::string Forwards  = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.end() - 1, +40));
 
 	assert(Backwards.find('\n', 0) == std::string::npos && "New Line in display!");
 	assert(Forwards.find('\n', 0) == std::string::npos && "New Line in display!");
@@ -145,6 +145,9 @@ void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>
 
 std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
 	const char* MemPtr = Loc; // Pointering to character start.
+
+	const char* EndOfBuffer = Buffer.Memory + Buffer.length - 1;
+	
 	i64 Moved = 0; // Absolute movement of the pointer.
 	while (true) {
 		if (*MemPtr == '\n') {
@@ -165,7 +168,7 @@ std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
 
 		++Moved;
 
-		if (MemPtr == Buffer.memory || MemPtr == Buffer.memory + Buffer.length - 1) {
+		if (MemPtr == Buffer.Memory || MemPtr == EndOfBuffer) {
 			// Hit one end of the buffer so there is nothing more to di.
 			break;
 		}

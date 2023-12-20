@@ -64,6 +64,7 @@ namespace arco {
 		Type* EmptyArrayElmType;
 		Type* ImportType;
 		Type* VoidPtrType;
+		Type* CharPtrType;
 
 		// Maps a binary operator to its precedence.
 		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;

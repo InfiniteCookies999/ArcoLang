@@ -16,6 +16,7 @@ namespace arco {
 
 	class ArcoContext;
 	class Module;
+	struct FileScope;
 
 	struct Source {
 		llvm::StringRef ModName;
@@ -54,6 +55,8 @@ namespace arco {
 	
 	private:
 		ArcoContext& Context;
+
+		llvm::SmallVector<FileScope*> FileScopes;
 
 		void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 

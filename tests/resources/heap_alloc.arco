@@ -1,0 +1,43 @@
+// -- Test to make sure that data can be allocated onto the heap
+//    with the use of 'new' keyword.
+
+A struct {
+	f1 int = 341;
+	f2 int = 66;
+}
+
+fn main() {
+
+	v1 int* = new int;
+	*v1 = 315;
+	
+	v2 A* = new A;
+	v2.f2 = 88;
+
+	v3 A* = new A[2][2];
+
+	print(*v1);
+	print(" ", 1);
+	print(v2.f1);
+	print(" ", 1);
+	print(v2.f2);
+	print(" ", 1);
+
+	print(v3[0].f1);
+	print(" ", 1);
+	print(v3[0].f2);
+	print(" ", 1);
+	print(v3[1].f1);
+	print(" ", 1);
+	print(v3[1].f2);
+	print(" ", 1);
+	print(v3[2].f1);
+	print(" ", 1);
+	print(v3[2].f2);
+	print(" ", 1);
+	print(v3[3].f1);
+	print(" ", 1);
+	print(v3[3].f2);
+
+	// TODO: call delete once supported!
+}

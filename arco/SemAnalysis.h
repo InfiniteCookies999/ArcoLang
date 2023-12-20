@@ -15,6 +15,8 @@ namespace arco {
 
 		static void ReportStatementsInInvalidContext(FileScope* FScope);
 
+		static void ResolveStructImports(FileScope* FScope);
+
 		void CheckFuncDecl(FuncDecl* Func);
 		
 		void CheckStructDecl(StructDecl* Struct);
@@ -91,6 +93,7 @@ namespace arco {
 		void CheckArrayAccess(ArrayAccess* Access);
 		void CheckTypeCast(TypeCast* Cast);
 		void CheckStructInitializer(StructInitializer* StructInit);
+		void CheckHeapAlloc(HeapAlloc* Alloc);
 
 		void CheckCondition(Expr* Cond, const char* PreErrorText);
 
@@ -100,8 +103,8 @@ namespace arco {
 		bool IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr);
 		bool IsCastableTo(Type* ToTy, Type* FromTy);
 
-		bool FixupType(Type* Ty);
-		bool FixupArrayType(ArrayType* ArrayTy);
+		bool FixupType(Type* Ty, bool AllowDynamicArrays = false);
+		bool FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic);
 		bool FixupStructType(StructType* StructTy);
 
 		void CheckModifibility(Expr* LValue);

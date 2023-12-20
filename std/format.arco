@@ -46,6 +46,11 @@ fn print(msg cstr) {
 	print(msg, strlen(msg));
 }
 
+// TODO: Should be pass by const ref once supported.
+fn print(msg String) {
+	print(msg.buffer, msg.length);
+}
+
 // TODO: Functions are redundent because there is no support for
 //       templating yet!
 
@@ -62,4 +67,24 @@ fn println(i int) {
 fn println(i uint) {
 	print(cast(uint64) i);
 	print("\n", 1);
+}
+
+// TODO: Should be pass by const ref once supported.
+fn println(msg String) {
+	print(msg);
+	print("\n", 1);
+}
+
+fn read(buffer char*, length int) int {
+	handle               void* = GetStdHandle(-10);
+	number_of_bytes_read uint32;
+	ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
+	return cast(int) number_of_bytes_read;
+}
+
+fn read_line() String {
+	buffer char[1024];
+	amount_read int = read(buffer, buffer.length);
+	// -2 because of \r\n is read when calling Windows ReadFile.
+	return String{ buffer, amount_read - 2 };
 }

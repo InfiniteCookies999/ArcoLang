@@ -138,6 +138,14 @@ void arco::Parser::ParseImport() {
 	NextToken(); // Consuming 'import' token.
 
 	Identifier ModName = ParseIdentifier("Expected identifier for import module name");
+	Identifier StructName;
+
+	if (CTok.Is('.')) {
+		// Import must be for a struct.
+		NextToken();
+	
+		StructName = ParseIdentifier("Expected identifier for struct name");
+	}
 
 	Match(';');
 
@@ -147,13 +155,25 @@ void arco::Parser::ParseImport() {
 		return;
 	}
 
-	if (FScope->ModImports.find(ModName) != FScope->ModImports.end()) {
-		Error(ImportTok, "Duplicate import");
-		return;
+	if (StructName.IsNull()) {
+		if (FScope->ModImports.find(ModName) != FScope->ModImports.end()) {
+			Error(ImportTok, "Duplicate import");
+			return;
+		}
+
+		FScope->ModImports[ModName] = Itr->second;
+	} else {
+		if (FScope->StructImports.find(StructName) != FScope->StructImports.end()) {
+			Error(ImportTok, "Already importing a struct with that given name");
+			return;
+		}
+
+		FScope->StructImports[StructName] = {
+			ImportTok.Loc,
+			Itr->second,
+			StructName
+		};
 	}
-
-	FScope->ModImports[ModName] = Itr->second;
-
 }
 
 void arco::Parser::ParseOptStmt(AstNode*& Stmt, u16 TokenEndDelim) {
@@ -868,6 +888,15 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		ThisRef* This = NewNode<ThisRef>(CTok);
 		NextToken(); // Consuming 'this'
 		return ParseIdentPostfix(This);
+	}
+	case TokenKind::KW_NEW: {
+		HeapAlloc* Alloc = NewNode<HeapAlloc>(CTok);
+		NextToken(); // Consuming 'new' token.
+		Alloc->TypeToAlloc = ParseType();
+		if (Alloc->TypeToAlloc == Context.ErrorType) {
+			SkipRecovery();
+		}
+		return Alloc;
 	}
 	default:
 		Error(CTok.Loc, "Expected an expression");

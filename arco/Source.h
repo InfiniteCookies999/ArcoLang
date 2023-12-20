@@ -24,7 +24,7 @@ namespace arco {
 	/// code of a .arco file.
 	/// 
 	struct SourceBuf {
-		char* memory;
+		char* Memory;
 		ulen  length;
 	};
 
