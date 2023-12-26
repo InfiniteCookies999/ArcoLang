@@ -363,6 +363,9 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 					// TODO: Should it also go into the Funcs list?
 					Func->IsConstructor = true;
 					Struct->Constructors.push_back(Func);
+					if (Func->Params.empty()) {
+						Struct->DefaultConstructor = Func;
+					}
 				} else {
 					Struct->Funcs[Func->Name].push_back(Func);
 				}

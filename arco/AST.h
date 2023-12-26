@@ -226,6 +226,7 @@ namespace arco {
 
 		llvm::SmallVector<VarDecl*>           Fields;
 		FuncsList                             Constructors;
+		FuncDecl*                             DefaultConstructor = nullptr;
 		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
 		llvm::StructType* LLStructTy         = nullptr;

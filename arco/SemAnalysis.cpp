@@ -341,9 +341,24 @@ return;
 	} else {
 		// No assignment.
 
-		// TODO: If the variable is a struct type or array type of structs
-		// need to make sure their is a default constructor available!
+		StructDecl* StructForTy = nullptr;
+		if (Var->Ty->GetKind() == TypeKind::Struct) {
+			StructForTy = static_cast<StructType*>(Var->Ty)->GetStruct();
+		} else if (Var->Ty->GetKind() == TypeKind::Array) {
+			ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+			Type* BaseTy = ArrayTy->GetBaseType();
+			if (BaseTy->GetKind() == TypeKind::Struct) {
+				StructForTy = static_cast<StructType*>(BaseTy)->GetStruct();
+			}
+		}
 
+		if (StructForTy) {
+			if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
+				VAR_YIELD(Error(Var, "No default constructor to initialize the variable"), false);
+			} else if (StructForTy->DefaultConstructor) {
+				Context.RequestGen(StructForTy->DefaultConstructor);
+			}
+		}
 	}
 
 	VAR_YIELD(, false);

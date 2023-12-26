@@ -120,6 +120,7 @@ int main() {
 	RunTest(SRC("member_functions/member_functions3.arco"), "foo1foo2");
 	RunTest(SRC("member_functions/member_functions4.arco"), "22");
 	RunTest(SRC("member_functions/constructors1.arco"), "53");
+	RunTest(SRC("member_functions/constructors2.arco"), "55");
 	
 	RunTest(SRC("globals/globals1.arco"), "44");
 	RunTest(SRC("globals/globals2.arco"), "32 186");

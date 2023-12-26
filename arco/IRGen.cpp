@@ -1978,7 +1978,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 		StructType* StructTy = static_cast<StructType*>(Ty);
 		StructDecl* Struct = StructTy->GetStruct();
 
-		if (Struct->FieldsHaveAssignment) {
+		if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
 			CallDefaultConstructor(LLAddr, StructTy);
 		} else {
 			ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
@@ -1995,7 +1995,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 		Type* BaseTy = ArrTy->GetBaseType();
 		if (BaseTy->GetKind() == TypeKind::Struct) {
 			StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
-			if (Struct->FieldsHaveAssignment) {
+			if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
 				// Cannot simply memset the array to zero must call the default constructor.
 				llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(LLAddr, ArrTy);
 				llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrTy->GetTotalLinearLength(), LLContext, LLModule);
@@ -2027,6 +2027,12 @@ void arco::IRGenerator::CallDefaultConstructor(llvm::Value* LLAddr, StructType* 
 
 llvm::Function* arco::IRGenerator::GenDefaultConstructorDecl(StructDecl* Struct) {
 	if (Struct->LLDefaultConstructor) {
+		return Struct->LLDefaultConstructor;
+	}
+
+	if (Struct->DefaultConstructor) {
+		GenFuncDecl(Struct->DefaultConstructor);
+		Struct->LLDefaultConstructor = Struct->DefaultConstructor->LLFunction;
 		return Struct->LLDefaultConstructor;
 	}
 

@@ -1,0 +1,15 @@
+// -- Test to make sure that default constructor is called
+//    when a variable is declared with a type that has a default
+//    constructor.
+
+MyStruct struct {
+	a int;
+	fn MyStruct() {
+		a = 55;
+	}
+}
+
+fn main() {
+	s MyStruct;
+	print(s.a);
+}
