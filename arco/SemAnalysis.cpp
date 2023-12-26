@@ -1132,18 +1132,20 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 	
 	const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
-	bool EncounteredError = false;
 	if (Canidates && Canidates->size() == 1) {
 		// Single canidate so explicit details about
 		// how there is a mismatch between the call and
 		// the function is given.
 		
+		bool EncounteredError = false;
+
 		FuncDecl* SingleCanidate = (*Canidates)[0];
 
 		const auto& Params = SingleCanidate->Params;
 		for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
 			if (ArgCount >= Params.size()) {
-				Error(ErrorLoc, "Too many arguments for %s call", CallType);
+				if (EncounteredError)  Log.EndError();
+				Log.BeginError(ErrorLoc, "Too many arguments for %s call", CallType);
 				EncounteredError = true;
 				break;
 			}
@@ -1152,7 +1154,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 			VarDecl* Param = Params[ArgCount];
 
 			if (!IsAssignableTo(Param->Ty, Arg->Ty, Arg)) {
-				Error(Args[ArgCount].ExpandedLoc,
+				if (EncounteredError)  Log.EndError();
+				Log.BeginError(Args[ArgCount].ExpandedLoc,
 					"Cannot assign argument %s of type '%s' to parameter of type '%s'",
 					ArgCount+1,
 					Arg->Ty->ToString(), Param->Ty->ToString());
@@ -1160,9 +1163,28 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 			}
 		}
 
-	}
-	
-	if (!EncounteredError) {
+		if (!EncounteredError) {
+			Log.BeginError(ErrorLoc, "Could not find function for call");
+		}
+
+		// Displaying the function.
+		std::string FuncDec = SingleCanidate->Name.Text.str();
+		FuncDec += "(";
+		for (ulen i = 0; i < SingleCanidate->Params.size(); i++) {
+			VarDecl* Param = SingleCanidate->Params[i];
+			FuncDec += Param->Ty->ToString();
+			if (i != SingleCanidate->Params.size() - 1) {
+				FuncDec += ", ";
+			}
+		}
+		FuncDec += ")";
+
+		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+			OS << "Expected call to function declaration: " << FuncDec;
+		});
+		Log.EndError();
+
+	} else {
 		std::string FuncDef = "(";
 		for (ulen i = 0; i < Args.size(); i++) {
 			FuncDef += Args[i].E->Ty->ToString();

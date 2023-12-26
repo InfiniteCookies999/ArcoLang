@@ -115,6 +115,10 @@ namespace arco {
 		// Checks if the token is not of the given kind.
 		inline bool IsNot(u16 Kind) const { return this->Kind != Kind; }
 
+		inline bool IsKeyword() const {
+			return Kind >= TokenKind::__KW_START__ && Kind <= TokenKind::__KW_END__;
+		}
+
 		static std::string TokenKindToString(u16 Kind, ArcoContext& Context);
 
 		// Retrieves a presentation string in the

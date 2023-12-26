@@ -105,11 +105,10 @@ arco::FileScope* arco::Parser::Parse() {
 					Context.MainEntryFunc = Func;
 				} else {
 					// Duplicate entry function.
-					// TODO:!!!
-					//Error(Func->Loc,
-					//			"Duplicate entry point found. First declared at: %s:%s",
-					//			Context.MainEntryFunc->Unit->FL.PathKey,
-					//			Context.MainEntryFunc->Loc.LineNumber);
+					Error(Func->Loc,
+						"Duplicate entry point found. First declared at: %s:%s",
+						Context.MainEntryFunc->FScope->Path,
+						Context.MainEntryFunc->Loc.LineNumber);
 				}
 			}
 
@@ -1204,9 +1203,9 @@ void arco::Parser::CalcLargestArrayLengthAtDepth(Array* Arr) {
 		}
 	} else {
 		Log.BeginError(Arr->Loc, "Array exceeds maximum array depth allowed");
-		//Log.AddNoteLine([](llvm::raw_ostream& OS) {
-		//	OS << "Maximum depth level: " << MAX_ARRAY_DEPTH << ".";
-		//});
+		Log.AddNoteLine([](llvm::raw_ostream& OS) {
+			OS << "Maximum depth level: " << MAX_ARRAY_DEPTH << ".";
+		});
 		Log.EndError();
 	}
 }
@@ -1296,6 +1295,7 @@ void arco::Parser::SkipRecovery() {
 	case TokenKind::KW_BREAK:
 	case TokenKind::KW_CONTINUE:
 		return;
+	case ';':
 	case TokenKind::TK_EOF:
 		return;
 	case TokenKind::IDENT:
@@ -1319,12 +1319,12 @@ void arco::Parser::SkipRecovery() {
 arco::Identifier arco::Parser::ParseIdentifier(const char* ErrorMessage) {
 	if (CTok.IsNot(TokenKind::IDENT)) {
 		Log.BeginError(CTok.Loc, ErrorMessage);
-		//if (CTok.IsKeyword()) {
-		//	Log.AddNoteLine([=](llvm::raw_ostream& OS) {
-		//		OS << "'" << CTok.GetText() << "'";
-		//		OS << " is a keyword.";
-		//	});
-		//}
+		if (CTok.IsKeyword()) {
+			Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+				OS << "'" << CTok.GetText() << "'";
+				OS << " is a keyword.";
+			});
+		}
 		Log.EndError();
 		return Identifier(); // Returning a null identifier.
 	}

@@ -168,6 +168,12 @@ namespace arco {
 			Log.EndError();
 		}
 
+		template<typename... TArgs>
+		void Error(SourceLoc Loc, const char* Fmt, TArgs&&... Args) {
+			Log.BeginError(Loc, Fmt, std::forward<TArgs>(Args)...);
+			Log.EndError();
+		}
+
 	};
 }
 

@@ -45,6 +45,10 @@ namespace arco {
 				});
 		}
 
+		void AddNoteLine(const std::function<void(llvm::raw_ostream&)>& NoteLinePrinter) {
+			NoteLines.push_back(NoteLinePrinter);
+		}
+
 		void EndError();
 
 		const char* GetFilePath() const { return FilePath; }
@@ -59,6 +63,8 @@ namespace arco {
 		std::string LNPad; // New line pad for displaying error location.
 		ulen LargestLineNum;
 		SourceLoc   PrimaryErrLoc;
+
+		llvm::SmallVector<std::function<void(llvm::raw_ostream&)>> NoteLines;
 
 		void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer);
 

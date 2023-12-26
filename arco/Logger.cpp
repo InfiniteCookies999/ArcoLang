@@ -60,6 +60,20 @@ void arco::Logger::EndError() {
 
 	DisplayErrorLoc(PrimaryErrLoc, BetweenLines);
 
+	if (!NoteLines.empty()) {
+		SetTerminalColor(TerminalColorYellow);
+		OS << LNPad << " Note: ";
+		SetTerminalColor(TerminalColorDefault);
+		NoteLines[0](OS);
+		OS << '\n';
+		for (ulen i = 1; i < NoteLines.size(); i++) {
+			OS << LNPad << "       ";
+			OS << '\n';
+		}
+
+		NoteLines.clear();
+	}
+
 	OS << '\n';
 
 	++TotalAccumulatedErrors;
