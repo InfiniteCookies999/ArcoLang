@@ -255,11 +255,33 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 
 void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 	if (Var->ParsingError) return;
+	if (Var->HasBeenChecked) return;
+
+	Var->IsBeingChecked = true;
+	Var->HasBeenChecked = true;
 
 	FScope = Var->FScope;
 
+	if (Var->IsGlobal) {
+		CGlobal = Var;
+	}
+	if (Var->IsField()) {
+		CField = Var;
+	}
+
+	// TODO: Is it needed to store a previous CGlobal/CField
+	//       and set it to that once the function returns?
+#define VAR_YIELD(E, TyErr)      \
+Var->IsBeingChecked = false;     \
+CGlobal = nullptr;               \
+CField  = nullptr;               \
+E;                               \
+if constexpr (TyErr)             \
+	Var->Ty = Context.ErrorType; \
+return;
+
 	if (!FixupType(Var->Ty)) {
-		YIELD_ERROR(Var);
+		VAR_YIELD(, true);
 	}
 	
 	if (Var->IsGlobal) {
@@ -274,25 +296,24 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 			!static_cast<ArrayType*>(Var->Ty)->GetLengthExpr()) {
 
 			if (Var->Assignment->IsNot(AstKind::ARRAY)) {
-				Error(Var, "Expected array declaration for implicit array type");
-				YIELD_ERROR(Var);
+				VAR_YIELD(Error(Var, "Expected array declaration for implicit array type"), true);
 			}
 
 			ArrayType* ImplicitArrayType = static_cast<ArrayType*>(Var->Ty);
 			ArrayType* FromArrayType     = static_cast<ArrayType*>(Var->Assignment->Ty);
 			if (ImplicitArrayType->GetDepthLevel() != FromArrayType->GetDepthLevel()) {
-				Error(Var, "Incompatible depth with initializer array for implicit array type");
-				YIELD_ERROR(Var);
+				VAR_YIELD(Error(Var, "Incompatible depth with initializer array for implicit array type"), true);
 			}
 
 			if (!IsAssignableTo(ImplicitArrayType->GetBaseType(),
 				                FromArrayType->GetBaseType(),
 				                nullptr)) {
-				Error(Var,
-					  "Cannot assign array with element types '%s' to implicit array element types '%s'",
-					FromArrayType->GetBaseType(),  
-					ImplicitArrayType->GetBaseType());
-				YIELD_ERROR(Var);
+				VAR_YIELD(
+					Error(Var,
+					    "Cannot assign array with element types '%s' to implicit array element types '%s'",
+					    FromArrayType->GetBaseType(),  
+					    ImplicitArrayType->GetBaseType()),
+					true);
 			}
 
 			ImplicitArrayType->AssignLength(FromArrayType->GetLength());
@@ -311,8 +332,11 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 		} else if (IsAssignableTo(Var->Ty, Var->Assignment)) {
 			CreateCast(Var->Assignment, Var->Ty);
 		} else {
-			Error(Var, "Cannot assign value of type '%s' to variable of type '%s'",
-				Var->Assignment->Ty->ToString(), Var->Ty->ToString());
+			VAR_YIELD(
+				Error(Var, "Cannot assign value of type '%s' to variable of type '%s'",
+				      Var->Assignment->Ty->ToString(),
+					  Var->Ty->ToString()),
+				false);
 		}
 	} else {
 		// No assignment.
@@ -321,6 +345,8 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 		// need to make sure their is a default constructor available!
 
 	}
+
+	VAR_YIELD(, false);
 }
 
 void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
@@ -921,10 +947,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
 		IRef->Ty = VarRef->Ty;
-		// TODO: Check if field as well?
-		if (VarRef->IsGlobal) {
-			SemAnalyzer Analyzer(Context, VarRef);
-			Analyzer.CheckVarDecl(VarRef);
+		if (VarRef->IsGlobal || VarRef->IsField()) {
+			EnsureChecked(IRef->Loc, VarRef);
 		}
 
 		// TODO: In the future could check if the variable is marked const as well.
@@ -1628,4 +1652,68 @@ bool arco::SemAnalyzer::IsLValue(Expr* E) {
 		return true;
 	}
 	return false;
+}
+
+void arco::SemAnalyzer::EnsureChecked(SourceLoc ErrLoc, VarDecl* Var) {
+
+	if (CGlobal) {
+		if (Var->IsGlobal && Var->IsBeingChecked) {
+			DisplayCircularDepError(ErrLoc, Var, "Global variables form a circular dependency");
+		}
+		CGlobal->DepD = Var;
+	} else if (CField) {
+		if (Var->IsField() && Var->IsBeingChecked) {
+			DisplayCircularDepError(ErrLoc, Var, "Fields form a circular dependency");
+		}
+		CField->DepD = Var;
+	}
+
+
+	SemAnalyzer Analyzer(Context, Var);
+	Analyzer.CheckVarDecl(Var);
+
+}
+
+void arco::SemAnalyzer::DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* StartDep, const char* ErrHeader) {
+	Log.BeginError(ErrLoc, ErrHeader);
+	llvm::SmallVector<Decl*> DepOrder;
+	ulen LongestIdentLen = 0;
+	VarDecl* DepD = StartDep;
+	while (DepD) {
+		if (DepD->Name.Text.size() > LongestIdentLen) {
+			LongestIdentLen = DepD->Name.Text.size();
+		}
+		if (std::find(DepOrder.begin(), DepOrder.end(), DepD) != DepOrder.end()) {
+			// TODO: Loops back on itself?
+			break;
+		}
+		DepOrder.push_back(DepD);
+		DepD = DepD->DepD;
+	}
+	Log.AddNoteLine([](llvm::raw_ostream& OS) {
+		OS << "Dependency graph:";
+	});
+	auto Itr = DepOrder.begin();
+	while (Itr != DepOrder.end()) {
+		Decl* DepRHS = nullptr;
+		Decl* DepLHS = *Itr;
+		if ((Itr + 1) != DepOrder.end()) {
+			DepRHS = *(Itr + 1);
+		} else {
+			DepRHS = StartDep;
+		}
+		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+			std::string LPad = std::string(LongestIdentLen - DepLHS->Name.Text.size(), ' ');
+			std::string RPad = std::string(LongestIdentLen - DepRHS->Name.Text.size(), ' ');
+
+			OS << "'" << DepLHS->Name << "'" << LPad << " deps-on ";
+			OS << "'" << DepRHS->Name << "'" << RPad << "  At: ";
+			OS << DepLHS->FScope->Path << ".arco:" << DepLHS->Loc.LineNumber;
+		});
+		++Itr;
+	}
+
+
+
+	Log.EndError();
 }

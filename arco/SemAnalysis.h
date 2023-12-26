@@ -29,6 +29,8 @@ namespace arco {
 		FileScope*  FScope;
 		FuncDecl*   CFunc   = nullptr;
 		StructDecl* CStruct = nullptr;
+		VarDecl*    CGlobal = nullptr;
+		VarDecl*    CField  = nullptr;
 
 		// Every time a loop is entered this is incremented,
 		// and decremented when existed
@@ -109,6 +111,10 @@ namespace arco {
 
 		void CheckModifibility(Expr* LValue);
 		bool IsLValue(Expr* E);
+
+		void EnsureChecked(SourceLoc ErrLoc, VarDecl* Var);
+
+		void DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* StartDep, const char* ErrHeader);
 
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);

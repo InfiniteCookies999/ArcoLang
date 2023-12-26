@@ -186,8 +186,27 @@ namespace arco {
 		// If the variable is declared inside a function
 		// and returned.
 		bool IsLocalRetValue = false;
+		bool HasBeenChecked  = false;
+		bool IsBeingChecked  = false;
+		bool IsGlobal        = false;
 
-		bool IsGlobal = false;
+		// When parsing the assignment of a field or
+		// a global that field may depend on another
+		// field/global. This variable stores the
+		// dependent variable while it tries to parse
+		// the dependent variable.
+
+		
+		// One variable may depend on another variable in its
+		// declaration.
+		//
+		// Ex.
+		//    a int = 4;
+		//    b int = a + 4;  // b depends on a.
+		//  
+		// When performing semantic analysis this variable stores
+		// the variable it depends on.
+		VarDecl* DepD = nullptr;
 
 		llvm::Value* LLAddress = nullptr;
 

@@ -68,6 +68,7 @@ void arco::Logger::EndError() {
 		OS << '\n';
 		for (ulen i = 1; i < NoteLines.size(); i++) {
 			OS << LNPad << "       ";
+			NoteLines[i](OS);
 			OS << '\n';
 		}
 
