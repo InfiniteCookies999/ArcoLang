@@ -71,7 +71,7 @@ OutStream struct {
 	}
 
 	// TODO: Should be pass by const ref once supported.
-	fn println(msg String) {
+	fn writeln(msg String) {
 		write(msg);
 		write("\n", 1);
 	}
@@ -81,7 +81,7 @@ OutStream struct {
 		write("\n", 1);
 	}
 
-	fn println(i uint) {
+	fn writeln(i uint) {
 		write(cast(uint64) i);
 		write("\n", 1);
 	}

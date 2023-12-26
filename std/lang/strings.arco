@@ -38,7 +38,8 @@ String struct {
 		this.buffer[length] = '\0';
 	}
 
-	fn empty() bool {
+	// TODO: bool type not supported yet.
+	/*fn empty() bool {
 		return length == 0;
-	}
+	}*/
 }

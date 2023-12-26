@@ -5,6 +5,7 @@
 #include "AST.h"
 
 #include <queue>
+#include <unordered_set>
 #include <llvm/ADT/StringMap.h>
 
 namespace llvm {
@@ -70,6 +71,11 @@ namespace arco {
 		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
 
 		std::queue<Decl*> QueuedDeclsToGen;
+
+		// Even if a declaration is not generated it should
+		// still be checked to make sure there is not errors
+		// with the code.
+		std::unordered_set<Decl*> UncheckedDecls;
 
 		/// When the assignment of a global variable is not foldable
 		/// it must be assigned at the start of the program. The variables

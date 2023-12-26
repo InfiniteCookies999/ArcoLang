@@ -63,6 +63,11 @@ void arco::SemAnalyzer::ResolveStructImports(FileScope* FScope) {
 
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (Func->ParsingError) return;
+	if (Func->HasBeenChecked) return;
+
+	Func->HasBeenChecked = true;
+
+	Context.UncheckedDecls.erase(Func);
 
 	CFunc   = Func;
 	CStruct = Func->Struct;
@@ -79,6 +84,11 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 	if (Struct->ParsingError) return;
+	if (Struct->HasBeenChecked) return;
+
+	Struct->HasBeenChecked = true;
+
+	Context.UncheckedDecls.erase(Struct);
 
 	FScope  = Struct->FScope;
 	CStruct = Struct;
@@ -263,6 +273,7 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 	FScope = Var->FScope;
 
 	if (Var->IsGlobal) {
+		Context.UncheckedDecls.erase(Var);
 		CGlobal = Var;
 	}
 	if (Var->IsField()) {

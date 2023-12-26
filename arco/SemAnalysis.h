@@ -21,6 +21,8 @@ namespace arco {
 		
 		void CheckStructDecl(StructDecl* Struct);
 
+		void CheckVarDecl(VarDecl* Var);
+
 	private:
 		ArcoContext& Context;
 		Module*      Mod;
@@ -59,7 +61,6 @@ namespace arco {
 		//===-------------------------------===//
 
 		void CheckScopeStmts(LexScope& LScope, Scope& NewScope);
-		void CheckVarDecl(VarDecl* Var);
 		void CheckReturn(ReturnStmt* Return);
 		void CheckLoopControl(LoopControlStmt* LoopControl);
 		void CheckPredicateLoop(PredicateLoopStmt* Loop);

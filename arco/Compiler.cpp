@@ -147,6 +147,19 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		}
 	}
 
+	// Checking any code that was not generated.
+	while (!Context.UncheckedDecls.empty()) {
+		Decl* D = *Context.UncheckedDecls.begin();
+		SemAnalyzer Analyzer(Context, D);
+		if (D->Is(AstKind::FUNC_DECL)) {
+			Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
+		} else if (D->Is(AstKind::VAR_DECL)) {
+			Analyzer.CheckVarDecl(static_cast<VarDecl*>(D));
+		} else if (D->Is(AstKind::STRUCT_DECL)) {
+			Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
+		}
+	}
+
 	if (FoundCompileError) {
 		return;
 	}

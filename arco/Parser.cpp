@@ -120,6 +120,7 @@ arco::FileScope* arco::Parser::Parse() {
 		} else if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Global = static_cast<VarDecl*>(Stmt);
 			Global->IsGlobal = true;
+			Context.UncheckedDecls.insert(Global);
 
 			Mod->GlobalVars[Global->Name] = Global;
 		} else {
@@ -251,6 +252,8 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	Func->Name   = ParseIdentifier("Expected identifier for function declaration");
 	Func->Mods   = Mods;
 
+	Context.UncheckedDecls.insert(Func);
+
 	CFunc = Func;
 
 	PUSH_SCOPE();
@@ -342,6 +345,8 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
 	Struct->Mods   = Mods;
 	Match(TokenKind::KW_STRUCT);
+
+	Context.UncheckedDecls.insert(Struct);
 	
 	ulen FieldCount = 0;
 	PUSH_SCOPE()

@@ -130,6 +130,7 @@ namespace arco {
 
 		bool GenRequestedAlready = false;
 		bool ParsingError        = false;
+		bool HasBeenChecked      = false;
 
 		Module*     Mod;
 
@@ -186,17 +187,9 @@ namespace arco {
 		// If the variable is declared inside a function
 		// and returned.
 		bool IsLocalRetValue = false;
-		bool HasBeenChecked  = false;
 		bool IsBeingChecked  = false;
 		bool IsGlobal        = false;
 
-		// When parsing the assignment of a field or
-		// a global that field may depend on another
-		// field/global. This variable stores the
-		// dependent variable while it tries to parse
-		// the dependent variable.
-
-		
 		// One variable may depend on another variable in its
 		// declaration.
 		//
