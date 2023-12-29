@@ -61,6 +61,7 @@ namespace arco {
 		ArcoContext& Context;
 
 		llvm::SmallVector<FileScope*> FileScopes;
+		llvm::SmallVector<Module*>    Modules;
 
 		std::string OutputName = "program";
 

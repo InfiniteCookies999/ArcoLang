@@ -68,7 +68,9 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	// Create a module for every source.
 	for (const Source& Source : Sources) {
 		if (Context.ModNamesToMods.find(Source.ModName) == Context.ModNamesToMods.end()) {
-			Context.ModNamesToMods.insert({ Source.ModName, new Module() });
+			Module* Mod = new Module();
+			Context.ModNamesToMods.insert({ Source.ModName, Mod });
+			Modules.push_back(Mod);
 		}
 	}
 
@@ -158,6 +160,10 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		} else if (D->Is(AstKind::STRUCT_DECL)) {
 			Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
 		}
+	}
+
+	for (Module* Mod : Modules) {
+		SemAnalyzer::CheckForDuplicateDeclarations(Mod);
 	}
 
 	if (FoundCompileError) {

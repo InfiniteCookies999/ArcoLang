@@ -17,6 +17,8 @@ namespace arco {
 
 		static void ResolveStructImports(FileScope* FScope);
 
+		static void CheckForDuplicateDeclarations(Module* Mod);
+
 		void CheckFuncDecl(FuncDecl* Func);
 		
 		void CheckStructDecl(StructDecl* Struct);
@@ -116,6 +118,8 @@ namespace arco {
 		void EnsureChecked(SourceLoc ErrLoc, VarDecl* Var);
 
 		void DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* StartDep, const char* ErrHeader);
+
+		static void CheckForDuplicateFuncs(const FuncsList& FuncList);
 
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);

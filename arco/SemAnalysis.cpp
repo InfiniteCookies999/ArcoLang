@@ -61,6 +61,19 @@ void arco::SemAnalyzer::ResolveStructImports(FileScope* FScope) {
 	}
 }
 
+void arco::SemAnalyzer::CheckForDuplicateDeclarations(Module* Mod) {
+	// TODO: Should this really be n^2?
+	for (const auto& [Name, FuncList] : Mod->Funcs) {
+		CheckForDuplicateFuncs(FuncList);
+	}
+	for (const auto& [Name, Struct] : Mod->Structs) {
+		CheckForDuplicateFuncs(Struct->Constructors);
+		for (const auto& [Name, FuncList] : Struct->Funcs) {
+			CheckForDuplicateFuncs(FuncList);
+		}
+	}
+}
+
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (Func->ParsingError) return;
 	if (Func->HasBeenChecked) return;
@@ -1742,4 +1755,27 @@ void arco::SemAnalyzer::DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* Start
 
 
 	Log.EndError();
+}
+
+void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
+	for (const FuncDecl* Func1 : FuncList) {
+		for (const FuncDecl* Func2 : FuncList) {
+			if (Func1 == Func2) continue;
+			if (Func1->Params.size() != Func2->Params.size()) continue;
+			if (std::equal(Func1->Params.begin(),
+					        Func1->Params.end(),
+					        Func2->Params.begin(),
+					        [](const VarDecl* Param1, const VarDecl* Param2) {
+				return Param1->Ty->Equals(Param2->Ty);
+			})) {
+				FileScope* FScope = Func1->FScope;
+				Logger Log(FScope->Path.c_str(), FScope->Buffer);
+				Log.BeginError(Func1->Loc, 
+					"Duplicate declaration of %s '%s'",
+					Func1->IsConstructor ? "constructor" : "function",
+					Func1->Name);
+				Log.EndError();
+			}
+		}
+	}
 }
