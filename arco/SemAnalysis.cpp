@@ -61,8 +61,7 @@ void arco::SemAnalyzer::ResolveStructImports(FileScope* FScope) {
 	}
 }
 
-void arco::SemAnalyzer::CheckForDuplicateDeclarations(Module* Mod) {
-	// TODO: Should this really be n^2?
+void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {
 	for (const auto& [Name, FuncList] : Mod->Funcs) {
 		CheckForDuplicateFuncs(FuncList);
 	}
@@ -1751,8 +1750,6 @@ void arco::SemAnalyzer::DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* Start
 		});
 		++Itr;
 	}
-
-
 
 	Log.EndError();
 }

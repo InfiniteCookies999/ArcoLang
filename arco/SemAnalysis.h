@@ -17,7 +17,7 @@ namespace arco {
 
 		static void ResolveStructImports(FileScope* FScope);
 
-		static void CheckForDuplicateDeclarations(Module* Mod);
+		static void CheckForDuplicateFuncDeclarations(Module* Mod);
 
 		void CheckFuncDecl(FuncDecl* Func);
 		

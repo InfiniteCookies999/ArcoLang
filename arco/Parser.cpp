@@ -116,13 +116,29 @@ arco::FileScope* arco::Parser::Parse() {
 		} else if (Stmt->Is(AstKind::STRUCT_DECL)) {
 			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
 			
-			Mod->Structs[Struct->Name] = Struct;
+			if (!Struct->Name.IsNull()) {
+				if (Mod->Structs.find(Struct->Name) != Mod->Structs.end()) {
+					Error(Struct->Loc,
+						"Duplicate declaration of struct '%s'",
+						Struct->Name);
+				}
+
+				Mod->Structs[Struct->Name] = Struct;
+			}
 		} else if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Global = static_cast<VarDecl*>(Stmt);
 			Global->IsGlobal = true;
 			Context.UncheckedDecls.insert(Global);
 
-			Mod->GlobalVars[Global->Name] = Global;
+			if (!Global->Name.IsNull()) {
+				if (Mod->GlobalVars.find(Global->Name) != Mod->GlobalVars.end()) {
+					Error(Global->Loc,
+						"Duplicate declaration of global variable '%s'",
+						Global->Name);
+				}
+				
+				Mod->GlobalVars[Global->Name] = Global;
+			}
 		} else {
 			FScope->InvalidStmts.push_back({
 				FileScope::InvalidScopeKind::GLOBAL,

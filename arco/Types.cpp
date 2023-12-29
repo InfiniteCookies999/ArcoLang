@@ -6,6 +6,8 @@
 
 bool arco::Type::Equals(Type* Ty) const {
 	switch (Ty->GetKind()) {
+	case TypeKind::Error:
+		return false;
 	case TypeKind::Array: {
 		if (this->GetKind() != TypeKind::Array) {
 			return false;

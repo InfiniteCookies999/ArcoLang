@@ -163,7 +163,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	}
 
 	for (Module* Mod : Modules) {
-		SemAnalyzer::CheckForDuplicateDeclarations(Mod);
+		SemAnalyzer::CheckForDuplicateFuncDeclarations(Mod);
 	}
 
 	if (FoundCompileError) {
