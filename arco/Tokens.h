@@ -33,6 +33,7 @@ namespace arco {
 		KW_CHAR,
 		KW_VOID,
 		KW_CSTR,
+		KW_BOOL,
 
 		KW_NATIVE,
 		KW_CONST,

@@ -103,6 +103,8 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 	case TypeKind::Int:
 	case TypeKind::UnsignedInt:
 		return GetSystemIntType(LLContext, Context.LLArcoModule);
+	case TypeKind::Bool:
+		return llvm::Type::getInt1Ty(LLContext);
 	case TypeKind::Void:
 		return llvm::Type::getVoidTy(LLContext);
 	case TypeKind::CStr:

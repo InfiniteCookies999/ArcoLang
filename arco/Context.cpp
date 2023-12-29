@@ -109,6 +109,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "char"    , TokenKind::KW_CHAR     });
 	TokenKeywordMap.insert({ "void"    , TokenKind::KW_VOID     });
 	TokenKeywordMap.insert({ "cstr"    , TokenKind::KW_CSTR     });
+	TokenKeywordMap.insert({ "bool"    , TokenKind::KW_BOOL     });
 	TokenKeywordMap.insert({ "new"     , TokenKind::KW_NEW      });
 	TokenKeywordMap.insert({ "this"    , TokenKind::KW_THIS     });
 	TokenKeywordMap.insert({ "import"  , TokenKind::KW_IMPORT   });

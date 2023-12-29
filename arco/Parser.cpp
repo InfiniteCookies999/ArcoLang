@@ -591,6 +591,7 @@ arco::Type* arco::Parser::ParseType() {
 	case TokenKind::KW_CHAR:   Ty = Context.CharType;   NextToken(); break;
 	case TokenKind::KW_VOID:   Ty = Context.VoidType;   NextToken(); break;
 	case TokenKind::KW_CSTR:   Ty = Context.CStrType;   NextToken(); break;
+	case TokenKind::KW_BOOL:   Ty = Context.BoolType;   NextToken(); break;
 	case TokenKind::IDENT: {
 		Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
 		NextToken();
