@@ -1012,58 +1012,94 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	//
 	// Conditionals
 	//
-	case '<': {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-
-		if (BinOp->LHS->Ty->IsSigned() ||
-			BinOp->RHS->Ty->IsSigned()) {
-			return Builder.CreateICmpSLT(LLLHS, LLRHS);
+	case TokenKind::EQ_EQ: {
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getTrue(LLContext);
 		} else {
-			return Builder.CreateICmpULT(LLLHS, LLRHS);
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateICmpEQ(LLLHS, LLRHS);
+		}
+	}
+	case TokenKind::EXL_EQ: {
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getFalse(LLContext);
+		} else {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateICmpNE(LLLHS, LLRHS);
+		}
+	}
+	case '<': {
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getFalse(LLContext);
+		} else {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+			if (BinOp->LHS->Ty->IsSigned() ||
+				BinOp->RHS->Ty->IsSigned()) {
+				return Builder.CreateICmpSLT(LLLHS, LLRHS);
+			} else {
+				return Builder.CreateICmpULT(LLLHS, LLRHS);
+			}
 		}
 	}
 	case '>': {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-
-		if (BinOp->LHS->Ty->IsSigned() ||
-			BinOp->RHS->Ty->IsSigned()) {
-			return Builder.CreateICmpSGT(LLLHS, LLRHS);
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getFalse(LLContext);
 		} else {
-			return Builder.CreateICmpUGT(LLLHS, LLRHS);
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+			if (BinOp->LHS->Ty->IsSigned() ||
+				BinOp->RHS->Ty->IsSigned()) {
+				return Builder.CreateICmpSGT(LLLHS, LLRHS);
+			} else {
+				return Builder.CreateICmpUGT(LLLHS, LLRHS);
+			}	
 		}
 	}
-	case TokenKind::EQ_EQ: {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-		return Builder.CreateICmpEQ(LLLHS, LLRHS);
-	}
-	case TokenKind::EXL_EQ: {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-		return Builder.CreateICmpNE(LLLHS, LLRHS);
-	}
 	case TokenKind::LT_EQ: {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-
-		if (BinOp->LHS->Ty->IsSigned() ||
-			BinOp->RHS->Ty->IsSigned()) {
-			return Builder.CreateICmpSLE(LLLHS, LLRHS);
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getTrue(LLContext);
 		} else {
-			return Builder.CreateICmpULE(LLLHS, LLRHS);
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+			if (BinOp->LHS->Ty->IsSigned() ||
+				BinOp->RHS->Ty->IsSigned()) {
+				return Builder.CreateICmpSLE(LLLHS, LLRHS);
+			} else {
+				return Builder.CreateICmpULE(LLLHS, LLRHS);
+			}	
 		}
 	}
 	case TokenKind::GT_EQ: {
-		llvm::Value* LLLHS = GenRValue(BinOp->LHS);
-		llvm::Value* LLRHS = GenRValue(BinOp->RHS);
-
-		if (BinOp->LHS->Ty->IsSigned() ||
-			BinOp->RHS->Ty->IsSigned()) {
-			return Builder.CreateICmpSGE(LLLHS, LLRHS);
+		TypeKind LK = BinOp->LHS->Ty->GetKind();
+		TypeKind RK = BinOp->RHS->Ty->GetKind();
+		if (LK == TypeKind::Null && RK == TypeKind::Null) {
+			return llvm::ConstantInt::getTrue(LLContext);
 		} else {
-			return Builder.CreateICmpUGE(LLLHS, LLRHS);
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+
+			if (BinOp->LHS->Ty->IsSigned() ||
+				BinOp->RHS->Ty->IsSigned()) {
+				return Builder.CreateICmpSGE(LLLHS, LLRHS);
+			} else {
+				return Builder.CreateICmpUGE(LLLHS, LLRHS);
+			}	
 		}
 	}
 	default:

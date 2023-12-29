@@ -813,10 +813,32 @@ YIELD_ERROR(BinOp)
 	case TokenKind::EQ_EQ: case TokenKind::EXL_EQ:
 	case '<': case '>':
 	case TokenKind::LT_EQ: case TokenKind::GT_EQ: {
-		if (LTy->GetKind() == TypeKind::Pointer || LTy->GetKind() == TypeKind::Null) {
-			assert(!"pointer arithmetic not supported yet!");
-		} else if (RTy->GetKind() == TypeKind::Pointer || RTy->GetKind() == TypeKind::Null) {
-			assert(!"pointer arithmetic not supported yet!");
+		if (LTy->IsPointer() || LTy->GetKind() == TypeKind::Null) {
+
+			if (!(RTy->IsPointer() || RTy->GetKind() == TypeKind::Null)) {
+				Error(BinOp->RHS, "Expected to be a pointer");
+			}
+
+			if (RTy->GetKind() == TypeKind::Null) {
+				CreateCast(BinOp->RHS, BinOp->LHS->Ty);
+			} else if (LTy->GetKind() == TypeKind::Null) {
+				CreateCast(BinOp->LHS, BinOp->RHS->Ty);
+			}
+
+			BinOp->Ty = Context.BoolType;
+		} else if (RTy->IsPointer() || RTy->GetKind() == TypeKind::Null) {
+			
+			if (!(LTy->IsPointer() || LTy->GetKind() == TypeKind::Null)) {
+				Error(BinOp->LHS, "Expected to be a pointer");
+			}
+
+			if (RTy->GetKind() == TypeKind::Null) {
+				CreateCast(BinOp->RHS, BinOp->LHS->Ty);
+			} else if (LTy->GetKind() == TypeKind::Null) {
+				CreateCast(BinOp->LHS, BinOp->RHS->Ty);
+			}
+
+			BinOp->Ty = Context.BoolType;
 		} else if (LTy == Context.BoolType && RTy == Context.BoolType) {
 			BinOp->Ty = Context.BoolType;
 		} else {
