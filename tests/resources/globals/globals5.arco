@@ -1,0 +1,19 @@
+// -- Test to make sure that default
+//    initialization of arrays of struct
+//    objects works globally.
+
+Data struct {
+	a int = 235;
+	b int = 31;
+}
+
+arr Data[5];
+
+fn main() {
+	loop i int = 0; i < 5; i++ {
+		print(arr[i].a);
+		print(" ", 1);
+		print(arr[i].b);
+		print(" ", 1);
+	}
+}

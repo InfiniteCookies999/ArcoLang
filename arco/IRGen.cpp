@@ -222,7 +222,19 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
 	auto Itr = Context.GlobalPostponedAssignments.begin();
 	while (Itr != Context.GlobalPostponedAssignments.end()) {
 		VarDecl* Global = *Itr;
-		GenAssignment(Global->LLAddress, Global->Assignment);
+		if (Global->Assignment) {
+			GenAssignment(Global->LLAddress, Global->Assignment);
+		} else {
+			if (Global->Ty->GetKind() == TypeKind::Struct) {
+				CallDefaultConstructor(Global->LLAddress, static_cast<StructType*>(Global->Ty));
+			} else if (Global->Ty->GetKind() == TypeKind::Array &&
+				   static_cast<ArrayType*>(Global->Ty)->GetBaseType()->GetKind() == TypeKind::Struct) {
+				ArrayType* ArrayTy = static_cast<ArrayType*>(Global->Ty);
+				llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(Global->LLAddress, ArrayTy);
+				llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
+				StructArrayCallDefaultConstructors(ArrayTy->GetBaseType(), LLArrStartPtr, LLTotalLinearLength);
+			}
+		}
 		++Itr;
 	}
 	
@@ -1975,7 +1987,15 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 	} else {
 		// Assignment == nullptr
 
-		return { true, GenZeroedValue(Ty) };
+		if (Ty->GetKind() == TypeKind::Struct ||
+			(Ty->GetKind() == TypeKind::Array &&
+			 static_cast<ArrayType*>(Ty)->GetBaseType()->GetKind() == TypeKind::Struct)) {
+			// TODO: If foldable could get away with not calling the default constructor.
+			// Need to call the default constructor.
+			return { false, GenZeroedValue(Ty) };
+		} else {
+			return { true, GenZeroedValue(Ty) };
+		}
 	}
 }
 

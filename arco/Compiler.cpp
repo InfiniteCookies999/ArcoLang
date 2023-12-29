@@ -171,13 +171,13 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	}
 
 	IRGenerator IRGen(Context);
+	IRGen.GenGlobalInitFuncBody();
+
 	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
 		StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
 		Context.DefaultConstrucorsNeedingCreated.pop();
 		IRGen.GenImplicitDefaultConstructorBody(Struct);
 	}
-
-	IRGen.GenGlobalInitFuncBody();
 
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
 	i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();

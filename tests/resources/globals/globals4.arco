@@ -1,0 +1,16 @@
+// -- Test to make sure struct declaration and
+//    default initialization works for global
+//    variables.
+
+Data struct {
+	a int = 22;
+	b int = 1111;
+}
+
+data Data;
+
+fn main() {
+	print(data.a);
+	print(" ", 1);
+	print(data.b);
+}
