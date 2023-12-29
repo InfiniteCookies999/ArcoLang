@@ -1,0 +1,16 @@
+fn main() {
+	true_bool bool = true;
+	false_bool bool = false;
+	if true_bool == true {
+		print("ok1", 3);
+	}
+	if true_bool != false {
+		print("ok2", 3);
+	}
+	if false_bool == false {
+		print("ok3", 3);
+	}
+	if false_bool != true {
+		print("ok4", 3);
+	}
+}

@@ -483,6 +483,11 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenStringLiteral(static_cast<StringLiteral*>(Node));
 	case AstKind::NULLPTR:
 		return llvm::Constant::getNullValue(GenType(static_cast<NullPtr*>(Node)->CastTy));
+	case AstKind::BOOL_LITERAL: {
+		BoolLiteral* B = static_cast<BoolLiteral*>(Node);
+		if (B->TOF) return llvm::ConstantInt::getTrue(LLContext);
+		else        return llvm::ConstantInt::getFalse(LLContext);
+	}
 	case AstKind::IDENT_REF:
 		return GenIdentRef(static_cast<IdentRef*>(Node));
 	case AstKind::FIELD_ACCESSOR:

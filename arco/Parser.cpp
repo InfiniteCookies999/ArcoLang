@@ -57,6 +57,7 @@ case TokenKind::KW_UINT32:  \
 case TokenKind::KW_UINT64:  \
 case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
+case TokenKind::KW_BOOL:    \
 case TokenKind::KW_CSTR
 
 // P - Parsing code.
@@ -926,6 +927,20 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 			SkipRecovery();
 		}
 		return Alloc;
+	}
+	case TokenKind::KW_TRUE: {
+		BoolLiteral* B = NewNode<BoolLiteral>(CTok);
+		NextToken();
+		B->TOF = true;
+		B->Ty  = Context.BoolType;
+		return B;
+	}
+	case TokenKind::KW_FALSE: {
+		BoolLiteral* B = NewNode<BoolLiteral>(CTok);
+		NextToken();
+		B->TOF = false;
+		B->Ty  = Context.BoolType;
+		return B;
 	}
 	default:
 		Error(CTok.Loc, "Expected an expression");

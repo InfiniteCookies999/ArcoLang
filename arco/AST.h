@@ -45,6 +45,7 @@ namespace arco {
 		NUMBER_LITERAL,
 		STRING_LITERAL,
 		NULLPTR,
+		BOOL_LITERAL,
 		BINARY_OP,
 		UNARY_OP,
 		IDENT_REF,
@@ -349,6 +350,14 @@ namespace arco {
 	// Ex.  'null'
 	struct NullPtr : Expr {
 		NullPtr() : Expr(AstKind::NULLPTR) {}
+	};
+
+	// Ex.  'true' or 'false'
+	struct BoolLiteral : Expr {
+		bool TOF;
+
+		BoolLiteral()
+			: Expr(AstKind::BOOL_LITERAL) {}
 	};
 
 	// Ex.  'a + b'

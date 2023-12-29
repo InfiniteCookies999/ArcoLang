@@ -194,6 +194,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::NUMBER_LITERAL:
 	case AstKind::STRING_LITERAL:
 	case AstKind::NULLPTR:
+	case AstKind::BOOL_LITERAL:
 		break;
 	default:
 		assert(!"Failed to implement CheckNode case!");

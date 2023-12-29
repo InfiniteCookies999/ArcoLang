@@ -77,6 +77,7 @@ int main() {
 	RunTest(SRC("increments.arco"), "2 0 0 1 1 0 1 0");
 	RunTest(SRC("pointer_arithmetic.arco"), "hello worldello worldo worldworld worldello world");
 	RunTest(SRC("heap_alloc.arco"), "315 341 88 341 66 341 66 341 66 341 66");
+	RunTest(SRC("bool_literals.arco"), "ok1ok2ok3ok4");
 	
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
