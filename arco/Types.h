@@ -29,6 +29,9 @@ namespace arco {
 		UnsignedInt32,
 		UnsignedInt64,
 	
+		Float32,
+		Float64,
+
 		Char,
 
 		Void,
@@ -60,6 +63,7 @@ namespace arco {
 
 		bool IsNumber() const;
 		bool IsInt() const;
+		bool IsFloat() const;
 		bool IsSigned() const;
 		bool IsSystemInt() const;
 		bool IsPointer() const;
@@ -70,7 +74,7 @@ namespace arco {
 		ulen GetSizeInBytes(llvm::Module& LLModule) const;
 
 		static Type* GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoContext& Context);
-		//static Type* GetFloatTypeBasedOnByteSize(usize Size, ArcoContext& Context);
+		static Type* GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Context);
 
 		std::string ToString() const;
 

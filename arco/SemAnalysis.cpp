@@ -591,8 +591,14 @@ static Type* DetermineTypeFromNumberTypes(ArcoContext& Context, Type* LTy, Type*
 	if (LTy->IsInt() && RTy->IsInt()) {
 		return DetermineTypeFromIntTypes(Context, LTy, RTy);
 	} else {
-		assert(!"Not handling non-integer numbers yet!");
-		return nullptr;
+		if (LTy->IsSystemInt()) {
+			return RTy; // Take on the float size
+		} else if (RTy->IsSystemInt()) {
+			return LTy; // Take on the float size
+		} else {
+			ulen LargerMemSize = max(LTy->GetTrivialTypeSizeInBytes(), RTy->GetTrivialTypeSizeInBytes());
+			return Type::GetFloatTypeBasedOnByteSize(LargerMemSize, Context);
+		}
 	}
 }
 
@@ -1607,6 +1613,13 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 		}
 		return false;
 	}
+	case TypeKind::Float32:
+	case TypeKind::Float64:
+		if (FromTy->IsInt()) {
+			return true;
+		} else {
+			return FromTy->Equals(ToTy);
+		}
 	case TypeKind::CStr: {
 		if (FromTy == Context.NullType)
 			return true;
@@ -1704,6 +1717,9 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
 			return true;
 		}
 		return false;
+	case TypeKind::Float32:
+	case TypeKind::Float64:
+		return FromTy->IsNumber();
 	case TypeKind::Pointer:
 		if (FromTy->IsNumber() || FromTy->IsPointer()) {
 			// Allow numbers/pointers to cast to pointers.

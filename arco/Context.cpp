@@ -21,6 +21,8 @@ arco::ArcoContext::ArcoContext()
 	UInt16Type(new Type(TypeKind::UnsignedInt16)),
 	UInt32Type(new Type(TypeKind::UnsignedInt32)),
 	UInt64Type(new Type(TypeKind::UnsignedInt64)),
+	Float32Type(new Type(TypeKind::Float32)),
+	Float64Type(new Type(TypeKind::Float64)),
 	CharType(new Type(TypeKind::Char)),
 	VoidType(new Type(TypeKind::Void)),
 	BoolType(new Type(TypeKind::Bool)),
@@ -82,6 +84,8 @@ arco::ArcoContext::~ArcoContext() {
 	delete UInt16Type;
 	delete UInt32Type;
 	delete UInt64Type;
+	delete Float32Type;
+	delete Float64Type;
 	delete CharType;
 	delete VoidType;
 	delete BoolType;
@@ -106,6 +110,8 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "uint16"   , TokenKind::KW_UINT16    });
 	TokenKeywordMap.insert({ "uint32"   , TokenKind::KW_UINT32    });
 	TokenKeywordMap.insert({ "uint64"   , TokenKind::KW_UINT64    });
+	TokenKeywordMap.insert({ "f32"      , TokenKind::KW_F32       });
+	TokenKeywordMap.insert({ "f64"      , TokenKind::KW_F64       });
 	TokenKeywordMap.insert({ "char"     , TokenKind::KW_CHAR      });
 	TokenKeywordMap.insert({ "void"     , TokenKind::KW_VOID      });
 	TokenKeywordMap.insert({ "cstr"     , TokenKind::KW_CSTR      });

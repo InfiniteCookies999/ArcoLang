@@ -119,6 +119,7 @@ namespace arco {
 		NumberLiteral* ParseBinLiteral();
 		NumberLiteral* ParseCharLiteral();
 		NumberLiteral* FinalizeIntLiteral(ulen Idx, u64 IntValue);
+		NumberLiteral* ParseFloatLiteral();
 		StringLiteral* ParseStringLiteral();
 		FuncCall* ParseFuncCall(Expr* Site);
 		Array* ParseArray();

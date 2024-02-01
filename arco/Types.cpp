@@ -56,6 +56,8 @@ bool arco::Type::IsNumber() const {
 	case TypeKind::Int:
 	case TypeKind::UnsignedInt:
 	case TypeKind::Char:
+	case TypeKind::Float32:
+	case TypeKind::Float64:
 		return true;
 	default:
 		return false;
@@ -81,6 +83,11 @@ bool arco::Type::IsInt() const {
 	}
 }
 
+bool arco::Type::IsFloat() const {
+	TypeKind K = GetKind();
+	return K == TypeKind::Float32 || K == TypeKind::Float64;
+}
+
 bool arco::Type::IsSigned() const {
 	switch (GetKind()) {
 	case TypeKind::Int8:
@@ -89,6 +96,8 @@ bool arco::Type::IsSigned() const {
 	case TypeKind::Int64:
 	case TypeKind::Int:
 	case TypeKind::Char:
+	case TypeKind::Float32:
+	case TypeKind::Float64:
 		return true;
 	default:
 		return false;
@@ -102,7 +111,7 @@ bool arco::Type::IsSystemInt() const {
 
 bool arco::Type::IsPointer() const {
 	TypeKind Kind = GetKind();
-	return Kind == TypeKind::Pointer || Kind == TypeKind::CStr;
+	return Kind == TypeKind::Pointer || Kind == TypeKind::CStr || Kind == TypeKind::Null;
 }
 
 arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
@@ -123,9 +132,11 @@ ulen arco::Type::GetTrivialTypeSizeInBytes() const {
 		return 2;
 	case TypeKind::Int32:
 	case TypeKind::UnsignedInt32:
+	case TypeKind::Float32:
 		return 4;
 	case TypeKind::Int64:
 	case TypeKind::UnsignedInt64:
+	case TypeKind::Float64:
 		return 8;
 	default:
 		assert(!"unreachable!");
@@ -144,9 +155,11 @@ ulen arco::Type::GetSizeInBytes(llvm::Module& LLModule) const {
 		return 2;
 	case TypeKind::Int32:
 	case TypeKind::UnsignedInt32:
+	case TypeKind::Float32:
 		return 4;
 	case TypeKind::Int64:
 	case TypeKind::UnsignedInt64:
+	case TypeKind::Float64:
 		return 8;
 	case TypeKind::Int:
 	case TypeKind::UnsignedInt:
@@ -169,6 +182,16 @@ arco::Type* arco::Type::GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoCo
 	}
 }
 
+arco::Type* arco::Type::GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Context) {
+	switch (Size) {
+	case 4: return Context.Float32Type;
+	case 8: return Context.Float64Type;
+	default:
+		assert(!"Bad memory size");
+		return nullptr;
+	}
+}
+
 std::string arco::Type::ToString() const {
 	switch (GetKind()) {
 	case TypeKind::Int8:		    return "int8";
@@ -179,6 +202,8 @@ std::string arco::Type::ToString() const {
 	case TypeKind::UnsignedInt16:   return "uint16";
 	case TypeKind::UnsignedInt32:   return "uint32";
 	case TypeKind::UnsignedInt64:   return "uint64";
+	case TypeKind::Float32:         return "f32";
+	case TypeKind::Float64:         return "f64";
 	case TypeKind::Char:            return "char";
 	case TypeKind::Int:             return "int";
 	case TypeKind::UnsignedInt:     return "uint";

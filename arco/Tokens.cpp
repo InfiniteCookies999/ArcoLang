@@ -9,7 +9,9 @@ std::string arco::Token::TokenKindToString(u16 Kind, ArcoContext& Context) {
 	case TokenKind::HEX_LITERAL:    return "hex-literal";
 	case TokenKind::BIN_LITERAL:    return "bin-literal";
 	case TokenKind::CHAR_LITERAL:   return "char-literal";
-	case TokenKind::FLOAT_LITERAL:  return "float-literal";
+	case TokenKind::FLOAT32_LITERAL:  return "float32-literal";
+	case TokenKind::FLOAT64_LITERAL:  return "float64-literal";
+	case TokenKind::ERROR_FLOAT_LITERAL: return "error";
 	case TokenKind::STRING_LITERAL: return "string-literal";
 	case TokenKind::TK_EOF:         return "eof";
 	case TokenKind::PLUS_PLUS:      return "++";

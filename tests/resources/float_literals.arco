@@ -1,0 +1,41 @@
+fn main() {
+	
+	a f64 = 522.157;
+	a *= 1000;
+	print(cast(int) a);
+	print(" ", 1);
+
+	b1 f64 = 4E6;
+	print(cast(int) b1);
+	print(" ", 1);
+	b2 f64 = 4e6;
+	print(cast(int) b2);
+	print(" ", 1);
+	b3 f64 = 4E+6;
+	print(cast(int) b1);
+	print(" ", 1);
+	b4 f64 = 4e+6;
+	print(cast(int) b2);
+	print(" ", 1);
+
+	c1 f64 = 4E-6;
+	c1 *= 4000000;
+	print(cast(int) c1);
+	print(" ", 1);
+	c2 f64 = 4E-6;
+	c2 *= 4000000;
+	print(cast(int) c2);
+	print(" ", 1);
+
+	d f64 = 3.314e3;
+	print(cast(int) 3314);
+	print(" ", 1);
+
+	e f64 = 0.00_000_05 * 10000000;
+	print(cast(int) 5);
+	print(" ", 1);
+
+	f f64 = 0.0;
+	print(cast(int) f);
+
+}

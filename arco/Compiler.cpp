@@ -10,6 +10,7 @@
 #include "SemAnalysis.h"
 #include "IRGen.h"
 #include "CodeGen.h"
+#include "FloatConversions.h"
 
 static bool ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
 	std::ifstream Stream(Path, std::ios::binary | std::ios::in);
@@ -55,6 +56,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 ParseTimeBegin = GetTimeInMilliseconds();
 
 	Context.Initialize();
+	FD::InitializeCache();
 
 	if (!StandAlone) {
 		if (auto StdLibPath = GetStdLibPath()) {

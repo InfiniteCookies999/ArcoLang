@@ -169,12 +169,71 @@ arco::Token arco::Lexer::NextNumber() {
 		}
 	}
 
+	bool EncounteredError = false;
+
 	// Leading whole digits [0-9']+
 	while (IsDigit(*CurPtr) || *CurPtr == NUMBER_SEPERATOR) {
 		++CurPtr;
 	}
 
-	return FinishNumber(TokStart, TokenKind::INT_LITERAL);
+	bool IsFloating = false;
+	if (*CurPtr == '.' || *CurPtr == 'E' || *CurPtr == 'e') {
+		IsFloating = true;
+		if (*CurPtr == '.') {
+			++CurPtr; // Eating '.'.
+			// Fractional digits [0-9]+
+			while (IsDigit(*CurPtr) || *CurPtr == NUMBER_SEPERATOR) {
+				++CurPtr;
+			}
+		}
+
+		if (*CurPtr == 'E' || *CurPtr == 'e') {
+			++CurPtr; // Eating 'E' or 'e'.
+
+			// Possible exponent sign
+			if (*CurPtr == '+' || *CurPtr == '-') {
+				++CurPtr;
+			}
+
+			bool EncounteredExpDigits = false;
+			// Eating exponent digits
+			while (IsDigit(*CurPtr) || *CurPtr == NUMBER_SEPERATOR) {
+				if (*CurPtr == NUMBER_SEPERATOR) {
+					EncounteredError = true;
+					Error(CurPtr, "Numeric seperators do not belong in the exponent");
+				} else {
+					EncounteredExpDigits = true;
+				}
+				++CurPtr;
+			}
+			if (!EncounteredExpDigits) {
+				Error(CurPtr, "Expected digits for exponent");
+				EncounteredError = true;
+			}
+		}
+	}
+
+	if (IsFloating) {
+		bool Is64Bit = true;
+		if (*CurPtr == 'f' || *CurPtr == 'F') {
+			// The expected type is a 32 bit floating number.
+			++CurPtr;
+			Is64Bit = false;
+		} else if (*CurPtr == 'd' || *CurPtr == 'D') {
+			// The expected type is a 64 bit floating number.
+			++CurPtr;
+		}
+
+		if (EncounteredError) {
+			return CreateToken(TokenKind::ERROR_FLOAT_LITERAL, CreateText(TokStart));
+		} else if (Is64Bit) {
+			return CreateToken(TokenKind::FLOAT64_LITERAL, CreateText(TokStart));
+		} else {
+			return CreateToken(TokenKind::FLOAT32_LITERAL, CreateText(TokStart));
+		}
+	} else {
+		return FinishNumber(TokStart, TokenKind::INT_LITERAL);
+	}
 }
 
 arco::Token arco::Lexer::FinishNumber(const char* TokStart, TokenKind Kind) {

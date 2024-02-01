@@ -4,6 +4,7 @@
 #include <stack>
 
 #include "Context.h"
+#include "FloatConversions.h"
 
 namespace arco {
 	template<typename N>
@@ -58,6 +59,8 @@ case TokenKind::KW_UINT8:   \
 case TokenKind::KW_UINT16:  \
 case TokenKind::KW_UINT32:  \
 case TokenKind::KW_UINT64:  \
+case TokenKind::KW_F32:     \
+case TokenKind::KW_F64:     \
 case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_BOOL:    \
@@ -759,20 +762,22 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 	arco::Type* Ty = nullptr;
 	
 	switch (CTok.Kind) {
-	case TokenKind::KW_INT:    Ty = Context.IntType;    NextToken(); break;
-	case TokenKind::KW_UINT:   Ty = Context.UIntType;   NextToken(); break;
-	case TokenKind::KW_INT8:   Ty = Context.Int8Type;   NextToken(); break;
-	case TokenKind::KW_INT16:  Ty = Context.Int16Type;  NextToken(); break;
-	case TokenKind::KW_INT32:  Ty = Context.Int32Type;  NextToken(); break;
-	case TokenKind::KW_INT64:  Ty = Context.Int64Type;  NextToken(); break;
-	case TokenKind::KW_UINT8:  Ty = Context.UInt8Type;  NextToken(); break;
-	case TokenKind::KW_UINT16: Ty = Context.UInt16Type; NextToken(); break;
-	case TokenKind::KW_UINT32: Ty = Context.UInt32Type; NextToken(); break;
-	case TokenKind::KW_UINT64: Ty = Context.UInt64Type; NextToken(); break;
-	case TokenKind::KW_CHAR:   Ty = Context.CharType;   NextToken(); break;
-	case TokenKind::KW_VOID:   Ty = Context.VoidType;   NextToken(); break;
-	case TokenKind::KW_CSTR:   Ty = Context.CStrType;   NextToken(); break;
-	case TokenKind::KW_BOOL:   Ty = Context.BoolType;   NextToken(); break;
+	case TokenKind::KW_INT:    Ty = Context.IntType;     NextToken(); break;
+	case TokenKind::KW_UINT:   Ty = Context.UIntType;    NextToken(); break;
+	case TokenKind::KW_INT8:   Ty = Context.Int8Type;    NextToken(); break;
+	case TokenKind::KW_INT16:  Ty = Context.Int16Type;   NextToken(); break;
+	case TokenKind::KW_INT32:  Ty = Context.Int32Type;   NextToken(); break;
+	case TokenKind::KW_INT64:  Ty = Context.Int64Type;   NextToken(); break;
+	case TokenKind::KW_UINT8:  Ty = Context.UInt8Type;   NextToken(); break;
+	case TokenKind::KW_UINT16: Ty = Context.UInt16Type;  NextToken(); break;
+	case TokenKind::KW_UINT32: Ty = Context.UInt32Type;  NextToken(); break;
+	case TokenKind::KW_UINT64: Ty = Context.UInt64Type;  NextToken(); break;
+	case TokenKind::KW_F32:    Ty = Context.Float32Type; NextToken(); break;
+	case TokenKind::KW_F64:    Ty = Context.Float64Type; NextToken(); break;
+	case TokenKind::KW_CHAR:   Ty = Context.CharType;    NextToken(); break;
+	case TokenKind::KW_VOID:   Ty = Context.VoidType;    NextToken(); break;
+	case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
+	case TokenKind::KW_BOOL:   Ty = Context.BoolType;    NextToken(); break;
 	case TokenKind::IDENT: {
 		Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
 		NextToken();
@@ -963,6 +968,9 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 	case TokenKind::INT_LITERAL:     return ParseIntLiteral();
 	case TokenKind::HEX_LITERAL:     return ParseHexLiteral();
 	case TokenKind::BIN_LITERAL:     return ParseBinLiteral();
+	case TokenKind::ERROR_FLOAT_LITERAL:
+	case TokenKind::FLOAT32_LITERAL:
+	case TokenKind::FLOAT64_LITERAL: return ParseFloatLiteral();
 	case TokenKind::CHAR_LITERAL:    return ParseCharLiteral();
 	case TokenKind::STRING_LITERAL:  return ParseStringLiteral();
 	case TokenKind::IDENT: {
@@ -1429,6 +1437,40 @@ arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue) {
 			Number->UnsignedIntValue = IntValue;
 		} else {
 			Number->SignedIntValue = IntValue;
+		}
+	}
+
+	NextToken();
+	return Number;
+}
+
+arco::NumberLiteral* arco::Parser::ParseFloatLiteral() {
+	NumberLiteral* Number = NewNode<NumberLiteral>(CTok);
+	if (CTok.Is(TokenKind::ERROR_FLOAT_LITERAL)) {
+		// Error generated during lexing so not even going
+		// to attempt to parse.
+		Number->Ty = Context.Float64Type;
+	} else if (CTok.Is(TokenKind::FLOAT32_LITERAL)) {
+		Number->Ty = Context.Float32Type;
+		FD::FloatParseError E;
+		Number->Float32Value = FD::ToIEEESingle(CTok.GetText(), E);
+		if (E != FD::FloatParseError::NONE) {
+			if (E == FD::FloatParseError::OVERFLOWED) {
+				Error(CTok, "Float value too large");
+			} else {
+				Error(CTok, "Float value underflowed (It is too small)");
+			}
+		}
+	} else {
+		Number->Ty = Context.Float64Type;
+		FD::FloatParseError E;
+		Number->Float64Value = FD::ToIEEEDouble(CTok.GetText(), E);
+		if (E != FD::FloatParseError::NONE) {
+			if (E == FD::FloatParseError::OVERFLOWED) {
+				Error(CTok, "Float value too large");
+			} else {
+				Error(CTok, "Float value underflowed (It is too small)");
+			}
 		}
 	}
 

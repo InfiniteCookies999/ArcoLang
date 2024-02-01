@@ -74,6 +74,7 @@ int main() {
 	RunTest(SRC("binary_operators.arco"), "464");
 	RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
 	RunTest(SRC("bin_literals.arco"), "941 32767 0 1404243");
+	RunTest(SRC("float_literals.arco"), "522157 4000000 4000000 4000000 4000000 16 16 3314 5 0");
 	RunTest(SRC("increments.arco"), "2 0 0 1 1 0 1 0");
 	RunTest(SRC("pointer_arithmetic.arco"), "hello worldello worldo worldworld worldello world");
 	RunTest(SRC("heap_alloc.arco"), "315 341 88 341 66 341 66 341 66 341 66");

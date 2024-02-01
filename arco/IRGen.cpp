@@ -109,6 +109,10 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		return llvm::Type::getVoidTy(LLContext);
 	case TypeKind::CStr:
 		return llvm::Type::getInt8PtrTy(LLContext);
+	case TypeKind::Float32:
+		return llvm::Type::getFloatTy(LLContext);
+	case TypeKind::Float64:
+		return llvm::Type::getDoubleTy(LLContext);
 	case TypeKind::Pointer: {
 		PointerType* PtrTy = static_cast<PointerType*>(Ty);
 		if (PtrTy->GetElementType() == Context.VoidType) {
@@ -1029,6 +1033,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getTrue(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpUEQ(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1040,6 +1049,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getFalse(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpUNE(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1051,6 +1065,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getFalse(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpULT(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1068,6 +1087,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getFalse(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpUGT(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1085,6 +1109,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getTrue(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpULE(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1102,6 +1131,11 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		TypeKind RK = BinOp->RHS->Ty->GetKind();
 		if (LK == TypeKind::Null && RK == TypeKind::Null) {
 			return llvm::ConstantInt::getTrue(LLContext);
+		} else if (LK == TypeKind::Float32 || LK == TypeKind::Float64 ||
+			       RK == TypeKind::Float32 || RK == TypeKind::Float64) {
+			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
+			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
+			return Builder.CreateFCmpUGE(LLLHS, LLRHS);
 		} else {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
@@ -1250,6 +1284,10 @@ llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
 	case TypeKind::UnsignedInt16:  return GetLLUInt16(Number->UnsignedIntValue, LLContext);
 	case TypeKind::UnsignedInt32:  return GetLLUInt32(Number->UnsignedIntValue, LLContext);
 	case TypeKind::UnsignedInt64:  return GetLLUInt64(Number->UnsignedIntValue, LLContext);
+	case TypeKind::Float32:
+		return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float32Value));
+	case TypeKind::Float64:
+		return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float64Value));
 	case TypeKind::Int:
 		return GetSystemInt(Number->SignedIntValue, LLContext, LLModule);
 	case TypeKind::UnsignedInt:
@@ -1622,23 +1660,35 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 }
 
 llvm::Value* arco::IRGenerator::GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
-	return Builder.CreateAdd(LLLHS, LLRHS);
+	if (Ty->IsInt()) {
+		return Builder.CreateAdd(LLLHS, LLRHS);
+	}
+	return Builder.CreateFAdd(LLLHS, LLRHS);
 }
 
 llvm::Value* arco::IRGenerator::GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
-	return Builder.CreateSub(LLLHS, LLRHS);
+	if (Ty->IsInt()) {
+		return Builder.CreateSub(LLLHS, LLRHS);
+	}
+	return Builder.CreateFSub(LLLHS, LLRHS);
 }
 
 llvm::Value* arco::IRGenerator::GenMul(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
-	return Builder.CreateMul(LLLHS, LLRHS);
+	if (Ty->IsInt()) {
+		return Builder.CreateMul(LLLHS, LLRHS);
+	}
+	return Builder.CreateFMul(LLLHS, LLRHS);
 }
 
 llvm::Value* arco::IRGenerator::GenDiv(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
-	if (Ty->IsSigned()) {
-		return Builder.CreateSDiv(LLLHS, LLRHS);
-	} else {
-		return Builder.CreateUDiv(LLLHS, LLRHS);
+	if (Ty->IsInt()) {
+		if (Ty->IsSigned()) {
+			return Builder.CreateSDiv(LLLHS, LLRHS);
+		} else {
+			return Builder.CreateUDiv(LLLHS, LLRHS);
+		}
 	}
+	return Builder.CreateFDiv(LLLHS, LLRHS);
 }
 
 void arco::IRGenerator::GenLoopCondJump(llvm::BasicBlock* LLCondBB,
@@ -1709,6 +1759,46 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 				// They are actually the same type from LLVM's POV just different
 				// types in the language.
 				return LLValue;
+			}
+		} else if (FromType->IsPointer()) {
+			// Ptr to Int
+			return Builder.CreatePtrToInt(LLValue, LLCastType);
+		} else if (FromType->GetKind() == TypeKind::Bool) {
+			// Bool to Int
+			if (ToType->IsSigned()) {
+				// Signed upcasting
+				return Builder.CreateSExt(LLValue, LLCastType);
+			} else {
+				// Unsigned upcasting
+				return Builder.CreateZExt(LLValue, LLCastType);
+			}
+		} else if (FromType->IsFloat()) {
+			// Float to Int
+			if (ToType->IsSigned()) {
+				return Builder.CreateFPToSI(LLValue, LLCastType);
+			} else {
+				return Builder.CreateFPToUI(LLValue, LLCastType);
+			}
+		}
+		goto missingCaseLab;
+	case TypeKind::Float32:
+	case TypeKind::Float64:
+		//  --- TO Floats ---
+		if (FromType->IsFloat()) {
+			// Float to Float
+			if (ToType->GetTrivialTypeSizeInBytes() > FromType->GetTrivialTypeSizeInBytes()) {
+				// Upcasting float
+				return Builder.CreateFPExt(LLValue, LLCastType);
+			} else {
+				// Downcasting float
+				return Builder.CreateFPTrunc(LLValue, LLCastType);
+			}
+		} else if (FromType->IsInt()) {
+			// Int to Float
+			if (FromType->IsSigned()) {
+				return Builder.CreateSIToFP(LLValue, LLCastType);
+			} else {
+				return Builder.CreateUIToFP(LLValue, LLCastType);
 			}
 		}
 		goto missingCaseLab;

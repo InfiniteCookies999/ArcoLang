@@ -61,6 +61,8 @@ namespace arco {
 		Type* UInt16Type;
 		Type* UInt32Type;
 		Type* UInt64Type;
+		Type* Float32Type;
+		Type* Float64Type;
 		Type* ErrorType;
 		Type* EmptyArrayElmType;
 		Type* ImportType;

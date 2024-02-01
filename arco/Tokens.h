@@ -30,6 +30,8 @@ namespace arco {
 		KW_UINT16,
 		KW_UINT32,
 		KW_UINT64,
+		KW_F32,
+		KW_F64,
 		KW_CHAR,
 		KW_VOID,
 		KW_CSTR,
@@ -66,7 +68,9 @@ namespace arco {
 		HEX_LITERAL,
 		BIN_LITERAL,
 		CHAR_LITERAL,
-		FLOAT_LITERAL,
+		FLOAT32_LITERAL,
+		FLOAT64_LITERAL,
+		ERROR_FLOAT_LITERAL,
 		STRING_LITERAL,
 
 		// === Symbols ===
