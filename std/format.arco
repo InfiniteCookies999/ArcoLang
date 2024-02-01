@@ -42,7 +42,11 @@ fn println(msg String) {
 	out.writeln(msg);
 }
 
-// Functions for writing to std out.
+fn println() {
+	out.writeln();
+}
+
+// Functions for writing to std err.
 //----------------------------------------------
 
 fn eprint(i int64) {
@@ -77,6 +81,10 @@ fn eprintln(i uint) {
 // TODO: Should be pass by const ref once supported.
 fn eprintln(msg String) {
 	err.writeln(msg);
+}
+
+fn eprintln() {
+	err.writeln();
 }
 
 // Reading from terminal

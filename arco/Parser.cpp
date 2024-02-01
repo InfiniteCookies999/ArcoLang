@@ -32,6 +32,9 @@ namespace arco {
 		}
 		return nullptr;
 	}
+
+	// Satisfying linkage.
+	VarDeclList* SingleVarDeclList = NewNode<VarDeclList>({});
 }
 
 
@@ -113,6 +116,21 @@ arco::FileScope* arco::Parser::Parse() {
 		}
 	}
 
+	auto ProcessGlobal = [this](VarDecl* Global) {
+		Global->IsGlobal = true;
+		Context.UncheckedDecls.insert(Global);
+		
+		if (!Global->Name.IsNull()) {
+			if (NSpace->GlobalVars.find(Global->Name) != NSpace->GlobalVars.end()) {
+				Error(Global->Loc,
+					"Duplicate declaration of global variable '%s'",
+					Global->Name);
+			}
+				
+			NSpace->GlobalVars[Global->Name] = Global;
+		}
+	};
+
 	// Parsing top level statements.
 	while (CTok.IsNot(TokenKind::TK_EOF)) {
 		AstNode* Stmt;
@@ -148,18 +166,12 @@ arco::FileScope* arco::Parser::Parse() {
 			}
 		} else if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Global = static_cast<VarDecl*>(Stmt);
-			Global->IsGlobal = true;
-			Context.UncheckedDecls.insert(Global);
-
-			if (!Global->Name.IsNull()) {
-				if (NSpace->GlobalVars.find(Global->Name) != NSpace->GlobalVars.end()) {
-					Error(Global->Loc,
-						"Duplicate declaration of global variable '%s'",
-						Global->Name);
-				}
-				
-				NSpace->GlobalVars[Global->Name] = Global;
+			ProcessGlobal(Global);
+		} else if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
+			for (VarDecl* Global : SingleVarDeclList->List) {
+				ProcessGlobal(Global);
 			}
+			SingleVarDeclList->List.clear();
 		} else {
 			FScope->InvalidStmts.push_back({
 				FileScope::InvalidScopeKind::GLOBAL,
@@ -275,7 +287,11 @@ arco::AstNode* arco::Parser::ParseStmt() {
 		if (CTok.Is(TokenKind::KW_FN)) {
 			return ParseFuncDecl(Mods);
 		} else if (CTok.Is(TokenKind::IDENT)) {
-			Stmt = ParseVarDecl(Mods);
+			if (PeekToken(1).Is(',')) {
+				Stmt = ParseVarDeclList(Mods);
+			} else {
+				Stmt = ParseVarDecl(Mods);
+			}
 			Match(';');
 		} else {
 			Error(CTok, "Expected declaration");
@@ -296,6 +312,11 @@ arco::AstNode* arco::Parser::ParseStmt() {
 		}
 		case TokenKind::KW_STRUCT:
 			return ParseStructDecl(0);
+		case ',': {
+			Stmt = ParseVarDeclList(0);
+			Match(';');
+			break;
+		}
 		default:
 			Stmt = ParseAssignmentAndExprs();
 			Match(';');
@@ -378,21 +399,8 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 
 	ulen NumErrs = TotalAccumulatedErrors;
 
-	VarDecl* Var = NewNode<VarDecl>(CTok);
-	Var->Mod    = Mod;
-	Var->FScope = FScope;
-	Var->Name   = ParseIdentifier("Expected identifier for variable declaration");
-	Var->Mods   = Mods;
-
+	VarDecl* Var = CreateVarDecl(CTok, ParseIdentifier("Expected identifier for variable declaration"), Mods);
 	Var->Ty = ParseType();
-
-	if (LocScope && !Var->Name.IsNull()) {
-		LocScope->VarDecls.insert({ Var->Name, Var });
-	}
-
-	if (CFunc) {
-		CFunc->AllocVars.push_back(Var);
-	}
 
 	if (CTok.Is('=')) {
 		NextToken(); // Consuming '=' token.
@@ -403,6 +411,94 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 		Var->ParsingError = true;
 	}
 
+	return Var;
+}
+
+arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
+	assert(SingleVarDeclList->List.empty() && "Forgot to extract variable declaration list.");
+
+	if (CTok.Is(TokenKind::IDENT) && PeekToken(1).Is(',')) {
+	
+		ulen NumErrs = TotalAccumulatedErrors;
+
+		bool MoreDecls = false;
+		do {
+
+			VarDecl* Var = CreateVarDecl(CTok, ParseIdentifier("Expected identifier for variable declaration"), Mods);
+			Var->Ty = Context.ErrorType;
+
+			SingleVarDeclList->List.push_back(Var);
+
+			MoreDecls = CTok.Is(',');
+			if (MoreDecls) {
+				NextToken(); // Consuming ',' token.
+			}
+		} while (MoreDecls);
+
+		Type* Ty = ParseType();
+		
+		if (NumErrs != TotalAccumulatedErrors) {
+			for (VarDecl* Var : SingleVarDeclList->List) {
+				Var->ParsingError = true;
+			}
+			return SingleVarDeclList;
+		}
+
+		for (VarDecl* Var : SingleVarDeclList->List) {
+			Var->Ty = Ty;
+		}
+
+		if (CTok.Is('=')) {
+			NextToken(); // Consuming '=' token.
+
+			ulen Count = 0;
+			while (true) {
+				NumErrs = TotalAccumulatedErrors;
+
+				SingleVarDeclList->List[Count]->Assignment = ParseExpr();
+			
+				if (NumErrs != TotalAccumulatedErrors) {
+					SingleVarDeclList->List[Count]->ParsingError = true;
+					// TODO: error the remaining declarations?
+					break;
+				}
+
+				if (CTok.Is(',')) {
+					if (Count + 1 >= SingleVarDeclList->List.size()) {
+						Error(CTok, "Too many initializers for variable list");
+						NextToken();
+						SkipRecovery();
+					}
+					NextToken(); // Consuming ',' token.
+					++Count;
+				} else {
+					break;
+				}
+			}
+		}
+
+	} else {
+		// Assume its a single declaration.
+		SingleVarDeclList->List.push_back(ParseVarDecl(0));
+	}
+
+	return SingleVarDeclList;
+}
+
+arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods) {
+	VarDecl* Var = NewNode<VarDecl>(Tok);
+	Var->Mod    = Mod;
+	Var->FScope = FScope;
+	Var->Name   = Name;
+	Var->Mods   = Mods;
+
+	if (CFunc) {
+		CFunc->AllocVars.push_back(Var);
+	}
+
+	if (LocScope && !Var->Name.IsNull()) {
+		LocScope->VarDecls.insert({ Var->Name, Var });
+	}
 	return Var;
 }
 
@@ -418,8 +514,12 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	Match(TokenKind::KW_STRUCT);
 
 	Context.UncheckedDecls.insert(Struct);
-	
-	ulen FieldCount = 0;
+
+	auto ProcessField = [=](VarDecl* Field) {
+		Field->FieldIdx = Struct->Fields.size();
+		Struct->Fields.push_back(Field);
+	};
+
 	PUSH_SCOPE()
 	Match('{');
 	while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
@@ -429,8 +529,12 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 
 		if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Field = static_cast<VarDecl*>(Stmt);
-			Field->FieldIdx = FieldCount++;
-			Struct->Fields.push_back(Field);
+			ProcessField(Field);
+		} else if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
+			for (VarDecl* Field : SingleVarDeclList->List) {
+				ProcessField(Field);
+			}
+			SingleVarDeclList->List.clear();
 		} else if (Stmt->Is(AstKind::FUNC_DECL)) {
 			FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
 			if (!Func->Name.IsNull()) {
@@ -471,7 +575,14 @@ void arco::Parser::ParseScopeStmts(LexScope& Scope) {
 		ParseOptStmt(Stmt, '}');
 		if (!Stmt) continue;
 		
-		Scope.Stmts.push_back(Stmt);
+		if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
+			for (VarDecl* Var : SingleVarDeclList->List) {
+				Scope.Stmts.push_back(Var);
+			}
+			SingleVarDeclList->List.clear();
+		} else {
+			Scope.Stmts.push_back(Stmt);
+		}
 	}
 	Scope.EndLoc = CTok.Loc;
 	Match('}');

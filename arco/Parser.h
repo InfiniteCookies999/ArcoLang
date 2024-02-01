@@ -15,6 +15,11 @@ namespace arco {
 	// [ [ 124, 12 ], [ 44 ] ]
 	constexpr ulen MAX_ARRAY_DEPTH = 8;
 
+	// Only need a single one since the declarations get extracted.
+	// TODO: If this is ever multithreaded then there will be a need
+	// for one of these per thread.
+	extern VarDeclList* SingleVarDeclList;
+
 	class Parser {
 	public:
 
@@ -81,6 +86,8 @@ namespace arco {
 		AstNode* ParseStmt();
 		FuncDecl* ParseFuncDecl(Modifiers Mods);
 		VarDecl* ParseVarDecl(Modifiers Mods);
+		VarDeclList* ParseVarDeclList(Modifiers Mods);
+		VarDecl* CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods);
 		StructDecl* ParseStructDecl(Modifiers Mods);
 
 		void ParseScopeStmts(LexScope& Scope);

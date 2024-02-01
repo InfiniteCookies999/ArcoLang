@@ -85,4 +85,8 @@ OutStream struct {
 		write(cast(uint64) i);
 		write("\n", 1);
 	}
+
+	fn writeln() {
+		write("\n", 1);
+	}
 }

@@ -70,7 +70,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 int main() {
 
-	/*RunTest(SRC("hello_world.arco"), "Hello World!");
+	RunTest(SRC("hello_world.arco"), "Hello World!");
 	RunTest(SRC("binary_operators.arco"), "464");
 	RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
 	RunTest(SRC("bin_literals.arco"), "941 32767 0 1404243");
@@ -78,6 +78,7 @@ int main() {
 	RunTest(SRC("pointer_arithmetic.arco"), "hello worldello worldo worldworld worldello world");
 	RunTest(SRC("heap_alloc.arco"), "315 341 88 341 66 341 66 341 66 341 66");
 	RunTest(SRC("bool_literals.arco"), "ok1ok2ok3ok4");
+	RunTest(SRC("var_decl_list.arco"), "5 3 2");
 	
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
@@ -128,8 +129,8 @@ int main() {
 	RunTest(SRC("globals/globals3.arco"), "34 66");
 	RunTest(SRC("globals/globals4.arco"), "22 1111");
 	RunTest(SRC("globals/globals5.arco"), "235 31 235 31 235 31 235 31 235 31 ");
-	*/
-	RunTest(SRC("workpad"), "");
+	
+	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 
 	if (Succeeded + Failed > 0) {

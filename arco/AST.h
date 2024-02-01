@@ -32,6 +32,7 @@ namespace arco {
 
 		FUNC_DECL,
 		VAR_DECL,
+		VAR_DECL_LIST,
 		STRUCT_DECL,
 
 		RETURN,
@@ -245,6 +246,13 @@ namespace arco {
 
 		// At least one field has assignment.
 		bool FieldsHaveAssignment = false;
+	};
+
+	// Ex.   'a, b, c int = 4, 6, 3;'
+	struct VarDeclList : AstNode {
+		VarDeclList() : AstNode(AstKind::VAR_DECL_LIST) {}
+		
+		llvm::SmallVector<VarDecl*> List;
 	};
 
 	// Ex.   'if cond {}'
