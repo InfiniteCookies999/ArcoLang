@@ -76,6 +76,8 @@ namespace arco {
 	};
 
 	struct Module {
+		llvm::StringRef Name;
+
 		llvm::DenseMap<Identifier, Namespace*> Namespaces;
 		Namespace* DefaultNamespace;
 	};
@@ -87,13 +89,24 @@ namespace arco {
 			Module*     Mod;
 			Identifier  StructOrNamespace;
 			Identifier  StructName;
-			StructDecl* Struct = nullptr;
+			StructDecl* Struct;
+		};
+
+		struct StaticImport {
+			SourceLoc  ErrorLoc;
+			Module*    Mod;
+			Identifier NamespaceName;
+			Namespace* NSpace;
 		};
 
 		std::string                                         Path;
 		SourceBuf                                           Buffer;
 		llvm::DenseMap<Identifier, Namespace*>              NamespaceImports;
 		llvm::DenseMap<Identifier, StructOrNamespaceImport> StructOrNamespaceImports;
+		llvm::SmallVector<StaticImport>                     StaticImports;
+
+		Module*    Mod;
+		Namespace* UniqueNSpace = nullptr;
 
 		bool ParsingErrors = false;
 

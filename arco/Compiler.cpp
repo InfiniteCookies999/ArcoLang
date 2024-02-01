@@ -70,6 +70,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	for (const Source& Source : Sources) {
 		if (Context.ModNamesToMods.find(Source.ModName) == Context.ModNamesToMods.end()) {
 			Module* Mod = new Module();
+			Mod->Name = Source.ModName;
 			Mod->DefaultNamespace = new Namespace;
 			Context.ModNamesToMods.insert({ Source.ModName, Mod });
 			Modules.push_back(Mod);

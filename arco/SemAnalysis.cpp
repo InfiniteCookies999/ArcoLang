@@ -88,6 +88,33 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope) {
 			StructOrNamespaceImport.Struct = StructItr->second;
 		}
 	}
+	for (auto& Import : FScope->StaticImports) {
+		if (Import.Mod && Import.NamespaceName.IsNull()) {
+			// Importing module's default namespace.
+			Import.NSpace = Import.Mod->DefaultNamespace;
+		} else if (Import.Mod) {
+			// Statically importing namespace from module.
+			auto Itr = Import.Mod->Namespaces.find(Import.NamespaceName);
+			if (Itr == Import.Mod->Namespaces.end()) {
+				Logger Log(FScope->Path.c_str(), FScope->Buffer);
+				Log.BeginError(Import.ErrorLoc, "Could not find namespace '%s' in module '%s'",
+					Import.NamespaceName, Import.Mod->Name);
+				Log.EndError();
+				continue;
+			}
+			Import.NSpace = Itr->second;
+		} else {
+			// Statically importing namespace from the source file's module.
+			auto Itr = FScope->Mod->Namespaces.find(Import.NamespaceName);
+			if (Itr == FScope->Mod->Namespaces.end()) {
+				Logger Log(FScope->Path.c_str(), FScope->Buffer);
+				Log.BeginError(Import.ErrorLoc, "Could not find namespace or module '%s'", Import.NamespaceName);
+				Log.EndError();
+				continue;
+			}
+			Import.NSpace = Itr->second;
+		}
+	}
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {
@@ -973,6 +1000,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	                                  Namespace* NamespaceToLookup,
 	                                  StructDecl* StructToLookup) {
 
+	bool LocalNamespace = NamespaceToLookup == Mod->DefaultNamespace;
+
 	auto SearchForFuncs = [=]() {
 		if (StructToLookup) {
 			auto Itr = StructToLookup->Funcs.find(IRef->Ident);
@@ -991,10 +1020,33 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				}
 			}
 			
+
 			auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
 			if (Itr != NamespaceToLookup->Funcs.end()) {
 				IRef->Funcs   = &Itr->second;
 				IRef->RefKind = IdentRef::RK::Funcs;
+				return;
+			}
+			if (LocalNamespace && FScope->UniqueNSpace) {
+				// File marked with a namespace need to search the namespace the file belongs to as well.
+				Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
+				if (Itr != FScope->UniqueNSpace->Funcs.end()) {
+					IRef->Funcs   = &Itr->second;
+					IRef->RefKind = IdentRef::RK::Funcs;
+					return;
+				}
+			}
+
+			// Searching for functions in static imports.
+			if (LocalNamespace) {
+				for (auto& Import : FScope->StaticImports) {
+					auto Itr = Import.NSpace->Funcs.find(IRef->Ident);
+					if (Itr != Import.NSpace->Funcs.end()) {
+						IRef->Funcs   = &Itr->second;
+						IRef->RefKind = IdentRef::RK::Funcs;
+						return;
+					}
+				}
 			}
 		}
 	};
@@ -1016,6 +1068,29 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 			if (Itr != NamespaceToLookup->GlobalVars.end()) {
 				IRef->Var     = Itr->second;
 				IRef->RefKind = IdentRef::RK::Var;
+				return;
+			}
+
+			if (LocalNamespace && FScope->UniqueNSpace) {
+				// File marked with a namespace need to search the namespace the file belongs to as well.
+				Itr = FScope->UniqueNSpace->GlobalVars.find(IRef->Ident);
+				if (Itr != FScope->UniqueNSpace->GlobalVars.end()) {
+					IRef->Var     = Itr->second;
+					IRef->RefKind = IdentRef::RK::Var;
+					return;
+				}
+			}
+
+			// Searching for global variables in static imports.
+			if (LocalNamespace) {
+				for (auto& Import : FScope->StaticImports) {
+					auto Itr = Import.NSpace->GlobalVars.find(IRef->Ident);
+					if (Itr != Import.NSpace->GlobalVars.end()) {
+						IRef->Var     = Itr->second;
+						IRef->RefKind = IdentRef::RK::Var;
+						return;
+					}
+				}
 			}
 		}
 	};
@@ -1033,7 +1108,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 			SearchForFuncs();
 	}
 
-	if (!IRef->IsFound() && NamespaceToLookup == Mod->DefaultNamespace) {
+	if (!IRef->IsFound() && LocalNamespace) {
 		auto Itr = FScope->NamespaceImports.find(IRef->Ident);
 		if (Itr != FScope->NamespaceImports.end()) {
 			IRef->NSpace  = Itr->second;

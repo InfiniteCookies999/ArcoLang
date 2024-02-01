@@ -84,6 +84,7 @@ arco::FileScope* arco::Parser::Parse() {
 
 	NextToken(); // Prime the parser.
 
+	FScope->Mod = Mod;
 	NSpace = Mod->DefaultNamespace;
 
 	if (CTok.Is(TokenKind::KW_NAMESPACE)) {
@@ -98,6 +99,8 @@ arco::FileScope* arco::Parser::Parse() {
 				NSpace = Itr->second;
 			}
 		}
+	
+		FScope->UniqueNSpace = NSpace;
 		Match(';');
 	}
 
@@ -176,7 +179,7 @@ void arco::Parser::ParseImport() {
 	Token ImportTok = CTok;
 	NextToken(); // Consuming 'import' token.
 
-	Identifier ModName = ParseIdentifier("Expected identifier for import module name");
+	Identifier ModOrNamespace = ParseIdentifier("Expected identifier for import module name");
 	Identifier StructOrNamespace, StructName;
 
 	if (CTok.Is('.')) {
@@ -193,36 +196,59 @@ void arco::Parser::ParseImport() {
 		}
 	}
 
-	Match(';');
-
-	auto Itr = Context.ModNamesToMods.find(ModName.Text);
-	if (Itr == Context.ModNamesToMods.end()) {
-		Error(ImportTok, "Could not find import module for '%s'", ModName.Text);
-		return;
+	bool IsStaticImport = CTok.Is(TokenKind::KW_STATIC) && StructName.IsNull();
+	if (IsStaticImport) {
+		NextToken();
 	}
 
-	Module* ImportMod = Itr->second;
-	if (StructOrNamespace.IsNull()) {
-		if (FScope->NamespaceImports.find(ModName) != FScope->NamespaceImports.end()) {
-			Error(ImportTok, "Duplicate import");
+	Match(';');
+
+	auto Itr = Context.ModNamesToMods.find(ModOrNamespace.Text);
+	if (!IsStaticImport) {
+		if (Itr == Context.ModNamesToMods.end()) {
+			Error(ImportTok, "Could not find import module for '%s'", ModOrNamespace.Text);
 			return;
 		}
 
-		FScope->NamespaceImports[ModName] = ImportMod->DefaultNamespace;
+		Module* ImportMod = Itr->second;
+		if (StructOrNamespace.IsNull()) {
+			if (FScope->NamespaceImports.find(ModOrNamespace) != FScope->NamespaceImports.end()) {
+				Error(ImportTok, "Duplicate import");
+				return;
+			}
+
+			FScope->NamespaceImports[ModOrNamespace] = ImportMod->DefaultNamespace;
+		} else {
+			Identifier LookupIdent = StructName.IsNull() ? StructOrNamespace : StructName;
+
+			if (FScope->StructOrNamespaceImports.find(LookupIdent) != FScope->StructOrNamespaceImports.end()) {
+				Error(ImportTok, "Duplicate import");
+				return;
+			}
+
+			FScope->StructOrNamespaceImports[LookupIdent] = {
+				ImportTok.Loc,
+				ImportMod,
+				StructOrNamespace,
+				StructName
+			};
+		}
 	} else {
-		Identifier LookupIdent = StructName.IsNull() ? StructOrNamespace : StructName;
-
-		if (FScope->StructOrNamespaceImports.find(LookupIdent) != FScope->StructOrNamespaceImports.end()) {
-			Error(ImportTok, "Duplicate import");
+		// static import
+		bool ModFound = Itr != Context.ModNamesToMods.end();
+		if (!StructOrNamespace.IsNull() && !ModFound) {
+			Error(ImportTok, "Could not find import module for '%s'", ModOrNamespace.Text);
 			return;
 		}
 
-		FScope->StructOrNamespaceImports[LookupIdent] = {
-			ImportTok.Loc,
-			ImportMod,
-			StructOrNamespace,
-			StructName
-		};
+		// namespace        (need namespace)
+		// module.namespace (need namespace)
+		// module           (do not need namespace)
+		FScope->StaticImports.push_back({
+				ImportTok.Loc,
+				ModFound ? Itr->second : nullptr,
+				StructOrNamespace.IsNull() ? ModOrNamespace : StructOrNamespace
+			});
 	}
 }
 

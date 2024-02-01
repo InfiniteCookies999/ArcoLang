@@ -116,6 +116,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "this"     , TokenKind::KW_THIS      });
 	TokenKeywordMap.insert({ "import"   , TokenKind::KW_IMPORT    });
 	TokenKeywordMap.insert({ "namespace", TokenKind::KW_NAMESPACE });
+	TokenKeywordMap.insert({ "static"   , TokenKind::KW_STATIC    });
 	TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });
 	TokenKeywordMap.insert({ "fn"       , TokenKind::KW_FN        });
 	TokenKeywordMap.insert({ "struct"   , TokenKind::KW_STRUCT    });
