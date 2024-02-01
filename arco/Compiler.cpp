@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <llvm/IR/Verifier.h>
 
 #include "Context.h"
 #include "Parser.h"
@@ -183,6 +184,9 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
 	i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
+	// -- DEBUG
+	// llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
+
 	if (FoundCompileError) {
 		return;
 	}
@@ -221,8 +225,17 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	ExecutableName += ".exe";
 #endif
 
+	std::string Libs = "";
+	for (const char* Lib : Libraries) {
+		Libs += std::string("-l") + std::string(Lib) + " ";
+	}
+	std::string LibPaths = "";
+	for (const char* LibPath : LibrarySearchPaths) {
+		LibPaths += std::string("-L") + std::string(LibPath) + " ";
+	}
+
 	std::string ClangCommand = "clang ";
-	ClangCommand += ObjFileName;
+	ClangCommand += LibPaths + Libs + ObjFileName;
 	ClangCommand += " -o ";
 	ClangCommand += ExecutableName;
 

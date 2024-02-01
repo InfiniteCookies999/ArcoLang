@@ -1658,7 +1658,7 @@ llvm::Value* arco::IRGenerator::GenCond(Expr* Cond) {
 	if (Cond->Ty->IsPointer()) {
 		return Builder.CreateIsNotNull(LLValue);
 	} else {
-		return GenRValue(Cond);
+		return LLValue;
 	}
 }
 

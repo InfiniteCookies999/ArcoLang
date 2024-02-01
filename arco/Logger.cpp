@@ -162,6 +162,7 @@ std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
 	const char* MemPtr = Loc; // Pointering to character start.
 
 	const char* EndOfBuffer = Buffer.Memory + Buffer.length - 1;
+	assert(MemPtr >= Buffer.Memory && MemPtr <= EndOfBuffer && "Not in buffer!");
 	
 	i64 Moved = 0; // Absolute movement of the pointer.
 	while (true) {

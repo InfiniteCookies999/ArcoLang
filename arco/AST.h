@@ -88,7 +88,6 @@ namespace arco {
 			Identifier  StructOrNamespace;
 			Identifier  StructName;
 			StructDecl* Struct = nullptr;
-			Namespace*  NSpace = nullptr;
 		};
 
 		std::string                                         Path;

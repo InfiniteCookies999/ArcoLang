@@ -51,7 +51,7 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope) {
 		if (StructOrNamespaceImport.StructName.IsNull()) {
 			auto NSpaceItr = ImportMod->Namespaces.find(StructOrNamespaceImport.StructOrNamespace);
 			if (NSpaceItr != ImportMod->Namespaces.end()) {
-				StructOrNamespaceImport.NSpace = NSpaceItr->second;
+				FScope->NamespaceImports[StructOrNamespaceImport.StructOrNamespace] = NSpaceItr->second;
 			} else {
 				// Was not a namespace so it must be a struct.
 				auto StructItr = ImportMod->DefaultNamespace->Structs.find(StructOrNamespaceImport.StructOrNamespace);
@@ -109,13 +109,11 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
 }
 
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
-	if (Func->ParsingError) return;
 	if (Func->HasBeenChecked) return;
-
 	Func->HasBeenChecked = true;
-
 	Context.UncheckedDecls.erase(Func);
-
+	if (Func->ParsingError) return;
+	
 	CFunc   = Func;
 	CStruct = Func->Struct;
 	FScope  = Func->FScope;
@@ -130,12 +128,10 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 }
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
-	if (Struct->ParsingError) return;
 	if (Struct->HasBeenChecked) return;
-
 	Struct->HasBeenChecked = true;
-
 	Context.UncheckedDecls.erase(Struct);
+	if (Struct->ParsingError) return;
 
 	FScope  = Struct->FScope;
 	CStruct = Struct;
@@ -312,18 +308,18 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 }
 
 void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
-	if (Var->ParsingError) return;
 	if (Var->HasBeenChecked) return;
-
-	Var->IsBeingChecked = true;
 	Var->HasBeenChecked = true;
-
-	FScope = Var->FScope;
-
 	if (Var->IsGlobal) {
 		Context.UncheckedDecls.erase(Var);
 		CGlobal = Var;
 	}
+	if (Var->ParsingError) return;
+
+	Var->IsBeingChecked = true;
+
+	FScope = Var->FScope;
+
 	if (Var->IsField()) {
 		CField = Var;
 	}

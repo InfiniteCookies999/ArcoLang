@@ -87,6 +87,20 @@ int main(int argc, char* argv[]) {
 		// TODO: Will want to validate the user provided a valid name for an executable!
 		Compiler.SetOutputName(ValPart.str());
 	});
+	OptManager.AddOption("l", [&Compiler](llvm::StringRef LibName) {
+		if (LibName.empty()) {
+			arco::Logger::GlobalError(llvm::errs(), "Empty library name");
+			return;
+		}
+		Compiler.AddLibrary(LibName.data());
+	});
+	OptManager.AddOption("L", [&Compiler](llvm::StringRef LibPath) {
+		if (LibPath.empty()) {
+			arco::Logger::GlobalError(llvm::errs(), "Empty library path");
+			return;
+		}
+		Compiler.AddLibraryPath(LibPath.data());
+	});
 
 	// TODO: Underline the part of the command that has the error.
 	llvm::SmallVector<arco::Source> Sources;

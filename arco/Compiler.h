@@ -53,6 +53,9 @@ namespace arco {
 
 		void Compile(llvm::SmallVector<Source>& Sources);
 	
+		void AddLibrary(const char* LibName) { Libraries.push_back(LibName); }
+		void AddLibraryPath(const char* LibPath) { LibrarySearchPaths.push_back(LibPath); }
+
 		void SetOutputName(const std::string& OutputName) {
 			this->OutputName = OutputName;
 		}
@@ -62,6 +65,9 @@ namespace arco {
 
 		llvm::SmallVector<FileScope*> FileScopes;
 		llvm::SmallVector<Module*>    Modules;
+
+		llvm::SmallVector<const char*, 8> Libraries;
+		llvm::SmallVector<const char*, 8> LibrarySearchPaths;
 
 		std::string OutputName = "program";
 
