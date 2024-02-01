@@ -1,0 +1,43 @@
+
+fn foo(a int8) {
+	print("int8 ", 5);
+}
+
+fn foo(a int16) {
+	print("int16 ", 6);
+}
+
+fn foo(a int32) {
+	print("int32 ", 6);
+}
+
+fn foo(a int64) {
+	print("int64 ", 6);
+}
+
+fn foo(a uint8) {
+	print("uint8 ", 6);
+}
+
+fn foo(a uint16) {
+	print("uint16 ", 7);
+}
+
+fn foo(a uint32) {
+	print("int32 ", 7);
+}
+
+fn foo(a uint64) {
+	print("uint64 ", 7);
+}
+
+fn main() {
+	foo(55'i8);
+	foo(55'i16);
+	foo(55'i32);
+	foo(55'i64);
+	foo(55'u8);
+	foo(55'u16);
+	foo(55'u32);
+	foo(55'u64);
+}

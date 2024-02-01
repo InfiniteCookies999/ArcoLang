@@ -159,13 +159,13 @@ arco::Token arco::Lexer::NextNumber() {
 			while (IsHex(*CurPtr) || *CurPtr == NUMBER_SEPERATOR) {
 				++CurPtr;
 			}
-			return CreateToken(TokenKind::HEX_LITERAL, CreateText(TokStart));
+			return FinishNumber(TokStart, TokenKind::HEX_LITERAL);
 		} else if (*CurPtr == 'b') {
 			++CurPtr; // Eating 'b'.
 			while (*CurPtr == '0' || *CurPtr == '1' || *CurPtr == NUMBER_SEPERATOR) {
 				++CurPtr;
 			}
-			return CreateToken(TokenKind::BIN_LITERAL, CreateText(TokStart));
+			return FinishNumber(TokStart, TokenKind::BIN_LITERAL);
 		}
 	}
 
@@ -174,7 +174,42 @@ arco::Token arco::Lexer::NextNumber() {
 		++CurPtr;
 	}
 
-	return CreateToken(TokenKind::INT_LITERAL, CreateText(TokStart));
+	return FinishNumber(TokStart, TokenKind::INT_LITERAL);
+}
+
+arco::Token arco::Lexer::FinishNumber(const char* TokStart, TokenKind Kind) {
+	if (*CurPtr == 'u') {
+		// The expected type is an unsigned integer number.
+		++CurPtr;
+		return CreateToken(Kind, CreateText(TokStart));
+	}
+
+	if (*CurPtr == '\'') {
+		++CurPtr;
+
+		switch (*CurPtr) {
+		case 'i':
+		case 'u':
+			++CurPtr;
+			if (*CurPtr == '8') {
+				CurPtr += 1;
+			} else if (*CurPtr == '1' && *(CurPtr + 1) == '6') {
+				CurPtr += 2;
+			} else if (*CurPtr == '3' && *(CurPtr + 1) == '2') {
+				CurPtr += 2;
+			} else if (*CurPtr == '6' && *(CurPtr + 1) == '4') {
+				CurPtr += 2;
+			} else {
+				Error(CurPtr-1, "Expected to find valid type information");
+			}
+			break;
+		default:
+			Error(CurPtr-1, "Expected to find valid type information");
+			break;
+		}
+	}
+	
+	return CreateToken(Kind, CreateText(TokStart));
 }
 
 arco::Token arco::Lexer::NextString() {

@@ -30,6 +30,7 @@ namespace arco {
 		/// The next token is a number.
 		/// 
 		Token NextNumber();
+		Token FinishNumber(const char* TokStart, TokenKind Kind);
 
 		/// Next token is text surounded by quotes.
 		///

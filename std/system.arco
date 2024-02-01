@@ -1,8 +1,15 @@
 
+/*
+ * Terminates the application with an exit code.
+ */
 fn exit(exit_code int) {
 	win32.ExitProcess(cast(uint32) exit_code);
 }
 
+/*
+ * Prints an error message to the standard error
+ * stream and terminates the application.
+ */
 fn panic(msg cstr) {
 	eprintln(msg);
 	exit(1);

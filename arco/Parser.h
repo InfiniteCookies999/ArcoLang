@@ -101,7 +101,7 @@ namespace arco {
 		NestedScopeStmt* ParseNestedScope();
 
 		Modifiers ParseModifiers();
-		Type* ParseType();
+		Type* ParseType(bool AllowImplicitArrayType);
 
 		//===-------------------------------===//
 		// Expressions

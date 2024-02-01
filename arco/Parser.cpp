@@ -374,7 +374,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 	if ((!(Mods & ModKinds::NATIVE) && CTok.IsNot('{')) ||
 		  (Mods & ModKinds::NATIVE) && CTok.IsNot(';')) {
-		Func->RetTy = ParseType();
+		Func->RetTy = ParseType(true);
 	} else {
 		Func->RetTy = Context.VoidType;
 	}
@@ -405,7 +405,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 	ulen NumErrs = TotalAccumulatedErrors;
 
 	VarDecl* Var = CreateVarDecl(CTok, ParseIdentifier("Expected identifier for variable declaration"), Mods);
-	Var->Ty = ParseType();
+	Var->Ty = ParseType(true);
 
 	if (CTok.Is('=')) {
 		NextToken(); // Consuming '=' token.
@@ -440,7 +440,10 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 			}
 		} while (MoreDecls);
 
-		Type* Ty = ParseType();
+		// TODO: Allow for implicit array types? The problem with allowing them here
+		// is that the same instance of the type is passed to each variable so the
+		// each variable could end up with different size initializations.
+		Type* Ty = ParseType(false);
 		
 		if (NumErrs != TotalAccumulatedErrors) {
 			for (VarDecl* Var : SingleVarDeclList->List) {
@@ -752,7 +755,7 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 	}
 }
 
-arco::Type* arco::Parser::ParseType() {
+arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 	arco::Type* Ty = nullptr;
 	
 	switch (CTok.Kind) {
@@ -803,7 +806,7 @@ arco::Type* arco::Parser::ParseType() {
 		while (CTok.Is('[')) {
 			NextToken(); // Consuming '[' token.
 
-			if (CTok.Is(']')) {
+			if (CTok.Is(']') && AllowImplicitArrayType) {
 				IsImplicit = true;
 
 				if (EncounteredNonImplicit && !AlreadyReportedImplicitError) {
@@ -1069,7 +1072,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		TypeCast* Cast = NewNode<TypeCast>(CTok);
 		NextToken(); // Consuming 'cast' token.
 		Match('(');
-		Cast->ToType = ParseType();
+		Cast->ToType = ParseType(false);
 		Match(')');
 		Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
 		return Cast;
@@ -1099,7 +1102,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 	case TokenKind::KW_NEW: {
 		HeapAlloc* Alloc = NewNode<HeapAlloc>(CTok);
 		NextToken(); // Consuming 'new' token.
-		Alloc->TypeToAlloc = ParseType();
+		Alloc->TypeToAlloc = ParseType(false);
 		if (Alloc->TypeToAlloc == Context.ErrorType) {
 			SkipRecovery();
 		}
@@ -1312,8 +1315,122 @@ arco::NumberLiteral* arco::Parser::ParseCharLiteral() {
 
 arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue) {
 	NumberLiteral* Number = NewNode<NumberLiteral>(CTok);
-	Number->Ty = Context.IntType;
-	Number->SignedIntValue = IntValue;
+	
+	llvm::StringRef Text = CTok.GetText();
+	
+	if (Idx < Text.size()) {
+		if (Text[Idx] == 'u') {
+			// The number is forced to be unsigned.
+			if (IntValue <= std::numeric_limits<u32>::max()) {
+				Number->Ty = Context.UIntType;
+			} else {
+				Number->Ty = Context.UInt64Type;
+			}
+			Number->UnsignedIntValue = IntValue;
+		} else {
+			// The number is set to be an explicit type.
+
+			++Idx; // Skipping over '\'' character.
+			if (Idx+1 < Text.size()) {
+				switch (Text[Idx]) {
+				case 'i':
+				case 'u': {
+					bool Unsigned = Text[Idx] == 'u';
+					++Idx;
+					if (Text[Idx] == '8') {
+						if (Unsigned) {
+							Number->Ty = Context.UInt8Type;
+							Number->UnsignedIntValue = IntValue;
+							if (IntValue > std::numeric_limits<u8>::max()) {
+								Error(CTok, "Value is too large for an unsigned 8 bit integer");
+							}
+						} else {
+							Number->Ty = Context.Int8Type;
+							Number->SignedIntValue = IntValue;
+							if (IntValue > std::numeric_limits<i8>::max()) {
+								Error(CTok, "Value is too large for a signed 8 bit integer");
+							}
+						}
+					} else if (Idx+1 < Text.size()) {
+						if (Text[Idx] == '1' && Text[Idx+1] == '6') {
+							if (Unsigned) {
+								Number->Ty = Context.UInt16Type;
+								Number->UnsignedIntValue = IntValue;
+								if (IntValue > std::numeric_limits<u16>::max()) {
+									Error(CTok, "Value is too large for an unsigned 16 bit integer");
+								}
+							} else {
+								Number->Ty = Context.Int16Type;
+								Number->SignedIntValue = IntValue;
+								if (IntValue > std::numeric_limits<i16>::max()) {
+									Error(CTok, "Value is too large for a signed 16 bit integer");
+								}
+							}
+						} else if (Text[Idx] == '3' && Text[Idx+1] == '2') {
+							if (Unsigned) {
+								Number->Ty = Context.UInt32Type;
+								Number->UnsignedIntValue = IntValue;
+								if (IntValue > std::numeric_limits<u32>::max()) {
+									Error(CTok, "Value is too large for an unsigned 32 bit integer");
+								}
+							} else {
+								Number->Ty = Context.Int32Type;
+								Number->SignedIntValue = IntValue;
+								if (IntValue > std::numeric_limits<i32>::max()) {
+									Error(CTok, "Value is too large for a signed 32 bit integer");
+								}
+							}
+						} else if (Text[Idx] == '6' && Text[Idx+1] == '4') {
+							if (Unsigned) {
+								Number->Ty = Context.UInt64Type;
+								Number->UnsignedIntValue = IntValue;
+							} else {
+								Number->Ty = Context.Int64Type;
+								Number->SignedIntValue = IntValue;
+								if (IntValue > std::numeric_limits<i64>::max()) {
+									Error(CTok, "Value is too large for a signed 64 bit integer");
+								}
+							}
+						} else {
+							// Invalid type information from lexer.
+							Number->Ty = Context.ErrorType;
+						}
+					} else {
+						// Invalid type information from lexer.
+						Number->Ty = Context.ErrorType;
+					}
+					break;
+				}
+				default:
+					// Invalid type information from lexer.
+					Number->Ty = Context.ErrorType;
+					break;
+				}
+			} else {
+				// Invalid type information from lexer.
+				Number->Ty = Context.ErrorType;
+			}
+		}
+	} else {
+		// The number is an integer based on the size of
+		// the integer.
+
+		bool Unsigned = false;
+		if (IntValue <= std::numeric_limits<i32>::max()) {
+			Number->Ty = Context.IntType;
+		} else if (IntValue <= std::numeric_limits<i64>::max()) {
+			Number->Ty = Context.Int64Type;
+		} else {
+			Number->Ty = Context.UInt64Type;
+			Unsigned = true;
+		}
+
+		if (Unsigned) {
+			Number->UnsignedIntValue = IntValue;
+		} else {
+			Number->SignedIntValue = IntValue;
+		}
+	}
 
 	NextToken();
 	return Number;
