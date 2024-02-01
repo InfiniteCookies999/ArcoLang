@@ -958,6 +958,14 @@ YIELD_ERROR(UniOp);
 		UniOp->Ty = ValTy;
 		break;
 	}
+	case '!': {
+		if (!IsComparable(ValTy)) {
+			OPERATOR_CANNOT_APPLY(ValTy);
+		}
+
+		UniOp->Ty = Context.BoolType;
+		break;
+	}
 	default:
 		assert(!"Unhandled unary check");
 		break;
@@ -1499,7 +1507,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
 	CheckNode(Cond);
 	if (Cond->Ty == Context.ErrorType) return;
-	if (!(Cond->Ty == Context.BoolType)) {
+	if (!IsComparable(Cond->Ty)) {
 		Error(Cond, "%s condition expected to be type 'bool' but found type '%s'",
 			 PreErrorText, Cond->Ty->ToString());
 	}
@@ -1839,4 +1847,8 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
 			}
 		}
 	}
+}
+
+bool arco::SemAnalyzer::IsComparable(Type* Ty) {
+	return Ty->Equals(Context.BoolType) || Ty->IsPointer();
 }

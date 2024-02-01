@@ -15,3 +15,5 @@ native fn ReadFile(hFile                void*,
                    lpNumberOfBytesRead  uint32*,
                    lpOverlapped         void*  // Ignored data structure
                    ) int32;
+
+native fn ExitProcess(uExitCode uint32) void;

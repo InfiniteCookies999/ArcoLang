@@ -1,0 +1,9 @@
+
+fn exit(exit_code int) {
+	win32.ExitProcess(cast(uint32) exit_code);
+}
+
+fn panic(msg cstr) {
+	eprintln(msg);
+	exit(1);
+}

@@ -1224,6 +1224,15 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 		}
 		return LLValue;
 	}
+	case '!': {
+		if (UniOp->Value->Ty->IsPointer()) {
+			return Builder.CreateIsNull(GenRValue(UniOp->Value));
+		} else {
+			return Builder.CreateNot(GenRValue(UniOp->Value));
+		}
+	}
+	case '~':
+		return Builder.CreateNot(GenRValue(UniOp->Value));
 	default:
 		assert(!"Failed to implement GenUnaryOp() case!");
 		return nullptr;
@@ -1645,7 +1654,12 @@ void arco::IRGenerator::GenLoopCondJump(llvm::BasicBlock* LLCondBB,
 }
 
 llvm::Value* arco::IRGenerator::GenCond(Expr* Cond) {
-	return GenRValue(Cond);
+	llvm::Value* LLValue = GenRValue(Cond);
+	if (Cond->Ty->IsPointer()) {
+		return Builder.CreateIsNotNull(LLValue);
+	} else {
+		return GenRValue(Cond);
+	}
 }
 
 void arco::IRGenerator::GenBlock(llvm::BasicBlock* LLBB, ScopeStmts& Stmts) {

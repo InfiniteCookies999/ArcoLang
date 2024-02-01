@@ -122,6 +122,8 @@ namespace arco {
 
 		static void CheckForDuplicateFuncs(const FuncsList& FuncList);
 
+		bool IsComparable(Type* Ty);
+
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);
 			Log.EndError();

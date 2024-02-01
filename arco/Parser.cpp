@@ -898,7 +898,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		UniOP->Value = E;
 		return UniOP;
 	}
-	case '&': case '*':
+	case '&': case '*': case '!': case '~':
 	case TokenKind::PLUS_PLUS: case MINUS_MINUS: {
 		if ((CTok.Kind == '*' && PeekToken(1).Kind == '&') ||
 			(CTok.Kind == '&' && PeekToken(1).Kind == '*')

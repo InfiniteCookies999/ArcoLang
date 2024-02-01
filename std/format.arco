@@ -1,8 +1,12 @@
 
 out OutStream = OutStream{ win32.GetStdHandle(-11) };
+err OutStream = OutStream{ win32.GetStdHandle(-12) };
 
 // TODO: Functions are redundent because there is no support for
 //       templating yet!
+
+// Functions for writing to std out.
+//----------------------------------------------
 
 fn print(i int64) {
 	out.write(i);
@@ -37,6 +41,46 @@ fn println(i uint) {
 fn println(msg String) {
 	out.writeln(msg);
 }
+
+// Functions for writing to std out.
+//----------------------------------------------
+
+fn eprint(i int64) {
+	err.write(i);
+}
+
+fn eprint(i uint64) {
+	err.write(i);
+}
+
+fn eprint(msg cstr) {
+	err.write(msg);
+}
+
+// TODO: Should be pass by const ref once supported.
+fn eprint(msg String) {
+	err.write(msg);
+}
+
+fn eprintln(msg cstr) {
+	err.writeln(msg);
+}
+
+fn eprintln(i int) {
+	err.writeln(i);
+}
+
+fn eprintln(i uint) {
+	err.writeln(i);
+}
+
+// TODO: Should be pass by const ref once supported.
+fn eprintln(msg String) {
+	err.writeln(msg);
+}
+
+// Reading from terminal
+//----------------------------------------------
 
 fn read(buffer char*, length int) int {
 	handle               void* = win32.GetStdHandle(-10);
