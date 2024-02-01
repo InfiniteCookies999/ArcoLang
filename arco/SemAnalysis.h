@@ -15,9 +15,10 @@ namespace arco {
 
 		static void ReportStatementsInInvalidContext(FileScope* FScope);
 
-		static void ResolveStructImports(FileScope* FScope);
+		static void ResolveImports(FileScope* FScope);
 
 		static void CheckForDuplicateFuncDeclarations(Module* Mod);
+		static void CheckForDuplicateFuncDeclarations(Namespace* NSpace);
 
 		void CheckFuncDecl(FuncDecl* Func);
 		
@@ -78,7 +79,7 @@ namespace arco {
 		void CheckUnaryOp(UnaryOp* UniOp);
 		void CheckIdentRef(IdentRef* IRef,
 			               bool ExpectsFuncCall,
-			               Module* ModToLookup,
+			               Namespace* NamespaceToLookup,
 			               StructDecl* StructToLookup = nullptr);
 		void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
 		void CheckThisRef(ThisRef* This);

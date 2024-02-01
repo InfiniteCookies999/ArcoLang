@@ -45,27 +45,62 @@ void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
 	}
 }
 
-void arco::SemAnalyzer::ResolveStructImports(FileScope* FScope) {
-	for (auto& [ModName, StructImport] : FScope->StructImports) {
-		auto Itr = StructImport.Mod->Structs.find(StructImport.StructName);
-		if (Itr == StructImport.Mod->Structs.end()) {
-			Logger Log(FScope->Path.c_str(), FScope->Buffer);
-			Log.BeginError(StructImport.ErrorLoc, "Could not find struct '%s' in module '%s'",
-				StructImport.StructName, ModName);
-			Log.EndError();
-			StructImport.Struct = nullptr;
-			continue;
-		}
+void arco::SemAnalyzer::ResolveImports(FileScope* FScope) {
+	for (auto& [ModName, StructOrNamespaceImport] : FScope->StructOrNamespaceImports) {
+		Module* ImportMod = StructOrNamespaceImport.Mod;
+		if (StructOrNamespaceImport.StructName.IsNull()) {
+			auto NSpaceItr = ImportMod->Namespaces.find(StructOrNamespaceImport.StructOrNamespace);
+			if (NSpaceItr != ImportMod->Namespaces.end()) {
+				StructOrNamespaceImport.NSpace = NSpaceItr->second;
+			} else {
+				// Was not a namespace so it must be a struct.
+				auto StructItr = ImportMod->DefaultNamespace->Structs.find(StructOrNamespaceImport.StructOrNamespace);
+				if (StructItr == ImportMod->DefaultNamespace->Structs.end()) {
+					Logger Log(FScope->Path.c_str(), FScope->Buffer);
+					Log.BeginError(StructOrNamespaceImport.ErrorLoc, "Could not find struct or namespace '%s' in module '%s'",
+						StructOrNamespaceImport.StructOrNamespace, ModName);
+					Log.EndError();
+					continue;
+				}
+				StructOrNamespaceImport.Struct = StructItr->second;
+			}
+		} else {
+			// Struct import under a namespace.
+			auto NSpaceItr = ImportMod->Namespaces.find(StructOrNamespaceImport.StructOrNamespace);
+			if (NSpaceItr == ImportMod->Namespaces.end()) {
+				Logger Log(FScope->Path.c_str(), FScope->Buffer);
+				Log.BeginError(StructOrNamespaceImport.ErrorLoc, "Could not find namespace '%s' in module '%s'",
+					StructOrNamespaceImport.StructOrNamespace, ModName);
+				Log.EndError();
+				continue;
+			}
 
-		StructImport.Struct = Itr->second;
+			Namespace* NSpace = NSpaceItr->second;
+			auto StructItr = NSpace->Structs.find(StructOrNamespaceImport.StructName);
+			if (StructItr == ImportMod->DefaultNamespace->Structs.end()) {
+				Logger Log(FScope->Path.c_str(), FScope->Buffer);
+				Log.BeginError(StructOrNamespaceImport.ErrorLoc, "Could not find struct '%s' in namespace '%s'",
+					StructOrNamespaceImport.StructName, StructOrNamespaceImport.StructOrNamespace);
+				Log.EndError();
+				continue;
+			}
+
+			StructOrNamespaceImport.Struct = StructItr->second;
+		}
 	}
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {
-	for (const auto& [Name, FuncList] : Mod->Funcs) {
+	for (auto [NamespaceName, NSpace] : Mod->Namespaces) {
+		CheckForDuplicateFuncDeclarations(NSpace);
+	}
+}
+
+void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
+	for (const auto& [Name, FuncList] : NSpace->Funcs) {
 		CheckForDuplicateFuncs(FuncList);
 	}
-	for (const auto& [Name, Struct] : Mod->Structs) {
+	for (const auto& [Name, Struct] : NSpace->Structs) {
 		CheckForDuplicateFuncs(Struct->Constructors);
 		for (const auto& [Name, FuncList] : Struct->Funcs) {
 			CheckForDuplicateFuncs(FuncList);
@@ -165,7 +200,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 		CheckUnaryOp(static_cast<UnaryOp*>(Node));
 		break;
 	case AstKind::IDENT_REF:
-		CheckIdentRef(static_cast<IdentRef*>(Node), false, Mod);
+		CheckIdentRef(static_cast<IdentRef*>(Node), false, Mod->DefaultNamespace);
 		break;
 	case AstKind::FIELD_ACCESSOR:
 		CheckFieldAccessor(static_cast<FieldAccessor*>(Node), false);
@@ -931,7 +966,7 @@ YIELD_ERROR(UniOp);
 
 void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	                                  bool ExpectsFuncCall,
-	                                  Module* ModToLookup,
+	                                  Namespace* NamespaceToLookup,
 	                                  StructDecl* StructToLookup) {
 
 	auto SearchForFuncs = [=]() {
@@ -952,8 +987,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				}
 			}
 			
-			auto Itr = ModToLookup->Funcs.find(IRef->Ident);
-			if (Itr != ModToLookup->Funcs.end()) {
+			auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
+			if (Itr != NamespaceToLookup->Funcs.end()) {
 				IRef->Funcs   = &Itr->second;
 				IRef->RefKind = IdentRef::RK::Funcs;
 			}
@@ -973,8 +1008,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				IRef->RefKind = IdentRef::RK::Var;
 			}
 		} else {
-			auto Itr = ModToLookup->GlobalVars.find(IRef->Ident);
-			if (Itr != ModToLookup->GlobalVars.end()) {
+			auto Itr = NamespaceToLookup->GlobalVars.find(IRef->Ident);
+			if (Itr != NamespaceToLookup->GlobalVars.end()) {
 				IRef->Var     = Itr->second;
 				IRef->RefKind = IdentRef::RK::Var;
 			}
@@ -994,11 +1029,17 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 			SearchForFuncs();
 	}
 
-	if (!IRef->IsFound() && ModToLookup == Mod) {
-		auto Itr = FScope->ModImports.find(IRef->Ident);
-		if (Itr != FScope->ModImports.end()) {
-			IRef->Mod     = Itr->second;
+	if (!IRef->IsFound() && NamespaceToLookup == Mod->DefaultNamespace) {
+		auto Itr = FScope->NamespaceImports.find(IRef->Ident);
+		if (Itr != FScope->NamespaceImports.end()) {
+			IRef->NSpace  = Itr->second;
 			IRef->RefKind = IdentRef::RK::Import;
+		} else {
+			Itr = Mod->Namespaces.find(IRef->Ident);
+			if (Itr != Mod->Namespaces.end()) {
+				IRef->NSpace  = Itr->second;
+				IRef->RefKind = IdentRef::RK::Import;
+			}
 		}
 	}
 
@@ -1047,7 +1088,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 	Expr* Site = FieldAcc->Site;
 
 	if (Site->Is(AstKind::IDENT_REF)) {
-		CheckIdentRef(static_cast<IdentRef*>(Site), false, Mod);
+		CheckIdentRef(static_cast<IdentRef*>(Site), false, Mod->DefaultNamespace);
 	} else {
 		CheckNode(Site);
 	}
@@ -1066,7 +1107,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 
 	if (Site->Ty == Context.ImportType) {
 		IdentRef* IRef = static_cast<IdentRef*>(Site);
-		CheckIdentRef(FieldAcc, ExpectsFuncCall, IRef->Mod);
+		CheckIdentRef(FieldAcc, ExpectsFuncCall, IRef->NSpace);
 		return;
 	}
 
@@ -1086,7 +1127,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 			static_cast<PointerType*>(Site->Ty)->GetElementType());
 	}
 
-	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod, StructTy->GetStruct());
+	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
 }
 
 void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
@@ -1112,7 +1153,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 	switch (Call->Site->Kind) {
 	case AstKind::IDENT_REF:
-		CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, Mod);
+		CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, Mod->DefaultNamespace);
 		break;
 	case AstKind::FIELD_ACCESSOR:
 		CheckFieldAccessor(static_cast<FieldAccessor*>(Call->Site), true);
@@ -1662,10 +1703,10 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	Identifier StructName = StructTy->GetStructName();
 	StructDecl* Struct;
-	auto Itr = FScope->StructImports.find(StructName);
-	if (Itr == FScope->StructImports.end()) {
-		auto Itr2 = Mod->Structs.find(StructName);
-		if (Itr2 == Mod->Structs.end()) {
+	auto Itr = FScope->StructOrNamespaceImports.find(StructName);
+	if (Itr == FScope->StructOrNamespaceImports.end() || Itr->second.Struct == nullptr) {
+		auto Itr2 = Mod->DefaultNamespace->Structs.find(StructName);
+		if (Itr2 == Mod->DefaultNamespace->Structs.end()) {
 			Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
 			return false;
 		}

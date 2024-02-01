@@ -67,29 +67,34 @@ namespace arco {
 	};
 	using Modifiers = u16;
 
-	struct Module {
-		
+	struct Namespace {
 		llvm::DenseMap<Identifier, FuncsList>   Funcs;
 
 		llvm::DenseMap<Identifier, StructDecl*> Structs;
 
 		llvm::DenseMap<Identifier, VarDecl*>    GlobalVars;
+	};
 
+	struct Module {
+		llvm::DenseMap<Identifier, Namespace*> Namespaces;
+		Namespace* DefaultNamespace;
 	};
 
 	struct FileScope {
 
-		struct StructImport {
+		struct StructOrNamespaceImport {
 			SourceLoc   ErrorLoc;
 			Module*     Mod;
+			Identifier  StructOrNamespace;
 			Identifier  StructName;
-			StructDecl* Struct;
+			StructDecl* Struct = nullptr;
+			Namespace*  NSpace = nullptr;
 		};
 
-		std::string                              Path;
-		SourceBuf                                Buffer;
-		llvm::DenseMap<Identifier, Module*>      ModImports;
-		llvm::DenseMap<Identifier, StructImport> StructImports;
+		std::string                                         Path;
+		SourceBuf                                           Buffer;
+		llvm::DenseMap<Identifier, Namespace*>              NamespaceImports;
+		llvm::DenseMap<Identifier, StructOrNamespaceImport> StructOrNamespaceImports;
 
 		bool ParsingErrors = false;
 
@@ -400,7 +405,7 @@ namespace arco {
 		union {
 			FuncsList* Funcs;
 			VarDecl*   Var;
-			Module*    Mod;
+			Namespace* NSpace;
 		};
 	};
 

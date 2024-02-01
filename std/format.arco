@@ -1,5 +1,5 @@
 
-out OutStream = OutStream{ GetStdHandle(-11) };
+out OutStream = OutStream{ win32.GetStdHandle(-11) };
 
 // TODO: Functions are redundent because there is no support for
 //       templating yet!
@@ -39,9 +39,9 @@ fn println(msg String) {
 }
 
 fn read(buffer char*, length int) int {
-	handle               void* = GetStdHandle(-10);
+	handle               void* = win32.GetStdHandle(-10);
 	number_of_bytes_read uint32;
-	ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
+	win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
 	return cast(int) number_of_bytes_read;
 }
 

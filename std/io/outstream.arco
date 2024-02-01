@@ -13,7 +13,7 @@ OutStream struct {
 
 	fn write(msg cstr, length int) {
 		bytes_written uint32;
-		WriteFile(handle, msg, length, &bytes_written, null);
+		win32.WriteFile(handle, msg, length, &bytes_written, null);
 	}
 
 	fn write(msg cstr) {

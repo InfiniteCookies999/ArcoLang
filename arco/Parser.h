@@ -27,6 +27,7 @@ namespace arco {
 
 		ArcoContext& Context;
 		Module*      Mod;
+		Namespace*   NSpace;
 		Lexer        Lex;
 		Logger       Log;
 

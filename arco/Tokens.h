@@ -44,6 +44,7 @@ namespace arco {
 		KW_NEW,
 		KW_THIS,
 		KW_IMPORT,
+		KW_NAMESPACE,
 		KW_NULL,
 		KW_FN,
 		KW_STRUCT,

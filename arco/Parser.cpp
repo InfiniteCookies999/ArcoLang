@@ -84,6 +84,23 @@ arco::FileScope* arco::Parser::Parse() {
 
 	NextToken(); // Prime the parser.
 
+	NSpace = Mod->DefaultNamespace;
+
+	if (CTok.Is(TokenKind::KW_NAMESPACE)) {
+		NextToken();
+		Identifier NamespaceName = ParseIdentifier("Expecified identifier to namespace");
+		if (!NamespaceName.IsNull()) {
+			auto Itr = Mod->Namespaces.find(NamespaceName);
+			if (Itr == Mod->Namespaces.end()) {
+				NSpace = new Namespace;
+				Mod->Namespaces.insert({ NamespaceName, NSpace });
+			} else {
+				NSpace = Itr->second;
+			}
+		}
+		Match(';');
+	}
+
 	// Parsing imports.
 	while (CTok.IsNot(TokenKind::TK_EOF)) {
 		if (CTok.Is(TokenKind::KW_IMPORT)) {
@@ -113,18 +130,18 @@ arco::FileScope* arco::Parser::Parse() {
 				}
 			}
 
-			Mod->Funcs[Func->Name].push_back(Func);
+			NSpace->Funcs[Func->Name].push_back(Func);
 		} else if (Stmt->Is(AstKind::STRUCT_DECL)) {
 			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
 			
 			if (!Struct->Name.IsNull()) {
-				if (Mod->Structs.find(Struct->Name) != Mod->Structs.end()) {
+				if (NSpace->Structs.find(Struct->Name) != NSpace->Structs.end()) {
 					Error(Struct->Loc,
 						"Duplicate declaration of struct '%s'",
 						Struct->Name);
 				}
 
-				Mod->Structs[Struct->Name] = Struct;
+				NSpace->Structs[Struct->Name] = Struct;
 			}
 		} else if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Global = static_cast<VarDecl*>(Stmt);
@@ -132,13 +149,13 @@ arco::FileScope* arco::Parser::Parse() {
 			Context.UncheckedDecls.insert(Global);
 
 			if (!Global->Name.IsNull()) {
-				if (Mod->GlobalVars.find(Global->Name) != Mod->GlobalVars.end()) {
+				if (NSpace->GlobalVars.find(Global->Name) != NSpace->GlobalVars.end()) {
 					Error(Global->Loc,
 						"Duplicate declaration of global variable '%s'",
 						Global->Name);
 				}
 				
-				Mod->GlobalVars[Global->Name] = Global;
+				NSpace->GlobalVars[Global->Name] = Global;
 			}
 		} else {
 			FScope->InvalidStmts.push_back({
@@ -160,13 +177,20 @@ void arco::Parser::ParseImport() {
 	NextToken(); // Consuming 'import' token.
 
 	Identifier ModName = ParseIdentifier("Expected identifier for import module name");
-	Identifier StructName;
+	Identifier StructOrNamespace, StructName;
 
 	if (CTok.Is('.')) {
-		// Import must be for a struct.
+		// Import must be for a namespace or struct.
 		NextToken();
 	
-		StructName = ParseIdentifier("Expected identifier for struct name");
+		StructOrNamespace = ParseIdentifier("Expected identifier for struct or namespace");
+
+		if (CTok.Is('.')) {
+			// Import must be for a struct.
+			NextToken();
+
+			StructName = ParseIdentifier("Expected identifier for struct");
+		}
 	}
 
 	Match(';');
@@ -177,22 +201,26 @@ void arco::Parser::ParseImport() {
 		return;
 	}
 
-	if (StructName.IsNull()) {
-		if (FScope->ModImports.find(ModName) != FScope->ModImports.end()) {
+	Module* ImportMod = Itr->second;
+	if (StructOrNamespace.IsNull()) {
+		if (FScope->NamespaceImports.find(ModName) != FScope->NamespaceImports.end()) {
 			Error(ImportTok, "Duplicate import");
 			return;
 		}
 
-		FScope->ModImports[ModName] = Itr->second;
+		FScope->NamespaceImports[ModName] = ImportMod->DefaultNamespace;
 	} else {
-		if (FScope->StructImports.find(StructName) != FScope->StructImports.end()) {
-			Error(ImportTok, "Already importing a struct with that given name");
+		Identifier LookupIdent = StructName.IsNull() ? StructOrNamespace : StructName;
+
+		if (FScope->StructOrNamespaceImports.find(LookupIdent) != FScope->StructOrNamespaceImports.end()) {
+			Error(ImportTok, "Duplicate import");
 			return;
 		}
 
-		FScope->StructImports[StructName] = {
+		FScope->StructOrNamespaceImports[LookupIdent] = {
 			ImportTok.Loc,
-			Itr->second,
+			ImportMod,
+			StructOrNamespace,
 			StructName
 		};
 	}

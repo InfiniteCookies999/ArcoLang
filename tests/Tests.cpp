@@ -128,8 +128,8 @@ int main() {
 	RunTest(SRC("globals/globals3.arco"), "34 66");
 	RunTest(SRC("globals/globals4.arco"), "22 1111");
 	RunTest(SRC("globals/globals5.arco"), "235 31 235 31 235 31 235 31 235 31 ");
-
-	//RunTest(SRC("workpad/main.arco"), "");
+	
+	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 
 	if (Succeeded + Failed > 0) {

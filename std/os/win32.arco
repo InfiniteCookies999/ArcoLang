@@ -1,3 +1,4 @@
+namespace win32;
 
 native fn GetStdHandle(nStdHandle uint32) void*;
 
