@@ -1053,14 +1053,9 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 
 	auto SearchForVars = [=]() {
 		if (StructToLookup) {
-			auto Itr = std::find_if(
-				StructToLookup->Fields.begin(),
-				StructToLookup->Fields.end(),
-			[=](VarDecl* Field) {
-				return Field->Name == IRef->Ident;
-			});
-			if (Itr != StructToLookup->Fields.end()) {
-				IRef->Var     = *Itr;
+			VarDecl* Field = StructToLookup->FindField(IRef->Ident);
+			if (Field) {
+				IRef->Var     = Field;
 				IRef->RefKind = IdentRef::RK::Var;
 			}
 		} else {

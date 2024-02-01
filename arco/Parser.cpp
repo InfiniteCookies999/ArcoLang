@@ -121,10 +121,15 @@ arco::FileScope* arco::Parser::Parse() {
 		Context.UncheckedDecls.insert(Global);
 		
 		if (!Global->Name.IsNull()) {
-			if (NSpace->GlobalVars.find(Global->Name) != NSpace->GlobalVars.end()) {
+			auto Itr = NSpace->GlobalVars.find(Global->Name);
+			if (Itr != NSpace->GlobalVars.end()) {
+				VarDecl* FirstDecl = Itr->getSecond();
 				Error(Global->Loc,
-					"Duplicate declaration of global variable '%s'",
-					Global->Name);
+					"Redeclaration of global variable '%s'. First declared at: %s:%s",
+					Global->Name,
+					FirstDecl->FScope->Path,
+					FirstDecl->Loc.LineNumber
+					);
 			}
 				
 			NSpace->GlobalVars[Global->Name] = Global;
@@ -492,12 +497,17 @@ arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers
 	Var->Name   = Name;
 	Var->Mods   = Mods;
 
-	if (CFunc) {
-		CFunc->AllocVars.push_back(Var);
-	}
-
-	if (LocScope && !Var->Name.IsNull()) {
-		LocScope->VarDecls.insert({ Var->Name, Var });
+	if (LocScope && !Name.IsNull()) {
+		auto Itr = LocScope->VarDecls.find(Name);
+		if (Itr != LocScope->VarDecls.end()) {
+			Error(Var->Loc, "Redeclaration of variable '%s'. First declared on line: %s",
+				Var->Name, Itr->second->Loc.LineNumber);
+		}
+		LocScope->VarDecls.insert({ Name, Var });
+	
+		if (CFunc) {
+			CFunc->AllocVars.push_back(Var);
+		}
 	}
 	return Var;
 }
@@ -516,8 +526,10 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	Context.UncheckedDecls.insert(Struct);
 
 	auto ProcessField = [=](VarDecl* Field) {
-		Field->FieldIdx = Struct->Fields.size();
-		Struct->Fields.push_back(Field);
+		if (!Field->Name.IsNull()) {
+			Field->FieldIdx = Struct->Fields.size();
+			Struct->Fields.push_back(Field);
+		}
 	};
 
 	PUSH_SCOPE()

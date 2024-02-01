@@ -246,6 +246,16 @@ namespace arco {
 
 		// At least one field has assignment.
 		bool FieldsHaveAssignment = false;
+
+		inline VarDecl* FindField(Identifier Name) {
+			auto Itr = std::find_if(Fields.begin(), Fields.end(), [=](VarDecl* Field) {
+				return Field->Name == Name;
+			});
+			if (Itr == Fields.end()) {
+				return nullptr;
+			}
+			return *Itr;
+		}
 	};
 
 	// Ex.   'a, b, c int = 4, 6, 3;'
