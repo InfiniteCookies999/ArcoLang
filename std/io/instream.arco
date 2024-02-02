@@ -1,0 +1,35 @@
+
+/**
+ * An input stream for reading from files or other readable
+ * objects.
+ */
+InStream struct {
+
+	handle void*;
+
+	fn InStream(handle void*) {
+		this.handle = handle;
+	}
+
+	fn read(buffer char*, length int) int {
+		number_of_bytes_read uint32;
+		win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
+		return cast(int) number_of_bytes_read;
+	}
+
+	fn read_line() String {
+		buffer char[1024];
+		amount_read int = read(buffer, buffer.length);
+		// -2 because of \r\n is read when calling Windows ReadFile.
+		return String{ buffer, amount_read - 2 };
+	}
+
+	fn get_size() int {
+		size uint = win32.GetFileSize(handle, null);
+		return cast(int) size;
+	}
+
+	fn close() {
+		win32.CloseHandle(handle);
+	}
+}

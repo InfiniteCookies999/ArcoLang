@@ -2,6 +2,8 @@
 out OutStream = OutStream{ win32.GetStdHandle(-11) };
 err OutStream = OutStream{ win32.GetStdHandle(-12) };
 
+in  InStream  = InStream { win32.GetStdHandle(-10) };
+
 // TODO: Functions are redundent because there is no support for
 //       templating yet!
 
@@ -20,8 +22,7 @@ fn print(msg cstr) {
 	out.write(msg);
 }
 
-// TODO: Should be pass by const ref once supported.
-fn print(msg String) {
+fn print(msg String*) {
 	out.write(msg);
 }
 
@@ -37,8 +38,7 @@ fn println(i uint) {
 	out.writeln(i);
 }
 
-// TODO: Should be pass by const ref once supported.
-fn println(msg String) {
+fn println(msg String*) {
 	out.writeln(msg);
 }
 
@@ -61,8 +61,7 @@ fn eprint(msg cstr) {
 	err.write(msg);
 }
 
-// TODO: Should be pass by const ref once supported.
-fn eprint(msg String) {
+fn eprint(msg String*) {
 	err.write(msg);
 }
 
@@ -78,8 +77,7 @@ fn eprintln(i uint) {
 	err.writeln(i);
 }
 
-// TODO: Should be pass by const ref once supported.
-fn eprintln(msg String) {
+fn eprintln(msg String*) {
 	err.writeln(msg);
 }
 
@@ -91,15 +89,9 @@ fn eprintln() {
 //----------------------------------------------
 
 fn read(buffer char*, length int) int {
-	handle               void* = win32.GetStdHandle(-10);
-	number_of_bytes_read uint32;
-	win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
-	return cast(int) number_of_bytes_read;
+	return in.read(buffer, length);
 }
 
 fn read_line() String {
-	buffer char[1024];
-	amount_read int = read(buffer, buffer.length);
-	// -2 because of \r\n is read when calling Windows ReadFile.
-	return String{ buffer, amount_read - 2 };
+	return in.read_line();
 }

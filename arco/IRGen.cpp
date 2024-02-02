@@ -1338,6 +1338,12 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 		);
 	}
 
+	if (FieldAcc->RefKind == IdentRef::RK::Var) {
+		if (FieldAcc->Var->IsGlobal) {
+			return GenIdentRef(FieldAcc);
+		}
+	}
+
 	Expr* Site = FieldAcc->Site;
 	llvm::Value* LLSite;
 	if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
@@ -1607,12 +1613,13 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 	}
 
 	if (StructInit->CalledConstructor) {
-		return GenFuncCallGeneral(
+		GenFuncCallGeneral(
 			StructInit,
 			StructInit->CalledConstructor,
 			StructInit->Args,
 			LLAddr
 		);
+		return LLAddr;
 	}
 
 	GenStructInitArgs(LLAddr, Struct, StructInit->Args);

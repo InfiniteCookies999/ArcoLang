@@ -150,8 +150,15 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 
 	CheckFuncParamTypes(Func);
 
+	if (Func->Mods & ModKinds::NATIVE) {
+		return;
+	}
+
 	Scope FuncScope;
 	CheckScopeStmts(Func->Scope, FuncScope);
+	if (!FuncScope.AllPathsReturn && !Func->RetTy->Equals(Context.VoidType)) {
+		Error(Func, "Not all function paths return");
+	}
 }
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {

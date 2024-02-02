@@ -1,0 +1,88 @@
+namespace files;
+
+import std.InStream;
+
+// TODO: Will eventually want to replace with an enum!
+//
+
+FLAG_IN  uint = 0x0001;
+FLAG_OUT uint = 0x0002;
+
+/*
+ * More than once open instance of the
+ * file can be opened and accessed at
+ * the same time.
+ */
+FLAG_SHARE uint = 0x0004;
+
+/* Creates the file if it does not exist. */
+FLAG_CREATE uint = 0x0008;
+
+/*
+ * Reads an entire file into a string.
+ */
+fn read(path cstr) String {
+	// TODO: cleanup allocated memory.
+
+	stream InStream = open(path, FLAG_IN);
+	size   int   = stream.get_size();
+	buffer char* = new char[size];
+	
+	stream.read(buffer, size);
+	stream.close();
+	
+	return String{ buffer, size };
+}
+
+/*
+ * Returns true if the file system has a file or
+ * folder at the given path.
+ */
+fn exists(path cstr) bool {
+	attribs uint32 = win32.GetFileAttributesA(path);
+	return attribs != win32.INVALID_FILE_ATTRIBUTES;
+}
+
+fn open(path cstr, flags uint) InStream {
+	access_flags uint32 = 0;
+	share_flags  uint32 = 0;
+	create_flags uint32 = 0;
+
+	if flags == 0 {
+		access_flags = win32.GENERIC_ALL;
+	}
+
+	if (flags & FLAG_IN) != 0 {
+		access_flags |= win32.GENERIC_READ;
+	}
+
+	if (flags & FLAG_OUT) != 0 {
+		access_flags |= win32.GENERIC_WRITE;
+	}
+
+	if (flags & FLAG_SHARE) != 0 {
+		share_flags |= win32.FILE_SHARE_READ;
+	}
+
+	if (flags & FLAG_CREATE) != 0 {
+		create_flags |= win32.CREATE_NEW;
+	} else {
+		create_flags |= win32.OPEN_EXISTING;
+	}
+
+	handle void* = win32.CreateFileA(path,
+	                                 access_flags,
+								     share_flags,
+								     null,
+								     create_flags,
+								     win32.FILE_ATTRIBUTE_NORMAL,
+								     null);
+
+	if handle == win32.INVALID_HANDLE_VALUE {
+		// TODO: properly handle the error once supported.
+		panic("Failed to open filestream!");
+	}
+	
+	// TODO: What if they want a stream to write?
+	return InStream{ handle };
+}

@@ -20,8 +20,7 @@ OutStream struct {
 		write(msg, strlen(msg));
 	}
 
-	// TODO: Should be pass by const ref once supported.
-	fn write(msg String) {
+	fn write(msg String*) {
 		write(msg.buffer, msg.length);
 	}
 
@@ -70,8 +69,7 @@ OutStream struct {
 		write("\n", 1);
 	}
 
-	// TODO: Should be pass by const ref once supported.
-	fn writeln(msg String) {
+	fn writeln(msg String*) {
 		write(msg);
 		write("\n", 1);
 	}
