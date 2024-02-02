@@ -1468,17 +1468,19 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
 		Error(Access, "Expected int type for index. Found type '%s'", Access->Index->Ty->ToString());
 	}
 
-	// TODO: Expand to support access cstr types.
 	TypeKind Kind = Access->Site->Ty->GetKind();
-	if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer)) {
+	if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer || Kind == TypeKind::CStr)) {
 		Error(Access, "Cannot index non-array or pointer type. Type was '%s'",
 			Access->Site->Ty->ToString());
 		YIELD_ERROR(Access);
 	}
 
 	Access->IsFoldable = false;
-	Access->Ty = static_cast<ContainerType*>(Access->Site->Ty)->GetElementType();
-
+	if (Kind == TypeKind::CStr) {
+		Access->Ty = Context.CharType;
+	} else {
+		Access->Ty = static_cast<ContainerType*>(Access->Site->Ty)->GetElementType();
+	}
 }
 
 void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
