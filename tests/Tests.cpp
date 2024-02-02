@@ -77,7 +77,8 @@ int main() {
 	RunTest(SRC("float_literals.arco"), "522157 4000000 4000000 4000000 4000000 16 16 3314 5 0");
 	RunTest(SRC("increments.arco"), "2 0 0 1 1 0 1 0");
 	RunTest(SRC("pointer_arithmetic.arco"), "hello worldello worldo worldworld worldello world");
-	RunTest(SRC("heap_alloc.arco"), "315 341 88 341 66 341 66 341 66 341 66");
+	RunTest(SRC("heap_alloc/heap_alloc1.arco"), "315 341 88 341 66 341 66 341 66 341 66");
+	RunTest(SRC("heap_alloc/heap_alloc2.arco"), "4 52 9 7 5 23 1 5 5 2 6 11");
 	RunTest(SRC("bool_literals.arco"), "ok1ok2ok3ok4");
 	RunTest(SRC("var_decl_list.arco"), "5 3 2");
 	RunTest(SRC("literal_type_info.arco"), "int8 int16 int32 int64 uint8 uint16 uint32 uint64 ");
@@ -132,6 +133,7 @@ int main() {
 	RunTest(SRC("globals/globals4.arco"), "22 1111");
 	RunTest(SRC("globals/globals5.arco"), "235 31 235 31 235 31 235 31 235 31 ");
 	
+
 	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 

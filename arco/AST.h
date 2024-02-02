@@ -538,6 +538,10 @@ namespace arco {
 
 		Type* TypeToAlloc;
 
+		FuncDecl* CalledConstructor = nullptr;
+
+		llvm::SmallVector<NonNamedValue, 2> Values;
+
 	};
 }
 

@@ -1370,7 +1370,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 		}
 
 		if (!EncounteredError) {
-			Log.BeginError(ErrorLoc, "Could not find function for call");
+			Log.BeginError(ErrorLoc, "Could not find %s for call", CallType);
 		}
 
 		// Displaying the function.
@@ -1386,7 +1386,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 		FuncDec += ")";
 
 		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
-			OS << "Expected call to function declaration: " << FuncDec;
+			OS << "Expected call to " << CallType << " declaration: " << FuncDec;
 		});
 		Log.EndError();
 
@@ -1511,10 +1511,17 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 
 	// TODO: May want to allow if the fields are foldable!
 	StructInit->IsFoldable = false;
+	StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args);
+
+}
+
+arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
+	                                                   SourceLoc ErrorLoc,
+	                                                   llvm::SmallVector<NonNamedValue, 2>& Args) {
 
 	bool ArgsHaveErrors = false;
-	for (ulen i = 0; i < StructInit->Args.size(); i++) {
-		NonNamedValue Value = StructInit->Args[i];
+	for (ulen i = 0; i < Args.size(); i++) {
+		NonNamedValue Value = Args[i];
 		CheckNode(Value.E);
 		if (Value.E->Ty == Context.ErrorType) {
 			ArgsHaveErrors = true;
@@ -1525,26 +1532,22 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 		// Calling constructor!
 
 		if (ArgsHaveErrors) {
-			return;
+			return nullptr;
 		}
 
-		FuncDecl* CalledConstructor =
-			CheckCallToCanidates(
-				StructInit->Loc,
+		return CheckCallToCanidates(
+				ErrorLoc,
 				&Struct->Constructors,
-				StructInit->Args
+				Args
 				);
-
-		StructInit->CalledConstructor = CalledConstructor;
-		return;
 	}
 
-	for (ulen i = 0; i < StructInit->Args.size(); i++) {
-		NonNamedValue Value = StructInit->Args[i];
+	for (ulen i = 0; i < Args.size(); i++) {
+		NonNamedValue Value = Args[i];
 		
 		if (i >= Struct->Fields.size()) {
 			Error(Value.ExpandedLoc, "Too many fields in initializer");
-			return;
+			return nullptr;
 		}
 
 		if (Value.E->Ty == Context.ErrorType) {
@@ -1559,19 +1562,52 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 			CreateCast(Value.E, FieldTy);
 		}
 	}
+
+	return nullptr;
 }
 
 void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 	Alloc->IsFoldable = false;
 
-	// TODO: Need to make sure that when allocating structs that they
-	// either have an available default constructor or that they
-	// are provided the appropriate arguments for an alternative constructor.
-
 	Type* TypeToAlloc = Alloc->TypeToAlloc;
 
 	if (!FixupType(TypeToAlloc, true)) {
 		YIELD_ERROR(Alloc);
+	}
+
+
+	if (TypeToAlloc->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(TypeToAlloc);
+		Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values);
+	} else if (!Alloc->Values.empty()) {
+		if (Alloc->Values.size() > 1) {
+			Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc->ToString());
+		} else {
+			CheckNode(Alloc->Values[0].E);
+			if (Alloc->Values[0].E->Ty != Context.ErrorType) {
+				if (TypeToAlloc->GetKind() == TypeKind::Array && Alloc->Values[0].E->IsNot(AstKind::ARRAY)) {
+					Error(Alloc->Values[0].ExpandedLoc, "The array must be created inline");
+				}
+
+				if (!IsAssignableTo(Alloc->TypeToAlloc, Alloc->Values[0].E)) {
+					Error(Alloc->Values[0].ExpandedLoc,
+						"Cannot initialize allocation of type '%s' with type '%s'",
+						Alloc->TypeToAlloc->ToString(),
+						Alloc->Values[0].E->Ty->ToString());
+				} else {
+					CreateCast(Alloc->Values[0].E, Alloc->TypeToAlloc);
+				}
+			}
+		}
+	} else if (TypeToAlloc->GetKind() == TypeKind::Array) {
+		ArrayType* ArrayTy = static_cast<ArrayType*>(TypeToAlloc);
+		Type* BaseTy = ArrayTy->GetBaseType();
+		if (BaseTy->GetKind() == TypeKind::Struct) {
+			StructType* StructTy = static_cast<StructType*>(BaseTy);
+			if (!StructTy->GetStruct()->Constructors.empty() && !StructTy->GetStruct()->DefaultConstructor) {
+				Error(Alloc, "Cannot allocate array of structs because there is no default constructor");
+			}
+		}
 	}
 
 	if (TypeToAlloc->GetKind() == TypeKind::Array) {

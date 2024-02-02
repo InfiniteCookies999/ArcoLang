@@ -99,6 +99,9 @@ namespace arco {
 		void CheckArrayAccess(ArrayAccess* Access);
 		void CheckTypeCast(TypeCast* Cast);
 		void CheckStructInitializer(StructInitializer* StructInit);
+		FuncDecl* CheckStructInitArgs(StructDecl* Struct,
+			                          SourceLoc ErrorLoc,
+			                          llvm::SmallVector<NonNamedValue, 2>& Args);
 		void CheckHeapAlloc(HeapAlloc* Alloc);
 
 		void CheckCondition(Expr* Cond, const char* PreErrorText);

@@ -96,6 +96,9 @@ namespace arco {
 		llvm::Value* GenArrayAccess(ArrayAccess* Access);
 		llvm::Value* GenTypeCast(TypeCast* Cast);
 		llvm::Value* GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr);
+		void GenStructInitArgs(llvm::Value* LLAddr,
+			                   StructDecl* Struct,
+			                   llvm::SmallVector<NonNamedValue, 2>& Args);
 		llvm::Value* GenHeapAlloc(HeapAlloc* Alloc);
 
 		llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);

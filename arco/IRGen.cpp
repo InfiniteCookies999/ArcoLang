@@ -1539,8 +1539,21 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
 	bool ElmsAreArrs = DestTy->GetElementType()
 		                     ->GetKind() == TypeKind::Array;
 
+	bool AddrIsPtr = LLAddr->getType()->isPointerTy() && !LLAddr->getType()->getPointerElementType()->isArrayTy();
+	
 	for (ulen i = 0; i < DestTy->GetLength(); i++) {
-		llvm::Value* LLAddrAtIndex = GetArrayIndexAddress(LLAddr, GetSystemUInt(i, LLContext, LLModule));
+		
+		// Because the address might come from a heap allocation it is possible
+		// it refers to a pointer therefore it becomes necessary to check if it
+		// is a pointer first.
+		llvm::Value* LLIndex = GetSystemUInt(i, LLContext, LLModule);
+		llvm::Value* LLAddrAtIndex;
+		if (AddrIsPtr) {
+			LLAddrAtIndex = CreateInBoundsGEP(LLAddr, { LLIndex });
+		} else {
+			LLAddrAtIndex = GetArrayIndexAddress(LLAddr, LLIndex);
+		}
+		
 		if (i < Arr->Elements.size()) {
 			Expr* Elm = Arr->Elements[i];
 			if (ElmsAreArrs) {
@@ -1550,12 +1563,10 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
 					static_cast<ArrayType*>(DestTy->GetElementType())
 				);
 			} else {
-				// TODO: Additional casting information!!
 				GenAssignment(LLAddrAtIndex, Elm);
 			}
 		} else {
-			// TODO: Default Assign instead!
-			Builder.CreateStore(GenZeroedValue(DestTy->GetElementType()), LLAddrAtIndex);
+			GenDefaultValue(DestTy->GetElementType(), LLAddrAtIndex);
 		}
 	}
 }
@@ -1604,9 +1615,17 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 		);
 	}
 
+	GenStructInitArgs(LLAddr, Struct, StructInit->Args);
+
+	return LLAddr;
+}
+
+void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
+	                                      StructDecl* Struct,
+	                                      llvm::SmallVector<NonNamedValue, 2>& Args) {
 	std::unordered_set<ulen> ConsumedFieldIdxs;
-	for (ulen i = 0; i < StructInit->Args.size(); i++) {
-		NonNamedValue Value = StructInit->Args[i];
+	for (ulen i = 0; i < Args.size(); i++) {
+		NonNamedValue Value = Args[i];
 		
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Struct->Fields[i]->FieldIdx);
 		GenAssignment(LLFieldAddr, Value.E);
@@ -1623,8 +1642,6 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 			}
 		}
 	}
-
-	return LLAddr;
 }
 
 llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
@@ -1642,8 +1659,10 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 
 		Type* BaseTy = ArrayTy->GetElementType();
 		llvm::Value* LLArrStartPtr = GenMalloc(GenType(BaseTy), LLTotalLinearLength);
-
-		if (BaseTy->GetKind() == TypeKind::Struct) {
+		
+		if (!Alloc->Values.empty()) {
+			GenAssignment( LLArrStartPtr, Alloc->Values[0].E);
+		} else if (BaseTy->GetKind() == TypeKind::Struct) {
 			// Need to initialize fields so calling the default constructor.
 			StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
 		}
@@ -1652,8 +1671,22 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 	} else {
 		llvm::Value* LLMalloc = GenMalloc(GenType(TypeToAlloc), nullptr);
 		if (TypeToAlloc->GetKind() == TypeKind::Struct) {
-			// Need to initialize fields so calling the default constructor.
-			CallDefaultConstructor(LLMalloc, static_cast<StructType*>(TypeToAlloc));
+			StructType* StructTy = static_cast<StructType*>(TypeToAlloc);
+			StructDecl* Struct = StructTy->GetStruct();
+			if (Alloc->CalledConstructor) {
+				GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc);
+			} else {
+				if (!Alloc->Values.empty()) {
+					GenStructInitArgs(LLMalloc, Struct, Alloc->Values);
+				} else {
+					// Need to initialize fields so calling the default constructor.
+					CallDefaultConstructor(LLMalloc, static_cast<StructType*>(TypeToAlloc));
+				}
+			}
+		} else {
+			if (!Alloc->Values.empty()) {
+				GenAssignment(LLMalloc, Alloc->Values[0].E);
+			}
 		}
 		return LLMalloc;
 	}

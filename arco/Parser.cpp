@@ -1121,6 +1121,11 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		if (Alloc->TypeToAlloc == Context.ErrorType) {
 			SkipRecovery();
 		}
+		if (AllowStructInitializer && CTok.Is('{')) {
+			NextToken(); // Consumign '{'.
+			ParseAggregatedValues(Alloc->Values, '}', true);
+			Match('}', "for struct initializer");
+		}
 		return Alloc;
 	}
 	case TokenKind::KW_TRUE: {
