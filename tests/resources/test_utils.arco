@@ -11,7 +11,7 @@ native fn WriteFile(hFile                  void*,
 fn print(msg cstr, length int) {
 	handle        void* = GetStdHandle(-11);
 	bytes_written uint32;
-	WriteFile(handle, msg, length, &bytes_written, null);
+	WriteFile(handle, msg, cast(uint32) length, &bytes_written, null);
 }
 
 fn print(i int) {

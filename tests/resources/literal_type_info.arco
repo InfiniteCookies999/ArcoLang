@@ -24,7 +24,7 @@ fn foo(a uint16) {
 }
 
 fn foo(a uint32) {
-	print("int32 ", 7);
+	print("uint32 ", 7);
 }
 
 fn foo(a uint64) {

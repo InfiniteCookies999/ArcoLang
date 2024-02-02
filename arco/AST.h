@@ -497,6 +497,7 @@ namespace arco {
 		// at depth two will take on the maximum length of the
 		// arrays at that level. So both arrays will be length 3.
 		ulen RequiredNumElements;
+		Type* ReqBaseType = nullptr;
 
 		llvm::SmallVector<Expr*, 4> Elements;
 

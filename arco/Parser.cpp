@@ -759,33 +759,9 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 }
 
 arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
-	arco::Type* Ty = nullptr;
-	
-	switch (CTok.Kind) {
-	case TokenKind::KW_INT:    Ty = Context.IntType;     NextToken(); break;
-	case TokenKind::KW_UINT:   Ty = Context.UIntType;    NextToken(); break;
-	case TokenKind::KW_INT8:   Ty = Context.Int8Type;    NextToken(); break;
-	case TokenKind::KW_INT16:  Ty = Context.Int16Type;   NextToken(); break;
-	case TokenKind::KW_INT32:  Ty = Context.Int32Type;   NextToken(); break;
-	case TokenKind::KW_INT64:  Ty = Context.Int64Type;   NextToken(); break;
-	case TokenKind::KW_UINT8:  Ty = Context.UInt8Type;   NextToken(); break;
-	case TokenKind::KW_UINT16: Ty = Context.UInt16Type;  NextToken(); break;
-	case TokenKind::KW_UINT32: Ty = Context.UInt32Type;  NextToken(); break;
-	case TokenKind::KW_UINT64: Ty = Context.UInt64Type;  NextToken(); break;
-	case TokenKind::KW_F32:    Ty = Context.Float32Type; NextToken(); break;
-	case TokenKind::KW_F64:    Ty = Context.Float64Type; NextToken(); break;
-	case TokenKind::KW_CHAR:   Ty = Context.CharType;    NextToken(); break;
-	case TokenKind::KW_VOID:   Ty = Context.VoidType;    NextToken(); break;
-	case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
-	case TokenKind::KW_BOOL:   Ty = Context.BoolType;    NextToken(); break;
-	case TokenKind::IDENT: {
-		Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
-		NextToken();
-		break;
-	}
-	default:
-		Error(CTok, "Expected valid type");
-		break;
+	arco::Type* Ty = ParseBasicType();
+	if (Ty == nullptr) {
+		return Ty;
 	}
 
 	// Parsing pointer type.
@@ -848,6 +824,37 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 		}
 	}
 
+	return Ty;
+}
+
+arco::Type* arco::Parser::ParseBasicType() {
+	arco::Type* Ty = nullptr;
+	switch (CTok.Kind) {
+	case TokenKind::KW_INT:    Ty = Context.IntType;     NextToken(); break;
+	case TokenKind::KW_UINT:   Ty = Context.UIntType;    NextToken(); break;
+	case TokenKind::KW_INT8:   Ty = Context.Int8Type;    NextToken(); break;
+	case TokenKind::KW_INT16:  Ty = Context.Int16Type;   NextToken(); break;
+	case TokenKind::KW_INT32:  Ty = Context.Int32Type;   NextToken(); break;
+	case TokenKind::KW_INT64:  Ty = Context.Int64Type;   NextToken(); break;
+	case TokenKind::KW_UINT8:  Ty = Context.UInt8Type;   NextToken(); break;
+	case TokenKind::KW_UINT16: Ty = Context.UInt16Type;  NextToken(); break;
+	case TokenKind::KW_UINT32: Ty = Context.UInt32Type;  NextToken(); break;
+	case TokenKind::KW_UINT64: Ty = Context.UInt64Type;  NextToken(); break;
+	case TokenKind::KW_F32:    Ty = Context.Float32Type; NextToken(); break;
+	case TokenKind::KW_F64:    Ty = Context.Float64Type; NextToken(); break;
+	case TokenKind::KW_CHAR:   Ty = Context.CharType;    NextToken(); break;
+	case TokenKind::KW_VOID:   Ty = Context.VoidType;    NextToken(); break;
+	case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
+	case TokenKind::KW_BOOL:   Ty = Context.BoolType;    NextToken(); break;
+	case TokenKind::IDENT: {
+		Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
+		NextToken();
+		break;
+	}
+	default:
+		Error(CTok, "Expected valid type");
+		break;
+	}
 	return Ty;
 }
 
@@ -1534,7 +1541,15 @@ arco::FuncCall* arco::Parser::ParseFuncCall(Expr* Site) {
 arco::Array* arco::Parser::ParseArray() {
 	Array* Arr = NewNode<Array>(CTok);
 	Match('[');
-	
+
+	switch (CTok.Kind) {
+	case TYPE_KW_START_CASES:
+		Arr->ReqBaseType = ParseBasicType();
+		Match(']');
+		Match('[');
+		break;
+	}
+
 	if (ArrayDepthCount == 0) {
 		// TODO: memset for performance?
 

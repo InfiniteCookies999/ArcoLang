@@ -1405,7 +1405,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 
 void arco::SemAnalyzer::CheckArray(Array* Arr) {
 
-	Type* ElmTypes = nullptr;
+	Type* ElmTypes = Arr->ReqBaseType;
 	bool ElmHaveErrors = false, ElmAreArrs = false;
 	for (Expr* Elm : Arr->Elements) {
 		CheckNode(Elm);
@@ -1429,9 +1429,12 @@ void arco::SemAnalyzer::CheckArray(Array* Arr) {
 				Error(Elm, "Array has incompatible sub-array elements");
 			}
 		} else {
-			if (!IsAssignableTo(ElmTypes, Elm->Ty, nullptr)) {
+			if (!IsAssignableTo(ElmTypes, Elm->Ty, Elm)) {
 				// Maybe the reserve is allowed.
-				if (!IsAssignableTo(Elm->Ty, ElmTypes, nullptr)) {
+				if (Arr->ReqBaseType) {
+					Error(Elm, "Array element not assignable to explicit array type. Array type: '%s', element type '%s'",
+						ElmTypes->ToString(), Elm->Ty->ToString());
+				} else if (!IsAssignableTo(Elm->Ty, ElmTypes, nullptr)) {
 					Error(Elm, "Array has incompatible elements. Array type: '%s', element type '%s'",
 						ElmTypes->ToString(), Elm->Ty->ToString());
 				} else {
@@ -1596,8 +1599,6 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Expr* FromExpr) {
 
 bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr) {
 	switch (ToTy->GetKind()) {
-	case TypeKind::Int:
-	case TypeKind::UnsignedInt:
 	case TypeKind::Int8:
 	case TypeKind::Int16:
 	case TypeKind::Int32:
@@ -1608,10 +1609,67 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 	case TypeKind::UnsignedInt64:
 	case TypeKind::Char: {
 		if (FromTy->IsInt()) {
-			// TODO: Improvements!
-			return true;
+			if (FromTy->IsSystemInt()) {
+				if (FromExpr && FromExpr->IsFoldable) {
+					// TODO: Should check if the value is less than 32 bits
+					// for better system compatibility?
+					return true;
+				}
+				// Otherwise trying to assign a non-foldable value to
+				// a explicit type should require a cast.
+				return false;
+			}
+
+			if (ToTy->GetTrivialTypeSizeInBytes() >= FromTy->GetTrivialTypeSizeInBytes()) {
+				// Destination has enough capacity to store the integer.
+				return true;
+			} else if (FromExpr && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
+				// If the FromExpr is a basic number literal
+				// then it will be allowed as long as it's value
+				// would not result in a loss of data
+
+				NumberLiteral* Num = static_cast<NumberLiteral*>(FromExpr);
+
+#define RANGE(ty, v)     v >= std::numeric_limits<ty>::min() && v <= std::numeric_limits<ty>::max();
+#define POS_RANGE(ty, v) v >= 0 && v <= std::numeric_limits<ty>::max();
+
+				if (Num->Ty->IsSigned()) {
+					switch (ToTy->GetKind()) {
+					case TypeKind::Int8:          return RANGE(i8, Num->SignedIntValue);
+					case TypeKind::Int16:         return RANGE(i16, Num->SignedIntValue);
+					case TypeKind::Int32:         return RANGE(i32, Num->SignedIntValue);
+					case TypeKind::Int64:         return RANGE(i64, Num->SignedIntValue);
+					case TypeKind::UnsignedInt8:  return POS_RANGE(u8, Num->SignedIntValue);
+					case TypeKind::UnsignedInt16: return POS_RANGE(u16, Num->SignedIntValue);
+					case TypeKind::UnsignedInt32: return POS_RANGE(u32, Num->SignedIntValue);
+					case TypeKind::UnsignedInt64: return POS_RANGE(u64, Num->SignedIntValue);
+					case TypeKind::Char:	      return RANGE(i8, Num->SignedIntValue);
+					}
+				} else {
+					switch (ToTy->GetKind()) {
+					case TypeKind::Int8:          return RANGE(i8, Num->UnsignedIntValue);
+					case TypeKind::Int16:         return RANGE(i16, Num->UnsignedIntValue);
+					case TypeKind::Int32:         return RANGE(i32, Num->UnsignedIntValue);
+					case TypeKind::Int64:         return RANGE(i64, Num->UnsignedIntValue);
+					case TypeKind::UnsignedInt8:  return POS_RANGE(u8, Num->UnsignedIntValue);
+					case TypeKind::UnsignedInt16: return POS_RANGE(u16, Num->UnsignedIntValue);
+					case TypeKind::UnsignedInt32: return POS_RANGE(u32, Num->UnsignedIntValue);
+					case TypeKind::UnsignedInt64: return POS_RANGE(u64, Num->UnsignedIntValue);
+					case TypeKind::Char:	      return RANGE(i8, Num->UnsignedIntValue);
+					}
+				}
+			}
+			return false;
 		}
 		return false;
+#undef RANGE
+#undef POS_RANGE
+	}
+	case TypeKind::Int:
+	case TypeKind::UnsignedInt: {
+		if (FromTy->IsSystemInt()) return true;
+		if (!FromTy->IsInt()) return false;
+		return FromTy->GetTrivialTypeSizeInBytes() <= 4;
 	}
 	case TypeKind::Float32:
 	case TypeKind::Float64:
@@ -1712,6 +1770,7 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
 	case TypeKind::UnsignedInt64:
 	case TypeKind::Int:
 	case TypeKind::UnsignedInt:
+	case TypeKind::Char:
 		if (FromTy->IsNumber() || FromTy->IsPointer() || FromTy->GetKind() == TypeKind::Bool) {
 			// Allow pointers/numbers/bools to cast to integers.
 			return true;

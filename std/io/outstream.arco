@@ -13,7 +13,7 @@ OutStream struct {
 
 	fn write(msg cstr, length int) {
 		bytes_written uint32;
-		win32.WriteFile(handle, msg, length, &bytes_written, null);
+		win32.WriteFile(handle, msg, cast(uint32) length, &bytes_written, null);
 	}
 
 	fn write(msg cstr) {
@@ -45,7 +45,7 @@ OutStream struct {
 		length int = 0;
 		buffer char[21];
 
-		v int = i;
+		v uint64 = i;
 		loop v > 0 {
 			v = v / 10;
 			length = length + 1;
@@ -53,7 +53,7 @@ OutStream struct {
 
 		scan int = length - 1;
 		loop i > 0 {
-			val int = (i % 10) + 48;
+			val uint64 = (i % 10) + 48;
 			buffer[scan] = cast(char) val;
 			scan = scan - 1;
 			i = i / 10;

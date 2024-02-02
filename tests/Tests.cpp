@@ -81,7 +81,7 @@ int main() {
 	RunTest(SRC("bool_literals.arco"), "ok1ok2ok3ok4");
 	RunTest(SRC("var_decl_list.arco"), "5 3 2");
 	RunTest(SRC("literal_type_info.arco"), "int8 int16 int32 int64 uint8 uint16 uint32 uint64 ");
-
+	
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
 	RunTest(SRC("loops/loops3.arco"), "10");
