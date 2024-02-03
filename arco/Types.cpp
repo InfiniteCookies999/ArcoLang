@@ -4,7 +4,7 @@
 
 #include "Context.h"
 
-bool arco::Type::Equals(Type* Ty) const {
+bool arco::Type::Equals(const Type* Ty) const {
 	switch (Ty->GetKind()) {
 	case TypeKind::Error:
 		return false;
@@ -37,6 +37,27 @@ bool arco::Type::Equals(Type* Ty) const {
 		const PointerType* PtrTy     = static_cast<const PointerType*>(Ty);
 		const PointerType* ThisPtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->Equals(ThisPtrTy->GetElementType());
+	}
+	case TypeKind::Function: {
+		if (this->GetKind() != TypeKind::Function) {
+			return false;
+		}
+
+		const FunctionType* FuncTy     = static_cast<const FunctionType*>(Ty);
+		const FunctionType* ThisFuncTy = static_cast<const FunctionType*>(this);
+		if (!FuncTy->RetTy->Equals(ThisFuncTy->RetTy)) {
+			return false;
+		}
+		if (FuncTy->ParamTypes.size() != ThisFuncTy->ParamTypes.size()) {
+			return false;
+		}
+
+		return std::equal(FuncTy->ParamTypes.begin(),
+			              FuncTy->ParamTypes.end(),
+			              ThisFuncTy->ParamTypes.begin(),
+			[](const Type* Ty1, const Type* Ty2) {
+				return Ty1->Equals(Ty2);
+			});
 	}
 	default:
 		return this == Ty;
@@ -214,6 +235,7 @@ std::string arco::Type::ToString() const {
 	case TypeKind::Bool:            return "bool";
 	case TypeKind::EmptyArrayElm:   return "";
 	case TypeKind::Error:           return "error";
+	case TypeKind::FuncRef:         return "fn reference";
 	case TypeKind::Pointer: {
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->ToString() + "*";
@@ -232,6 +254,18 @@ std::string arco::Type::ToString() const {
 	case TypeKind::Struct: {
 		const StructType* StructTy = static_cast<const StructType*>(this);
 		return StructTy->GetStruct()->Name.Text.str();
+	}
+	case TypeKind::Function: {
+		const FunctionType* FuncTy = static_cast<const FunctionType*>(this);
+		std::string Val = "fn(";
+		for (ulen i = 0; i < FuncTy->ParamTypes.size(); i++) {
+			Val += FuncTy->ParamTypes[i]->ToString();
+			if (i+1 != FuncTy->ParamTypes.size()) {
+				Val += ", ";
+			}
+		}
+		Val += ") " + FuncTy->RetTy->ToString();
+		return Val;
 	}
 	default:
 		assert(!"Unhandled ToString() for type");
@@ -304,4 +338,12 @@ arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Cont
 	Ty->StructName = Struct->Name;
 	Ty->Struct     = Struct;
 	return Ty;
+}
+
+arco::FunctionType* arco::FunctionType::Create(Type* RetTy, llvm::SmallVector<Type*> ParamTypes) {
+	// TODO: caching?
+	FunctionType* FuncTy = new FunctionType;
+	FuncTy->RetTy = RetTy;
+	FuncTy->ParamTypes = std::move(ParamTypes);
+	return FuncTy;
 }

@@ -46,6 +46,9 @@ namespace arco {
 		Struct,
 		// When an identifier is an import the type is set to this.
 		Import,
+		Function,
+		// When referencing an identifier that refers to one or more functions.
+		FuncRef
 
 	};
 
@@ -59,7 +62,7 @@ namespace arco {
 			return Kind;
 		}
 
-		bool Equals(Type* Ty) const;
+		bool Equals(const Type* Ty) const;
 
 		bool IsNumber() const;
 		bool IsInt() const;
@@ -170,6 +173,21 @@ namespace arco {
 		Identifier  StructName;
 		StructDecl* Struct;
 	};
+
+	class FunctionType : public Type {
+	public:
+		
+		Type* RetTy;
+		llvm::SmallVector<Type*> ParamTypes;
+
+		static FunctionType* Create(Type* RetTy, llvm::SmallVector<Type*> ParamTypes);
+
+	private:
+		FunctionType()
+			:Type(TypeKind::Function) {}
+
+	};
+
 
 }
 

@@ -399,9 +399,9 @@ return;
 				                nullptr)) {
 				VAR_YIELD(
 					Error(Var,
-					    "Cannot assign array with element types '%s' to implicit array element types '%s'",
-					    FromArrayType->GetBaseType(),  
-					    ImplicitArrayType->GetBaseType()),
+						"Cannot assign array with element types '%s' to implicit array element types '%s'",
+						FromArrayType->GetBaseType()->ToString(),
+						ImplicitArrayType->GetBaseType()->ToString()),
 					true);
 			}
 
@@ -422,9 +422,11 @@ return;
 			CreateCast(Var->Assignment, Var->Ty);
 		} else {
 			VAR_YIELD(
-				Error(Var, "Cannot assign value of type '%s' to variable of type '%s'",
-				      Var->Assignment->Ty->ToString(),
-					  Var->Ty->ToString()),
+				DisplayErrorForTypeMismatch(
+					"Cannot assign value of type '%s' to variable of type '%s'",
+				    Var->Loc,
+					Var->Assignment,
+					Var->Ty),
 				false);
 		}
 	} else {
@@ -719,8 +721,11 @@ YIELD_ERROR(BinOp)
 			}
 		
 			if (!IsAssignableTo(LTy, BinOp->RHS)) {
-				Error(BinOp, "Cannot assign value of type '%s' to variable of type '%s'",
-					RTy->ToString(), LTy->ToString());
+				DisplayErrorForTypeMismatch(
+					"Cannot assign value of type '%s' to variable of type '%s'",
+					BinOp->Loc,
+					BinOp->RHS,
+					LTy);
 				YIELD_ERROR(BinOp);
 			}
 
@@ -966,13 +971,32 @@ YIELD_ERROR(UniOp);
 		break;
 	}
 	case '&': {
-		if (!IsLValue(UniOp->Value)) {
-			Error(UniOp, "Operator '%s' requires the value to be modifiable",
-				Token::TokenKindToString(UniOp->Op, Context));
-		}
+		if (ValTy == Context.FuncRef) {
+			// Retrieving the address of a function!
+			IdentRef* IRef = static_cast<IdentRef*>(UniOp->Value);
+			
+			FuncDecl* Func = (*IRef->Funcs)[0];
 
-		UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
-		UniOp->Ty = PointerType::Create(ValTy, Context);
+			// TODO: eventually take into account calling convention.
+			llvm::SmallVector<Type*> ParamTypes;
+			ParamTypes.reserve(Func->Params.size());
+			for (VarDecl* Param : Func->Params) {
+				ParamTypes.push_back(Param->Ty);
+			}
+			
+			Context.RequestGen(Func);
+
+			UniOp->HasConstAddress = true;
+			UniOp->Ty = FunctionType::Create(Func->RetTy, std::move(ParamTypes));
+		} else {
+			if (!IsLValue(UniOp->Value)) {
+				Error(UniOp, "Operator '%s' requires the value to be modifiable",
+					Token::TokenKindToString(UniOp->Op, Context));
+			}
+
+			UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
+			UniOp->Ty = PointerType::Create(ValTy, Context);
+		}
 		break;
 	}
 	case '*': {
@@ -1149,7 +1173,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 		break;
 	}
 	case IdentRef::RK::Funcs: {
-		// TODO: Set type information.
+		IRef->Ty = Context.FuncRef;
 		break;
 	}
 	case IdentRef::RK::NotFound: {
@@ -1251,6 +1275,51 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 	}
 	YIELD_ERROR_WHEN(Call, Call->Site);
 
+	Type* SiteTy = Call->Site->Ty;
+	if (SiteTy->GetKind() == TypeKind::Function) {
+		// Calling a variable!
+		FunctionType* FuncTy = static_cast<FunctionType*>(SiteTy);
+
+		if (Call->Args.size() != FuncTy->ParamTypes.size()) {
+			DisplayErrorForSingleFuncForFuncCall("function",
+			                                     Call->Loc,
+			                                     FuncTy->ParamTypes,
+			                                     Call->Args,
+				                                 "fn");
+			YIELD_ERROR(Call);
+		}
+
+		for (ulen i = 0; i < Call->Args.size(); i++) {
+			Expr* Arg     = Call->Args[i].E;
+			Type* ParamTy = FuncTy->ParamTypes[i];
+
+			if (!IsAssignableTo(ParamTy, Arg)) {
+				DisplayErrorForSingleFuncForFuncCall("function",
+			                                     Call->Loc,
+			                                     FuncTy->ParamTypes,
+			                                     Call->Args,
+				                                 "fn");
+				YIELD_ERROR(Call);
+			}
+		}
+
+		// Creating casts for the arguments.
+		for (ulen i = 0; i < Call->Args.size(); i++) {
+			Expr* Arg     = Call->Args[i].E;
+			Type* ParamTy = FuncTy->ParamTypes[i];
+			CreateCast(Arg, ParamTy);
+		}
+
+		Call->Ty = FuncTy->RetTy;
+		Call->IsFoldable = false;
+
+		return;
+	} else if (SiteTy->GetKind() != TypeKind::FuncRef) {
+		// Invalid call.
+		Error(Call, "cannot call type '%s'", SiteTy->ToString());
+		YIELD_ERROR(Call);
+	}
+
 	FuncsList* Canidates = static_cast<IdentRef*>(Call->Site)->Funcs;
 
 	Call->CalledFunc = CheckCallToCanidates(Call->Loc, Canidates, Call->Args);
@@ -1258,6 +1327,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 		YIELD_ERROR(Call);
 	}
 
+	// Creating casts for the arguments.
 	for (ulen i = 0; i < Call->Args.size(); i++) {
 		Expr*    Arg   = Call->Args[i].E;
 		VarDecl* Param = Call->CalledFunc->Params[i];
@@ -1346,57 +1416,17 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 	const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
 	if (Canidates && Canidates->size() == 1) {
-		// Single canidate so explicit details about
-		// how there is a mismatch between the call and
-		// the function is given.
-		
-		bool EncounteredError = false;
-
 		FuncDecl* SingleCanidate = (*Canidates)[0];
-
-		const auto& Params = SingleCanidate->Params;
-		for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
-			if (ArgCount >= Params.size()) {
-				if (EncounteredError)  Log.EndError();
-				Log.BeginError(ErrorLoc, "Too many arguments for %s call", CallType);
-				EncounteredError = true;
-				break;
-			}
-			
-			Expr*    Arg   = Args[ArgCount].E;
-			VarDecl* Param = Params[ArgCount];
-
-			if (!IsAssignableTo(Param->Ty, Arg->Ty, Arg)) {
-				if (EncounteredError)  Log.EndError();
-				Log.BeginError(Args[ArgCount].ExpandedLoc,
-					"Cannot assign argument %s of type '%s' to parameter of type '%s'",
-					ArgCount+1,
-					Arg->Ty->ToString(), Param->Ty->ToString());
-				EncounteredError = true;
-			}
+		llvm::SmallVector<Type*> ParamTypes;
+		ParamTypes.reserve(SingleCanidate->Params.size());
+		for (VarDecl* Param : SingleCanidate->Params) {
+			ParamTypes.push_back(Param->Ty);
 		}
-
-		if (!EncounteredError) {
-			Log.BeginError(ErrorLoc, "Could not find %s for call", CallType);
-		}
-
-		// Displaying the function.
-		std::string FuncDec = SingleCanidate->Name.Text.str();
-		FuncDec += "(";
-		for (ulen i = 0; i < SingleCanidate->Params.size(); i++) {
-			VarDecl* Param = SingleCanidate->Params[i];
-			FuncDec += Param->Ty->ToString();
-			if (i != SingleCanidate->Params.size() - 1) {
-				FuncDec += ", ";
-			}
-		}
-		FuncDec += ")";
-
-		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
-			OS << "Expected call to " << CallType << " declaration: " << FuncDec;
-		});
-		Log.EndError();
-
+		DisplayErrorForSingleFuncForFuncCall(CallType,
+			                                 ErrorLoc,
+			                                 ParamTypes,
+			                                 Args,
+			                                 SingleCanidate->Name.Text.str());
 	} else {
 		std::string FuncDef = "(";
 		for (ulen i = 0; i < Args.size(); i++) {
@@ -1408,6 +1438,63 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 		Error(ErrorLoc, "Could not find %s with parameter types '%s'",
 			  CallType, FuncDef);
 	}
+}
+
+void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
+	const char* CallType,
+	SourceLoc CallLoc,
+	const llvm::SmallVector<Type*>& ParamTypes,
+	const llvm::SmallVector<NonNamedValue, 2>& Args,
+	const std::string& OptFuncName) {
+
+	// Single canidate so explicit details about
+	// how there is a mismatch between the call and
+	// the function is given.
+		
+	bool EncounteredError = false;
+
+	for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
+		if (ArgCount >= ParamTypes.size()) {
+			if (EncounteredError)  Log.EndError();
+			Log.BeginError(CallLoc, "Too many arguments for %s call", CallType);
+			EncounteredError = true;
+			break;
+		}
+			
+		Expr* Arg     = Args[ArgCount].E;
+		Type* ParamTy = ParamTypes[ArgCount];
+
+		if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+			if (EncounteredError)  Log.EndError();
+			Log.BeginError(Args[ArgCount].ExpandedLoc,
+				"Cannot assign argument %s of type '%s' to parameter of type '%s'",
+				ArgCount+1,
+				Arg->Ty->ToString(), ParamTy->ToString());
+			DisplayNoteInfoForTypeMismatch(Arg, ParamTy);
+			EncounteredError = true;
+		}
+	}
+
+	if (!EncounteredError) {
+		Log.BeginError(CallLoc, "Could not find %s for call", CallType);
+	}
+
+	// Displaying the function.
+	std::string FuncDec = OptFuncName;
+	FuncDec += "(";
+	for (ulen i = 0; i < ParamTypes.size(); i++) {
+		Type* ParamTy = ParamTypes[i];
+		FuncDec += ParamTy->ToString();
+		if (i != ParamTypes.size() - 1) {
+			FuncDec += ", ";
+		}
+	}
+	FuncDec += ")";
+
+	Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+		OS << "Expected call to " << CallType << " declaration: " << FuncDec;
+	});
+	Log.EndError();
 }
 
 void arco::SemAnalyzer::CheckArray(Array* Arr) {
@@ -1439,11 +1526,17 @@ void arco::SemAnalyzer::CheckArray(Array* Arr) {
 			if (!IsAssignableTo(ElmTypes, Elm->Ty, Elm)) {
 				// Maybe the reserve is allowed.
 				if (Arr->ReqBaseType) {
-					Error(Elm, "Array element not assignable to explicit array type. Array type: '%s', element type '%s'",
-						ElmTypes->ToString(), Elm->Ty->ToString());
+					DisplayErrorForTypeMismatch(
+						"Array element not assignable to explicit array type. Element type '%s', Array type: '%s'",
+						Elm->Loc,
+						Elm,
+						Arr->ReqBaseType);
 				} else if (!IsAssignableTo(Elm->Ty, ElmTypes, nullptr)) {
-					Error(Elm, "Array has incompatible elements. Array type: '%s', element type '%s'",
-						ElmTypes->ToString(), Elm->Ty->ToString());
+					DisplayErrorForTypeMismatch(
+						"Array has incompatible elements. Element type '%s', Array type: '%s'",
+						Elm->Loc,
+						Elm,
+						ElmTypes);
 				} else {
 					ElmTypes = Elm->Ty;
 				}
@@ -1563,8 +1656,11 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
 
 		Type* FieldTy = Struct->Fields[i]->Ty;
 		if (!IsAssignableTo(FieldTy, Value.E)) {
-			Error(Value.ExpandedLoc, "Cannot assign value of type '%s' to field of type '%s'",
-				Value.E->Ty->ToString(), FieldTy->ToString());
+			DisplayErrorForTypeMismatch(
+				"Cannot assign value of type '%s' to field of type '%s'",
+				Value.ExpandedLoc,
+				Value.E,
+				FieldTy);
 		} else {
 			CreateCast(Value.E, FieldTy);
 		}
@@ -2037,4 +2133,20 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
 
 bool arco::SemAnalyzer::IsComparable(Type* Ty) {
 	return Ty->Equals(Context.BoolType) || Ty->IsPointer();
+}
+
+void arco::SemAnalyzer::DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToTy) {
+	if (FromExpr->Ty->Equals(Context.FuncRef) && ToTy->GetKind() == TypeKind::Function) {
+		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+			IdentRef* Ref = static_cast<IdentRef*>(FromExpr);
+			OS << "If you wish to get the function type use: &" << Ref->Ident << ".";
+		});
+	}
+}
+
+void arco::SemAnalyzer::DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLoc ErrorLoc,
+	                                                Expr* FromExpr, Type* ToTy) {
+	Log.BeginError(ErrorLoc, ErrMsg, FromExpr->Ty->ToString(), ToTy->ToString());
+	DisplayNoteInfoForTypeMismatch(FromExpr, ToTy);
+	Log.EndError();
 }

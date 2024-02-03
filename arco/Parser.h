@@ -102,6 +102,7 @@ namespace arco {
 
 		Modifiers ParseModifiers();
 		Type* ParseType(bool AllowImplicitArrayType);
+		Type* ParseFunctionType();
 		Type* ParseBasicType();
 
 		//===-------------------------------===//

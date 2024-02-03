@@ -64,7 +64,8 @@ case TokenKind::KW_F64:     \
 case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_BOOL:    \
-case TokenKind::KW_CSTR
+case TokenKind::KW_CSTR:    \
+case TokenKind::KW_FN
 
 // P - Parsing code.
 // L - The Source location to assign to.
@@ -759,8 +760,9 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 }
 
 arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
-	arco::Type* Ty = ParseBasicType();
-	if (Ty == nullptr) {
+
+	arco::Type* Ty = CTok.Is(TokenKind::KW_FN) ? ParseFunctionType() : ParseBasicType();
+	if (Ty == Context.ErrorType) {
 		return Ty;
 	}
 
@@ -827,6 +829,40 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 	return Ty;
 }
 
+arco::Type* arco::Parser::ParseFunctionType() {
+	Match(TokenKind::KW_FN);
+
+	llvm::SmallVector<Type*> ParamTypes;
+	Match('(', "For function type");
+	if (CTok.IsNot(')')) {
+		bool MoreParamTypes = false;
+		do {
+			if (CTok.Is(TokenKind::IDENT)) {
+				switch (PeekToken(1).Kind) {
+				case TYPE_KW_START_CASES:
+				case TokenKind::IDENT:
+					// Allowing the parameters to have names.
+					NextToken(); // Consuming the name identifier.
+					ParamTypes.push_back(ParseType(false));
+					break;
+				}
+			} else {
+				ParamTypes.push_back(ParseType(false));
+			}
+
+			MoreParamTypes = CTok.Is(',');
+			if (MoreParamTypes) {
+				NextToken(); // Consuming ','.
+			}
+		} while (MoreParamTypes);
+	}
+	Match(')', "For function type");
+	// TODO: allow the return type to be optional and default to void?
+	Type* RetTy = ParseType(false);
+
+	return FunctionType::Create(RetTy, std::move(ParamTypes));
+}
+
 arco::Type* arco::Parser::ParseBasicType() {
 	arco::Type* Ty = nullptr;
 	switch (CTok.Kind) {
@@ -853,6 +889,7 @@ arco::Type* arco::Parser::ParseBasicType() {
 	}
 	default:
 		Error(CTok, "Expected valid type");
+		Ty = Context.ErrorType;
 		break;
 	}
 	return Ty;

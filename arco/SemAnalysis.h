@@ -95,6 +95,13 @@ namespace arco {
 		void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 			                                   FuncsList* Canidates,
 			                                   const llvm::SmallVector<NonNamedValue, 2>& Args);
+		void DisplayErrorForSingleFuncForFuncCall(
+			const char* CallType,
+			SourceLoc CallLoc,
+			const llvm::SmallVector<Type*>& ParamTypes,
+			const llvm::SmallVector<NonNamedValue, 2>& Args,
+			const std::string& OptFuncName = ""
+		);
 		void CheckArray(Array* Arr);
 		void CheckArrayAccess(ArrayAccess* Access);
 		void CheckTypeCast(TypeCast* Cast);
@@ -126,6 +133,11 @@ namespace arco {
 		static void CheckForDuplicateFuncs(const FuncsList& FuncList);
 
 		bool IsComparable(Type* Ty);
+
+		void DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToTy);
+		void DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLoc ErrorLoc,
+			                             Expr* FromExpr, Type* ToTy);
+		
 
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);

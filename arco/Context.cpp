@@ -31,6 +31,7 @@ arco::ArcoContext::ArcoContext()
 	ErrorType(new Type(TypeKind::Error)),
 	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
 	ImportType(new Type(TypeKind::Import)),
+	FuncRef(new Type(TypeKind::FuncRef)),
 
 	LLVMIntrinsicsTable({
 		{ Identifier("memcpy"), llvm::Intrinsic::IndependentIntrinsics::memcpy },
@@ -94,6 +95,7 @@ arco::ArcoContext::~ArcoContext() {
 	delete ErrorType;
 	delete EmptyArrayElmType;
 	delete ImportType;
+	delete FuncRef;
 	// TODO: Cleanup other types.
 
 }

@@ -125,6 +125,30 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
 		return llvm::ArrayType::get(GenType(Context, ArrayTy->GetElementType()), ArrayTy->GetLength());
 	}
+	case TypeKind::Function: {
+		FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
+		llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
+		
+		llvm::Type* LLRetType = GenType(Context, FuncTy->RetTy);
+
+		// TODO: This relies on the calling convention so there will need
+		// to be a way to attach calling convention information to the type
+		// so that the compiler knows how to properly pass parameters.
+		//
+		// For now it just conforms to arco's way of handling parameters.
+		for (Type* ParamTy : FuncTy->ParamTypes) {
+			if (ParamTy->GetKind() == TypeKind::Array) {
+				// Arrays are decayed when passed.
+				LLParamTypes.push_back(
+					llvm::PointerType::get(GenType(Context, static_cast<ArrayType*>(ParamTy)->GetElementType()), 0)
+				);
+			} else {
+				LLParamTypes.push_back(GenType(Context, ParamTy));
+			}
+		}
+
+		return llvm::PointerType::get(llvm::FunctionType::get(LLRetType, LLParamTypes, false), 0);
+	}
 	case TypeKind::Struct:
 		return GenStructType(Context, static_cast<StructType*>(Ty)->GetStruct());
 	default:
@@ -531,8 +555,13 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
 	if (Global->LLAddress) return; // Do not generate it twice
 
-	std::string Name = "__global." + Global->Name.Text.str();
-	Name += "." + std::to_string(Context.NumGeneratedGlobalVars++);
+	std::string Name;
+	if (Global->Mods & ModKinds::NATIVE) {
+		Name = Global->Name.Text.str();
+	} else {
+		Name = "__global." + Global->Name.Text.str();
+		Name += "." + std::to_string(Context.NumGeneratedGlobalVars++);
+	}
 
 	llvm::GlobalVariable* LLGVar = GenLLVMGlobalVariable(Name, GenType(Global->Ty));
 	Global->LLAddress = LLGVar;
@@ -1317,6 +1346,12 @@ llvm::Value* arco::IRGenerator::GenStringLiteral(StringLiteral* String) {
 }
 
 llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
+	if (IRef->RefKind == IdentRef::RK::Funcs) {
+		FuncDecl* Func = (*IRef->Funcs)[0];
+		GenFuncDecl(Func);
+		return Func->LLFunction;
+	}
+	
 	VarDecl* Var = IRef->Var;
 	if (Var->IsGlobal) {
 		GenGlobalVarDecl(Var);
@@ -1338,10 +1373,8 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 		);
 	}
 
-	if (FieldAcc->RefKind == IdentRef::RK::Var) {
-		if (FieldAcc->Var->IsGlobal) {
-			return GenIdentRef(FieldAcc);
-		}
+	if (FieldAcc->RefKind == IdentRef::RK::Var && FieldAcc->Var->IsGlobal) {
+		return GenIdentRef(FieldAcc);
 	}
 
 	Expr* Site = FieldAcc->Site;
@@ -1370,12 +1403,31 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 }
 
 llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr) {
-	return GenFuncCallGeneral(
-		Call,
-		Call->CalledFunc,
-		Call->Args,
-		LLAddr
-	);
+	FuncDecl* CalledFunc = Call->CalledFunc;
+	if (CalledFunc) {
+		return GenFuncCallGeneral(
+			Call,
+			CalledFunc,
+			Call->Args,
+			LLAddr
+		);
+	}
+
+	// Making a call on a variable instead.
+	llvm::SmallVector<llvm::Value*, 2> LLArgs;
+	LLArgs.resize(Call->Args.size());
+	ulen ArgIdx = 0;
+	GenFuncCallArgs(ArgIdx, LLArgs, Call->Args);
+	
+	llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(
+		GenType(Call->Site->Ty)->getPointerElementType());
+	llvm::Value* LLCallee = GenRValue(Call->Site);
+
+	llvm::Value* LLRetValue = Builder.CreateCall(LLFuncTy, LLCallee, LLArgs);
+	if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
+		LLRetValue->setName("ret.val");
+	}
+	return LLRetValue;
 }
 
 llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
@@ -1425,6 +1477,32 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 		}
 	}
 
+	GenFuncCallArgs(ArgIdx, LLArgs, Args);
+
+	llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
+
+	// -- DEBUG
+	//llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
+	//llvm::outs() << "Types passed to function:\n";
+	//for (ulen i = 0; i < LLArgs.size(); i++) {
+	//	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
+	//}
+	//llvm::outs() << "Types expected by function:\n";
+	//for (ulen i = 0; i < LLCalledFunc->arg_size(); i++) {
+	//	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
+	//}
+	//llvm::outs() << "\n";
+
+	llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
+	if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
+		LLRetValue->setName("ret.val");
+	}
+	return LLRetValue;
+}
+
+void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
+	                                    llvm::SmallVector<llvm::Value*, 2>& LLArgs,
+	                                    llvm::SmallVector<NonNamedValue, 2>& Args) {
 	for (ulen i = 0; i < Args.size(); i++) {
 		Expr* Arg = Args[i].E;
 		llvm::Value* LLArg = nullptr;
@@ -1449,26 +1527,6 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 		}
 		LLArgs[ArgIdx++] = LLArg;
 	}
-
-	llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
-
-	// -- DEBUG
-	//llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
-	//llvm::outs() << "Types passed to function:\n";
-	//for (ulen i = 0; i < LLArgs.size(); i++) {
-	//	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
-	//}
-	//llvm::outs() << "Types expected by function:\n";
-	//for (ulen i = 0; i < LLCalledFunc->arg_size(); i++) {
-	//	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
-	//}
-	//llvm::outs() << "\n";
-
-	llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
-	if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
-		LLRetValue->setName("ret.val");
-	}
-	return LLRetValue;
 }
 
 llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr) {
@@ -1905,6 +1963,7 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 	case TypeKind::UnsignedInt:     return GetSystemUInt(0, LLContext, LLModule);
 	case TypeKind::Pointer:
 	case TypeKind::CStr:
+	case TypeKind::Function:
 		return llvm::Constant::getNullValue(GenType(Ty));
 	case TypeKind::Array:
 	case TypeKind::Struct:

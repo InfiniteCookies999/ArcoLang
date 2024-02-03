@@ -1,0 +1,23 @@
+
+fn foo1() {
+	print("foo1", 4);
+}
+
+fn foo2(a int) {
+	print(a);
+}
+
+fn main() {
+	
+	f1 fn() void = &foo1;
+	f1();
+	print(" ", 1);
+
+	f2 fn(int) void = &foo2;
+	f2(4);
+	print(" ", 1);
+
+	f3 fn(name int) void = &foo2;
+	f3(73);
+
+}
