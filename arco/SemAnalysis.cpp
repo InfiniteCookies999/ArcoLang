@@ -149,6 +149,9 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	// llvm::outs() << "Checking function: " << Func->Name << "\n";
 
 	CheckFuncParamTypes(Func);
+	if (Func->RetTy->GetKind() == TypeKind::Array) {
+		Error(Func, "Functions cannot return arrays");
+	}
 
 	if (Func->Mods & ModKinds::NATIVE) {
 		return;
