@@ -1,0 +1,12 @@
+
+fn main() {
+	a int = 5;
+	{
+		b int = 8;
+		print(a);
+		print(" ", 1);
+		print(b);
+		print(" ", 1);
+	}
+	print(a);
+}

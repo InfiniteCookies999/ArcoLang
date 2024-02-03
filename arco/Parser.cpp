@@ -334,6 +334,9 @@ arco::AstNode* arco::Parser::ParseStmt() {
 		}
 		break;
 	}
+	case '{':
+		Stmt = ParseNestedScope();
+		break;
 	default:
 		Stmt = ParseAssignmentAndExprs();
 		Match(';');
@@ -1800,6 +1803,7 @@ void arco::Parser::SkipRecovery() {
 	case TokenKind::KW_BREAK:
 	case TokenKind::KW_CONTINUE:
 	case TokenKind::KW_DELETE:
+	case '{':
 		return;
 	case ';':
 	case TokenKind::TK_EOF:

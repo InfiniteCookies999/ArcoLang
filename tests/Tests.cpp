@@ -85,6 +85,7 @@ int main() {
 	RunTest(SRC("function_type.arco"), "foo1 4 73");
 	RunTest(SRC("sizeof_test.arco"), "1 2 4 8 8 1");
 	RunTest(SRC("constant_folding.arco"), "4 2 61 1 52 8");
+	RunTest(SRC("nested_blocks.arco"), "5 8 5");
 	 
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
