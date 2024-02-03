@@ -1117,6 +1117,12 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 				case TypeKind::UnsignedInt:
 					Num->UnsignedIntValue = -Num->UnsignedIntValue;
 					break;
+				case TypeKind::Float32:
+					Num->Float32Value = -Num->Float32Value;
+					break;
+				case TypeKind::Float64:
+					Num->Float64Value = -Num->Float64Value;
+					break;
 				default:
 					assert(!"Failed to implement!");
 					break;
@@ -1156,6 +1162,15 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		Match(')');
 		Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
 		return Cast;
+	}
+	case TokenKind::KW_SIZEOF: {
+		SizeOf* SOf = NewNode<SizeOf>(CTok);
+		NextToken(); // Consuming 'sizeof' token.
+		Match('(');
+		SOf->TypeToGetSizeOf = ParseType(false);
+		SOf->Ty = Context.IntType;
+		Match(')');
+		return SOf;
 	}
 	case '[':
 		return ParseArray();

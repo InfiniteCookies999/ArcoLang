@@ -548,6 +548,11 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenStructInitializer(static_cast<StructInitializer*>(Node), nullptr);
 	case AstKind::HEAP_ALLOC:
 		return GenHeapAlloc(static_cast<HeapAlloc*>(Node));
+	case AstKind::SIZEOF:
+		return GetSystemInt(
+			SizeOfTypeInBytes(GenType(static_cast<SizeOf*>(Node)->TypeToGetSizeOf)),
+			LLContext,
+			LLModule);
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;

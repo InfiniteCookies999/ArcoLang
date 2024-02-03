@@ -59,7 +59,8 @@ namespace arco {
 		TYPE_CAST,
 		STRUCT_INITIALIZER,
 		HEAP_ALLOC,
-	
+		SIZEOF
+
 	};
 
 	enum ModKinds {
@@ -70,6 +71,7 @@ namespace arco {
 	using Modifiers = u16;
 
 	struct Namespace {
+
 		llvm::DenseMap<Identifier, FuncsList>   Funcs;
 
 		llvm::DenseMap<Identifier, StructDecl*> Structs;
@@ -78,6 +80,7 @@ namespace arco {
 	};
 
 	struct Module {
+
 		llvm::StringRef Name;
 
 		llvm::DenseMap<Identifier, Namespace*> Namespaces;
@@ -557,6 +560,14 @@ namespace arco {
 		FuncDecl* CalledConstructor = nullptr;
 
 		llvm::SmallVector<NonNamedValue, 2> Values;
+
+	};
+
+	// Ex.  'sizeof(int)'
+	struct SizeOf : Expr {
+		SizeOf() : Expr(AstKind::SIZEOF) {}
+
+		Type* TypeToGetSizeOf;
 
 	};
 }

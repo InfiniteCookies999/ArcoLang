@@ -259,6 +259,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::HEAP_ALLOC:
 		CheckHeapAlloc(static_cast<HeapAlloc*>(Node));
 		break;
+	case AstKind::SIZEOF:
+		CheckSizeOf(static_cast<SizeOf*>(Node));
+		break;
 	case AstKind::NUMBER_LITERAL:
 	case AstKind::STRING_LITERAL:
 	case AstKind::NULLPTR:
@@ -1733,6 +1736,10 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 	}
 }
 
+void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
+	FixupType(SOf->TypeToGetSizeOf);
+}
+
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
 	CheckNode(Cond);
 	if (Cond->Ty == Context.ErrorType) return;
@@ -2008,10 +2015,14 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	StructDecl* Struct;
 	auto Itr = FScope->StructOrNamespaceImports.find(StructName);
 	if (Itr == FScope->StructOrNamespaceImports.end() || Itr->second.Struct == nullptr) {
+		
 		auto Itr2 = Mod->DefaultNamespace->Structs.find(StructName);
 		if (Itr2 == Mod->DefaultNamespace->Structs.end()) {
-			Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
-			return false;
+			Itr2 = FScope->UniqueNSpace->Structs.find(StructName);
+			if (Itr2 == FScope->UniqueNSpace->Structs.end()) {
+				Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
+				return false;
+			}
 		}
 		Struct = Itr2->second;
 	} else {
