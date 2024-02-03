@@ -348,10 +348,11 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	NextToken(); // Consuming 'fn' keyword.
 
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
-	Func->Mod    = Mod;
-	Func->FScope = FScope;
-	Func->Name   = ParseIdentifier("Expected identifier for function declaration");
-	Func->Mods   = Mods;
+	Func->Mod        = Mod;
+	Func->FScope     = FScope;
+	Func->Name       = ParseIdentifier("Expected identifier for function declaration");
+	Func->Mods       = Mods;
+	Func->NativeName = NativeModifierName;
 
 	Context.UncheckedDecls.insert(Func);
 
@@ -499,10 +500,11 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 
 arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods) {
 	VarDecl* Var = NewNode<VarDecl>(Tok);
-	Var->Mod    = Mod;
-	Var->FScope = FScope;
-	Var->Name   = Name;
-	Var->Mods   = Mods;
+	Var->Mod        = Mod;
+	Var->FScope     = FScope;
+	Var->Name       = Name;
+	Var->Mods       = Mods;
+	Var->NativeName = NativeModifierName;
 
 	if (LocScope && !Name.IsNull()) {
 		auto Itr = LocScope->VarDecls.find(Name);
@@ -729,6 +731,7 @@ arco::NestedScopeStmt* arco::Parser::ParseNestedScope() {
 }
 
 arco::Modifiers arco::Parser::ParseModifiers() {
+	NativeModifierName = "";
 	Modifiers Mods = 0;
 	while (true) {
 		switch (CTok.Kind) {
@@ -737,6 +740,23 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 				Error(CTok, "Duplicate modifier");
 			Mods |= ModKinds::NATIVE;
 			NextToken();
+
+			if (CTok.Is('(') && PeekToken(1).Is(TokenKind::STRING_LITERAL)) {
+				NextToken(); // Consuming '(' token.
+				NativeModifierName = CTok.GetText();
+
+				NativeModifierName = NativeModifierName.substr(1); // Skip over " character.
+				if (!NativeModifierName.empty() && *(NativeModifierName.end()-1) == '"') {
+					NativeModifierName = NativeModifierName.substr(0, NativeModifierName.size() - 1);
+				}
+				if (NativeModifierName.empty()) {
+					Error(CTok, "Native name cannot be empty");
+				}
+
+				NextToken(); // Consuming string literal.
+				Match(')');
+			}
+
 			break;
 		}
 		case TokenKind::KW_CONST: {

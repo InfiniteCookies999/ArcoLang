@@ -313,7 +313,7 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		                                        : GenType(Func->RetTy);
 	}
 
-	llvm::Twine LLFuncName = Func->Name.Text;
+	llvm::Twine LLFuncName = !Func->NativeName.empty() ? Func->NativeName : Func->Name.Text;
 	llvm::Twine LLFullFuncName = (Func == Context.MainEntryFunc ||
 		                          (Func->Mods & ModKinds::NATIVE))
 		                       ? LLFuncName
@@ -557,7 +557,11 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
 
 	std::string Name;
 	if (Global->Mods & ModKinds::NATIVE) {
-		Name = Global->Name.Text.str();
+		if (!Global->NativeName.empty()) {
+			Name = Global->NativeName.str();
+		} else {
+			Name = Global->Name.Text.str();
+		}
 	} else {
 		Name = "__global." + Global->Name.Text.str();
 		Name += "." + std::to_string(Context.NumGeneratedGlobalVars++);

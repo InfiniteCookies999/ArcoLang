@@ -189,6 +189,10 @@ namespace arco {
 		// start of the function
 		llvm::SmallVector<VarDecl*, 4> AllocVars;
 
+		// If not empty it defines the explicit name for a linked
+		// function.
+		llvm::StringRef NativeName;
+
 		ulen NumReturns = 0;
 
 		LexScope Scope;
@@ -221,6 +225,10 @@ namespace arco {
 		VarDecl* DepD = nullptr;
 
 		llvm::Value* LLAddress = nullptr;
+
+		// If not empty it defines the explicit name for a linked
+		// variable.
+		llvm::StringRef NativeName;
 
 		Expr* Assignment = nullptr;
 

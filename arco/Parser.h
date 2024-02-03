@@ -48,6 +48,10 @@ namespace arco {
 		// Current function being parsed.
 		FuncDecl*   CFunc   = nullptr;
 
+		// Temporary storgage in case the native modifier
+		// has an explicit name.
+		llvm::StringRef NativeModifierName;
+
 		bool AllowStructInitializer = true;
 
 		/*
