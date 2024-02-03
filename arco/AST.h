@@ -42,6 +42,7 @@ namespace arco {
 		PREDICATE_LOOP,
 		RANGE_LOOP,
 		NESTED_SCOPE,
+		DELETE,
 
 		NUMBER_LITERAL,
 		STRING_LITERAL,
@@ -326,6 +327,13 @@ namespace arco {
 		LexScope Scope;
 	};
 
+	// Ex.  'delete a;'
+	struct DeleteStmt : AstNode {
+		DeleteStmt() : AstNode(AstKind::DELETE) {}
+		
+		Expr* Value;
+
+	};
 
 	struct Expr : AstNode {
 		Expr(AstKind Kind) : AstNode(Kind) {}

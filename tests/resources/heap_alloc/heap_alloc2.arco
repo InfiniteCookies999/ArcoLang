@@ -46,5 +46,10 @@ fn main() {
 	print(" ", 1);
 	print(foos[1].b);
 
-	// TODO: call delete once supported!
+	delete a;
+	delete foo1;
+	delete foo2;
+	delete arr;
+	delete foos;
+
 }

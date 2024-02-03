@@ -103,6 +103,7 @@ namespace arco {
 		PredicateLoopStmt* ParsePredicateLoop(Token LoopTok);
 		RangeLoopStmt* ParseRangeLoop(Token LoopTok);
 		NestedScopeStmt* ParseNestedScope();
+		DeleteStmt* ParseDelete();
 
 		Modifiers ParseModifiers();
 		Type* ParseType(bool AllowImplicitArrayType);

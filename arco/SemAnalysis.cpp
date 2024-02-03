@@ -217,6 +217,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::RANGE_LOOP:
 		CheckRangeLoop(static_cast<RangeLoopStmt*>(Node));
 		break;
+	case AstKind::DELETE:
+		CheckDeleteStmt(static_cast<DeleteStmt*>(Node));
+		break;
 	case AstKind::IF:
 		CheckIf(static_cast<IfStmt*>(Node));
 		break;
@@ -292,6 +295,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 		case AstKind::BREAK:
 		case AstKind::CONTINUE:
 		case AstKind::NESTED_SCOPE:
+		case AstKind::DELETE:
 			break;
 		case AstKind::BINARY_OP:
 			switch (static_cast<BinaryOp*>(Stmt)->Op) {
@@ -543,6 +547,15 @@ void arco::SemAnalyzer::CheckRangeLoop(RangeLoopStmt* Loop) {
 	Scope LoopScope;
 	CheckScopeStmts(Loop->Scope, LoopScope);
 	--LoopDepth;
+}
+
+void arco::SemAnalyzer::CheckDeleteStmt(DeleteStmt* Delete) {
+	CheckNode(Delete->Value);
+	YIELD_IF_ERROR(Delete->Value);
+
+	if (Delete->Value->Ty->GetKind() != TypeKind::Pointer) {
+		Error(Delete, "Cannot delete type '%s'", Delete->Value->Ty->ToString());
+	}
 }
 
 bool arco::SemAnalyzer::CheckIf(IfStmt* If) {

@@ -289,6 +289,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
 	case TokenKind::KW_LOOP:   Stmt = ParseLoop();                    break;
 	case TokenKind::KW_CONTINUE:
 	case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
+	case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
 	case TokenKind::KW_NATIVE:
 	case TokenKind::KW_CONST:
 	case TokenKind::KW_PRIVATE: {
@@ -728,6 +729,13 @@ arco::NestedScopeStmt* arco::Parser::ParseNestedScope() {
 	ParseScopeStmts(NestedScope->Scope);
 	POP_SCOPE();
 	return NestedScope;
+}
+
+arco::DeleteStmt* arco::Parser::ParseDelete() {
+	DeleteStmt* Delete = NewNode<DeleteStmt>(CTok);
+	NextToken(); // Consuming 'delete' token.
+	Delete->Value = ParseExpr();
+	return Delete;
 }
 
 arco::Modifiers arco::Parser::ParseModifiers() {

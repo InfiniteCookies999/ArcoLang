@@ -509,6 +509,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 		return GenPredicateLoop(static_cast<PredicateLoopStmt*>(Node));
 	case AstKind::RANGE_LOOP:
 		return GenRangeLoop(static_cast<RangeLoopStmt*>(Node));
+	case AstKind::DELETE:
+		return GenDelete(static_cast<DeleteStmt*>(Node));
 	case AstKind::IF:
 		return GenIf(static_cast<IfStmt*>(Node));
 	case AstKind::NESTED_SCOPE:
@@ -798,6 +800,14 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 	GenBranchIfNotTerm(LLEndBB);
 	Builder.SetInsertPoint(LLEndBB);
 
+	return nullptr;
+}
+
+llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
+	llvm::Value* LLValue = GenRValue(Delete->Value);
+
+	llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
+	Builder.Insert(LLFree);
 	return nullptr;
 }
 

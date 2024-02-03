@@ -48,6 +48,7 @@ namespace arco {
 		KW_IMPORT,
 		KW_NAMESPACE,
 		KW_STATIC,
+		KW_DELETE,
 		KW_NULL,
 		KW_FN,
 		KW_STRUCT,
