@@ -11,6 +11,7 @@
 namespace llvm {
 	class Function;
 	class Value;
+	class Constant;
 	class StructType;
 	namespace Intrinsic {
 		typedef unsigned ID;
@@ -181,6 +182,7 @@ namespace arco {
 		// returning it.
 		bool UsesParamRetSlot    = false;
 		bool IsConstructor       = false;
+		bool ReturnsConstAddress = false;
 
 		// Non-nullptr if the function is a member function.
 		StructDecl* Struct = nullptr;
@@ -216,6 +218,7 @@ namespace arco {
 		bool IsLocalRetValue = false;
 		bool IsBeingChecked  = false;
 		bool IsGlobal        = false;
+		bool HasConstAddress = false;
 
 		// One variable may depend on another variable in its
 		// declaration.
@@ -228,13 +231,18 @@ namespace arco {
 		// the variable it depends on.
 		VarDecl* DepD = nullptr;
 
-		llvm::Value* LLAddress = nullptr;
+		llvm::Value*    LLAddress     = nullptr;
+		llvm::Constant* LLComptimeVal = nullptr;
 
 		// If not empty it defines the explicit name for a linked
 		// variable.
 		llvm::StringRef NativeName;
 
 		Expr* Assignment = nullptr;
+
+		inline bool IsComptime() const {
+			return Ty->IsNumber() && HasConstAddress;
+		}
 
 		inline bool IsParam() const {
 			return ParamIdx != -1;

@@ -85,6 +85,11 @@ namespace arco {
 		TypeKind Kind;
 	};
 
+	struct TypeInfo {
+		Type* Ty;
+		bool  ConstMemory;
+	};
+
 	class ContainerType : public Type {
 	public:
 
@@ -177,10 +182,10 @@ namespace arco {
 	class FunctionType : public Type {
 	public:
 		
-		Type* RetTy;
-		llvm::SmallVector<Type*> ParamTypes;
+		TypeInfo RetTyInfo;
+		llvm::SmallVector<TypeInfo> ParamTypes;
 
-		static FunctionType* Create(Type* RetTy, llvm::SmallVector<Type*> ParamTypes);
+		static FunctionType* Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes);
 
 	private:
 		FunctionType()

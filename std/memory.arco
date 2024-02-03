@@ -5,7 +5,7 @@
  *
  * Warning: This is not a safe function. Use with caution.
  */
-native fn memcpy(dest void*, src void*, count uint) void;
+native fn memcpy(dest void*, src const void*, count uint) void;
 
 /*
  * Sets n copies of the value c to the dest.

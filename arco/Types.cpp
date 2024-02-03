@@ -45,7 +45,10 @@ bool arco::Type::Equals(const Type* Ty) const {
 
 		const FunctionType* FuncTy     = static_cast<const FunctionType*>(Ty);
 		const FunctionType* ThisFuncTy = static_cast<const FunctionType*>(this);
-		if (!FuncTy->RetTy->Equals(ThisFuncTy->RetTy)) {
+		if (!FuncTy->RetTyInfo.Ty->Equals(ThisFuncTy->RetTyInfo.Ty)) {
+			return false;
+		}
+		if (FuncTy->RetTyInfo.ConstMemory != ThisFuncTy->RetTyInfo.ConstMemory) {
 			return false;
 		}
 		if (FuncTy->ParamTypes.size() != ThisFuncTy->ParamTypes.size()) {
@@ -55,8 +58,9 @@ bool arco::Type::Equals(const Type* Ty) const {
 		return std::equal(FuncTy->ParamTypes.begin(),
 			              FuncTy->ParamTypes.end(),
 			              ThisFuncTy->ParamTypes.begin(),
-			[](const Type* Ty1, const Type* Ty2) {
-				return Ty1->Equals(Ty2);
+			[](const TypeInfo Ty1, const TypeInfo Ty2) {
+				return Ty1.ConstMemory == Ty2.ConstMemory &&
+					   Ty1.Ty->Equals(Ty2.Ty);
 			});
 	}
 	default:
@@ -132,7 +136,8 @@ bool arco::Type::IsSystemInt() const {
 
 bool arco::Type::IsPointer() const {
 	TypeKind Kind = GetKind();
-	return Kind == TypeKind::Pointer || Kind == TypeKind::CStr || Kind == TypeKind::Null;
+	return Kind == TypeKind::Pointer || Kind == TypeKind::CStr ||
+		   Kind == TypeKind::Null    || Kind == TypeKind::Function;
 }
 
 arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
@@ -259,12 +264,15 @@ std::string arco::Type::ToString() const {
 		const FunctionType* FuncTy = static_cast<const FunctionType*>(this);
 		std::string Val = "fn(";
 		for (ulen i = 0; i < FuncTy->ParamTypes.size(); i++) {
-			Val += FuncTy->ParamTypes[i]->ToString();
+			Val += FuncTy->ParamTypes[i].ConstMemory ? "const " : "";
+			Val += FuncTy->ParamTypes[i].Ty->ToString();
 			if (i+1 != FuncTy->ParamTypes.size()) {
 				Val += ", ";
 			}
 		}
-		Val += ") " + FuncTy->RetTy->ToString();
+		Val += ") ";
+		Val += FuncTy->RetTyInfo.ConstMemory ? "const " : "";
+		Val += FuncTy->RetTyInfo.Ty->ToString();
 		return Val;
 	}
 	default:
@@ -340,10 +348,10 @@ arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Cont
 	return Ty;
 }
 
-arco::FunctionType* arco::FunctionType::Create(Type* RetTy, llvm::SmallVector<Type*> ParamTypes) {
+arco::FunctionType* arco::FunctionType::Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes) {
 	// TODO: caching?
 	FunctionType* FuncTy = new FunctionType;
-	FuncTy->RetTy = RetTy;
+	FuncTy->RetTyInfo = RetTy;
 	FuncTy->ParamTypes = std::move(ParamTypes);
 	return FuncTy;
 }

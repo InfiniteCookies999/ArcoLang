@@ -84,6 +84,7 @@ int main() {
 	RunTest(SRC("literal_type_info.arco"), "int8 int16 int32 int64 uint8 uint16 uint32 uint64 ");
 	RunTest(SRC("function_type.arco"), "foo1 4 73");
 	RunTest(SRC("sizeof_test.arco"), "1 2 4 8 8 1");
+	RunTest(SRC("constant_folding.arco"), "4 2 61 1 52 8");
 	 
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");
@@ -104,6 +105,10 @@ int main() {
 	RunTest(SRC("arrays/arrays12.arco"), "pizza is good");
 	RunTest(SRC("arrays/arrays13.arco"), "25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 25 55 ");
 	RunTest(SRC("arrays/arrays14.arco"), "1 2 3 4 5 6 7 8 9 10 11 99 ");
+	RunTest(SRC("arrays/arrays15.arco"), "235 2 63");
+	RunTest(SRC("arrays/arrays16.arco"), "235 2 63");
+	RunTest(SRC("arrays/arrays17.arco"), "235 2 63");
+	RunTest(SRC("arrays/arrays18.arco"), "235 2 63");
 	RunTest(SRC("arrays/decay_testing.arco"), "9 14 235 11 5 77 22 76 11 9");
 	
 	RunTest(SRC("structs/structs1.arco"), "55 44");
@@ -134,6 +139,10 @@ int main() {
 	RunTest(SRC("globals/globals3.arco"), "34 66");
 	RunTest(SRC("globals/globals4.arco"), "22 1111");
 	RunTest(SRC("globals/globals5.arco"), "235 31 235 31 235 31 235 31 235 31 ");
+	RunTest(SRC("globals/globals6.arco"), "4 6 3");
+	RunTest(SRC("globals/globals7.arco"), "4 6 3");
+	RunTest(SRC("globals/globals8.arco"), "4 6 3");
+	RunTest(SRC("globals/globals9.arco"), "4 6 3");
 
 	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");

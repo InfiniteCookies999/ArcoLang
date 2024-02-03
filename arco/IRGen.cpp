@@ -129,21 +129,22 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
 		llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
 		
-		llvm::Type* LLRetType = GenType(Context, FuncTy->RetTy);
+		llvm::Type* LLRetType = GenType(Context, FuncTy->RetTyInfo.Ty);
 
 		// TODO: This relies on the calling convention so there will need
 		// to be a way to attach calling convention information to the type
 		// so that the compiler knows how to properly pass parameters.
 		//
 		// For now it just conforms to arco's way of handling parameters.
-		for (Type* ParamTy : FuncTy->ParamTypes) {
-			if (ParamTy->GetKind() == TypeKind::Array) {
+		for (TypeInfo ParamTyInfo : FuncTy->ParamTypes) {
+			Type* Ty = ParamTyInfo.Ty;
+			if (Ty->GetKind() == TypeKind::Array) {
 				// Arrays are decayed when passed.
 				LLParamTypes.push_back(
-					llvm::PointerType::get(GenType(Context, static_cast<ArrayType*>(ParamTy)->GetElementType()), 0)
+					llvm::PointerType::get(GenType(Context, static_cast<ArrayType*>(Ty)->GetElementType()), 0)
 				);
 			} else {
-				LLParamTypes.push_back(GenType(Context, ParamTy));
+				LLParamTypes.push_back(GenType(Context, Ty));
 			}
 		}
 
@@ -230,7 +231,7 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 	for (VarDecl* Field : Struct->Fields) {
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
 		if (Field->Assignment) {
-			GenAssignment(LLFieldAddr, Field->Assignment);
+			GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);
 		}
@@ -251,7 +252,7 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
 	while (Itr != Context.GlobalPostponedAssignments.end()) {
 		VarDecl* Global = *Itr;
 		if (Global->Assignment) {
-			GenAssignment(Global->LLAddress, Global->Assignment);
+			GenAssignment(Global->LLAddress, Global->Assignment, Global->HasConstAddress);
 		} else {
 			if (Global->Ty->GetKind() == TypeKind::Struct) {
 				CallDefaultConstructor(Global->LLAddress, static_cast<StructType*>(Global->Ty));
@@ -399,6 +400,8 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	// Allocating space for the variables
 	//
 	for (VarDecl* Var : Func->AllocVars) {
+		if (Var->IsComptime()) continue;
+
 		if (Func->UsesParamRetSlot && Func->NumReturns == 1 && Var->IsLocalRetValue) {
 			// RVO case in which although the variable was declared as inside
 			// of the function since it is returned by the function and the
@@ -434,6 +437,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		++LLParamIndex;
 	}
 	for (VarDecl* Param : Func->Params) {
+		if (Param->IsComptime()) continue;
 		Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
 	}
 
@@ -539,7 +543,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 	case AstKind::FUNC_CALL:
 		return GenFuncCall(static_cast<FuncCall*>(Node), nullptr);
 	case AstKind::ARRAY:
-		return GenArray(static_cast<Array*>(Node), nullptr);
+		return GenArray(static_cast<Array*>(Node), nullptr, false);
 	case AstKind::ARRAY_ACCESS:
 		return GenArrayAccess(static_cast<ArrayAccess*>(Node));
 	case AstKind::TYPE_CAST:
@@ -584,6 +588,11 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
 	} else {
 		LLGVar->setDSOLocal(true);
 	}
+
+	if (Global->Ty->GetKind() == TypeKind::Array &&
+		Global->HasConstAddress) {
+		LLGVar->setConstant(true);
+	}
 }
 
 llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
@@ -598,6 +607,14 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 			FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(E);
 			if (FieldAcc->IsArrayLength) {
 				// Array lengths are not memory so no reason to load.
+				break;
+			}
+		}
+
+		if (E->Is(AstKind::IDENT_REF) || E->Is(AstKind::FIELD_ACCESSOR)) {
+			IdentRef* IRef = static_cast<IdentRef*>(E);
+			if (IRef->RefKind == IdentRef::RK::Var && IRef->Var->IsComptime()) {
+				// Do not load compile time variables.
 				break;
 			}
 		}
@@ -636,8 +653,10 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 //===-------------------------------===//
 
 llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
+	if (Var->IsComptime()) return GenComptimeValue(Var);
+
 	if (Var->Assignment) {
-		GenAssignment(Var->LLAddress, Var->Assignment);
+		GenAssignment(Var->LLAddress, Var->Assignment, Var->HasConstAddress);
 	} else {
 		GenDefaultValue(Var->Ty, Var->LLAddress);
 	}
@@ -857,7 +876,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	switch (BinOp->Op) {
 	case '=': {
 		llvm::Value* LLAddress = GenNode(BinOp->LHS);
-		GenAssignment(LLAddress, BinOp->RHS);
+		GenAssignment(LLAddress, BinOp->RHS, BinOp->RHS->HasConstAddress);
 		return LLAddress;
 	}
 	//
@@ -1372,6 +1391,9 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
 	}
 	
 	VarDecl* Var = IRef->Var;
+	if (Var->IsComptime()) {
+		return GenComptimeValue(Var);
+	}
 	if (Var->IsGlobal) {
 		GenGlobalVarDecl(Var);
 	}
@@ -1419,6 +1441,13 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	} else {
 		return CreateStructGEP(LLSite, FieldAcc->Var->FieldIdx);
 	}
+}
+
+llvm::Constant* arco::IRGenerator::GenComptimeValue(VarDecl* Var) {
+	if (!Var->LLComptimeVal) {
+		Var->LLComptimeVal = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));	
+	}
+	return Var->LLComptimeVal;
 }
 
 llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr) {
@@ -1548,18 +1577,32 @@ void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
 	}
 }
 
-llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr) {
+llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest) {
 
-	ArrayType* DestTy = static_cast<ArrayType*>(Arr->Ty);
-	if (Arr->CastTy) {
-		DestTy = static_cast<ArrayType*>(Arr->CastTy);
-	}
+	ArrayType* DestTy = GetGenArrayDestType(Arr);
+	bool DestIsPointer = Arr->CastTy && Arr->CastTy->IsPointer();
 
-	if (!LLAddr) {
+	if (!LLAddr && !DestIsPointer) {
 		LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
 	}
 
 	if (Arr->IsFoldable) {
+
+		if (DestIsPointer) {
+			if (IsConstDest) {
+				// No need to do any complicated memcopying the pointer
+				// can just point to constant global array.
+
+				// TODO: Should the dso local value change?
+				return GenConstGlobalArray(GenConstArray(Arr, DestTy));
+			}
+
+			// Need a temporary array that can be memcopied into
+			// and then pointed at by the pointer.
+			LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
+		}
+
+
 		// For the sake of efficiency we memcpy the array over
 		// into the destination.
 
@@ -1576,10 +1619,48 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr) {
 		);
 
 	} else {
+
+		if (DestIsPointer) {
+			// if the destination is a pointer but also that pointer is global
+			// then the array needs to be a global array rather than
+			// a unseen alloca.
+			if (LLAddr && llvm::isa<llvm::GlobalValue>(LLAddr)) {
+				LLAddr = GenLLVMGlobalVariable(std::string("__global.array.") + std::to_string(Context.NumGeneratedGlobalVars), GenType(DestTy));
+				++Context.NumGeneratedGlobalVars;
+				llvm::GlobalVariable* LLGVar = llvm::cast<llvm::GlobalVariable>(LLAddr);
+				LLGVar->setInitializer(GenZeroedValue(DestTy));
+			} else {
+				// Creating a temporary array that the pointer can point to.
+				LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
+			}
+		}
+
 		FillArrayViaGEP(Arr, LLAddr, DestTy);
 	}
 
 	return LLAddr;
+}
+
+arco::ArrayType* arco::IRGenerator::GetGenArrayDestType(Array* Arr) {
+	ArrayType* DestTy = static_cast<ArrayType*>(Arr->Ty);
+	if (Arr->CastTy) {
+		if (Arr->CastTy->GetKind() == TypeKind::Array) {
+			DestTy = static_cast<ArrayType*>(Arr->CastTy);
+		} else if (Arr->CastTy->GetKind() == TypeKind::Pointer) {
+			DestTy = ArrayType::Create(
+				static_cast<PointerType*>(Arr->CastTy)->GetElementType(),
+				DestTy->GetLength(),
+				Context);
+		} else if (Arr->CastTy->GetKind() == TypeKind::CStr) {
+			DestTy = ArrayType::Create(
+				Context.CharType,
+				DestTy->GetLength(),
+				Context);
+		} else {
+			assert(!"Unreachable");
+		}
+	}
+	return DestTy;
 }
 
 llvm::Constant* arco::IRGenerator::GenConstArray(Array* Arr, ArrayType* DestTy) {
@@ -1646,7 +1727,8 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
 					static_cast<ArrayType*>(DestTy->GetElementType())
 				);
 			} else {
-				GenAssignment(LLAddrAtIndex, Elm);
+				// TODO: HasConstAddress = false?
+				GenAssignment(LLAddrAtIndex, Elm, false);
 			}
 		} else {
 			GenDefaultValue(DestTy->GetElementType(), LLAddrAtIndex);
@@ -1710,9 +1792,10 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 	std::unordered_set<ulen> ConsumedFieldIdxs;
 	for (ulen i = 0; i < Args.size(); i++) {
 		NonNamedValue Value = Args[i];
-		
-		llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Struct->Fields[i]->FieldIdx);
-		GenAssignment(LLFieldAddr, Value.E);
+		VarDecl* Field = Struct->Fields[i];
+
+		llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
+		GenAssignment(LLFieldAddr, Value.E, Field->HasConstAddress);
 		ConsumedFieldIdxs.insert(i);
 	}
 
@@ -1720,7 +1803,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 		if (ConsumedFieldIdxs.find(Field->FieldIdx) == ConsumedFieldIdxs.end()) {
 			llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
 			if (Field->Assignment) {
-				GenAssignment(LLFieldAddr, Field->Assignment);
+				GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
 			} else {
 				GenDefaultValue(Field->Ty, LLFieldAddr);
 			}
@@ -1745,7 +1828,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 		llvm::Value* LLArrStartPtr = GenMalloc(GenType(BaseTy), LLTotalLinearLength);
 		
 		if (!Alloc->Values.empty()) {
-			GenAssignment( LLArrStartPtr, Alloc->Values[0].E);
+			GenAssignment(LLArrStartPtr, Alloc->Values[0].E, false);
 		} else if (BaseTy->GetKind() == TypeKind::Struct) {
 			// Need to initialize fields so calling the default constructor.
 			StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
@@ -1769,7 +1852,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 			}
 		} else {
 			if (!Alloc->Values.empty()) {
-				GenAssignment(LLMalloc, Alloc->Values[0].E);
+				GenAssignment(LLMalloc, Alloc->Values[0].E, false);
 			}
 		}
 		return LLMalloc;
@@ -2190,7 +2273,7 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(StructDecl* Struct) {
 	for (VarDecl* Field : Struct->Fields) {
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
 		if (Field->Assignment) {
-			GenAssignment(LLFieldAddr, Field->Assignment);
+			GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);
 		}
@@ -2201,10 +2284,33 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 	Type* Ty = Global->Ty;
 	Expr* Assignment = Global->Assignment;
 	if (Assignment) {
-		if (Assignment->IsFoldable) {
-			return { true, llvm::cast<llvm::Constant>(GenRValue(Assignment)) };
+		if (Assignment->Is(AstKind::ARRAY)) {
+			// Is Array
+			if (Assignment->IsFoldable) {
+				// Creating a global constant array then decaying that
+				// array and returning the decayed pointer to the array.
+				Array*     Arr    = static_cast<Array*>(Assignment);
+				ArrayType* DestTy = GetGenArrayDestType(Arr);
+				if (Ty->IsPointer()) {
+					llvm::GlobalVariable* LLLGArray = GenConstGlobalArray(GenConstArray(Arr, DestTy));
+					if (Global->HasConstAddress) {
+						LLLGArray->setConstant(true);
+					}
+					return { true, llvm::cast<llvm::Constant>(DecayArray(LLLGArray)) };
+				} else {
+					llvm::Constant* LLConstArr = GenConstArray(Arr, DestTy);
+					return { true, LLConstArr };
+				}
+			} else {
+				return { false, GenZeroedValue(Ty) };
+			}
 		} else {
-			return { false, GenZeroedValue(Ty) };
+			// Not Array
+			if (Assignment->IsFoldable) {
+				return { true, llvm::cast<llvm::Constant>(GenRValue(Assignment)) };
+			} else {
+				return { false, GenZeroedValue(Ty) };
+			}
 		}
 	} else {
 		// Assignment == nullptr
@@ -2237,9 +2343,13 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 	Builder.CreateCondBr(GenCond(Cond), LLTrueBB, LLFalseBB);
 }
 
-void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value) {
+void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress) {
 	if (Value->Is(AstKind::ARRAY)) {
-		GenArray(static_cast<Array*>(Value), LLAddress);
+		llvm::Value* LLValue = GenArray(static_cast<Array*>(Value), LLAddress, IsConstAddress);
+		if (Value->CastTy && Value->CastTy->IsPointer()) {
+			llvm::Value* LLAssignment = GenCast(Value->CastTy, Value->Ty, LLValue);
+			Builder.CreateStore(LLAssignment, LLAddress);
+		}
 	} else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
 		GenStructInitializer(static_cast<StructInitializer*>(Value), LLAddress);
 	} else if (Value->Is(AstKind::FUNC_CALL)) {

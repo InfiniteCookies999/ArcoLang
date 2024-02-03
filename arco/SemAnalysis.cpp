@@ -148,7 +148,7 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	// -- DEBUG
 	// llvm::outs() << "Checking function: " << Func->Name << "\n";
 
-	CheckFuncParamTypes(Func);
+	CheckFuncParams(Func);
 	if (Func->RetTy->GetKind() == TypeKind::Array) {
 		Error(Func, "Functions cannot return arrays");
 	}
@@ -181,7 +181,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 	}
 }
 
-void arco::SemAnalyzer::CheckFuncParamTypes(FuncDecl* Func) {
+void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
 	if (Func->ParamTypesChecked) return;
 
 	Func->ParamTypesChecked = true;
@@ -196,9 +196,7 @@ void arco::SemAnalyzer::CheckFuncParamTypes(FuncDecl* Func) {
 
 	llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
 	for (VarDecl* Param : Params) {
-		if (!FixupType(Param->Ty)) {
-			Param->Ty = Context.ErrorType;
-		}
+		CheckVarDecl(Param);
 	}
 }
 
@@ -382,14 +380,28 @@ return;
 	if (!FixupType(Var->Ty)) {
 		VAR_YIELD(, true);
 	}
-	
+	if (Var->Ty->Equals(Context.CStrType)) {
+		Var->HasConstAddress = true;
+	}
+
 	if (Var->IsGlobal) {
 		Context.RequestGen(Var);
 	}
 
+	if (Var->HasConstAddress && !Var->Assignment &&
+		!Var->Ty->IsPointer() && !Var->IsParam()) {
+		Error(Var, "Must initialize variables marked with const");
+	}
+
+	if (Var->Ty->Equals(Context.VoidType)) {
+		VAR_YIELD(Error(Var, "Variables cannot have type 'void'"), true);
+	}
+
 	if (Var->Assignment) {
 		CheckNode(Var->Assignment);
-		YIELD_ERROR_WHEN(Var, Var->Assignment);
+		if (Var->Assignment->Ty == Context.ErrorType) {
+			VAR_YIELD(, true);
+		}
 	
 		if (Var->Ty->GetKind() == TypeKind::Array &&
 			!static_cast<ArrayType*>(Var->Ty)->GetLengthExpr()) {
@@ -439,6 +451,11 @@ return;
 					Var->Ty),
 				false);
 		}
+
+		if (ViolatesConstAssignment(Var, Var->Assignment)) {
+			VAR_YIELD(Error(Var, "Cannot assign const memory to non-const variable"),
+				true);
+		}
 	} else {
 		// No assignment.
 
@@ -463,6 +480,8 @@ return;
 	}
 
 	VAR_YIELD(, false);
+
+#undef VAR_YIELD
 }
 
 void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
@@ -997,16 +1016,20 @@ YIELD_ERROR(UniOp);
 			FuncDecl* Func = (*IRef->Funcs)[0];
 
 			// TODO: eventually take into account calling convention.
-			llvm::SmallVector<Type*> ParamTypes;
+			llvm::SmallVector<TypeInfo> ParamTypes;
 			ParamTypes.reserve(Func->Params.size());
 			for (VarDecl* Param : Func->Params) {
-				ParamTypes.push_back(Param->Ty);
+				ParamTypes.push_back(TypeInfo{
+					Param->Ty,
+					Param->HasConstAddress
+					});
 			}
 			
 			Context.RequestGen(Func);
 
-			UniOp->HasConstAddress = true;
-			UniOp->Ty = FunctionType::Create(Func->RetTy, std::move(ParamTypes));
+			UniOp->HasConstAddress = false;
+			UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
+				                             std::move(ParamTypes));
 		} else {
 			if (!IsLValue(UniOp->Value)) {
 				Error(UniOp, "Operator '%s' requires the value to be modifiable",
@@ -1173,8 +1196,6 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 		}
 	}
 
-	IRef->IsFoldable = false;
-
 	switch (IRef->RefKind) {
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
@@ -1183,16 +1204,20 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 			EnsureChecked(IRef->Loc, VarRef);
 		}
 
-		// TODO: In the future could check if the variable is marked const as well.
-		IRef->HasConstAddress = VarRef->Ty->GetKind() == TypeKind::CStr;
+		IRef->HasConstAddress = VarRef->HasConstAddress;
+		if (!VarRef->IsComptime()) {
+			IRef->IsFoldable = false;
+		}
 		break;
 	}
 	case IdentRef::RK::Import: {
 		IRef->Ty = Context.ImportType;
+		IRef->IsFoldable = false;
 		break;
 	}
 	case IdentRef::RK::Funcs: {
 		IRef->Ty = Context.FuncRef;
+		IRef->IsFoldable = false;
 		break;
 	}
 	case IdentRef::RK::NotFound: {
@@ -1309,28 +1334,30 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 		}
 
 		for (ulen i = 0; i < Call->Args.size(); i++) {
-			Expr* Arg     = Call->Args[i].E;
-			Type* ParamTy = FuncTy->ParamTypes[i];
+			Expr*    Arg         = Call->Args[i].E;
+			TypeInfo ParamTyInfo = FuncTy->ParamTypes[i];
 
-			if (!IsAssignableTo(ParamTy, Arg)) {
+			if (!IsAssignableTo(ParamTyInfo.Ty, Arg) ||
+				ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
 				DisplayErrorForSingleFuncForFuncCall("function",
-			                                     Call->Loc,
-			                                     FuncTy->ParamTypes,
-			                                     Call->Args,
-				                                 "fn");
+			                                         Call->Loc,
+			                                         FuncTy->ParamTypes,
+			                                         Call->Args,
+				                                     "fn");
 				YIELD_ERROR(Call);
 			}
 		}
 
 		// Creating casts for the arguments.
 		for (ulen i = 0; i < Call->Args.size(); i++) {
-			Expr* Arg     = Call->Args[i].E;
-			Type* ParamTy = FuncTy->ParamTypes[i];
-			CreateCast(Arg, ParamTy);
+			Expr*    Arg         = Call->Args[i].E;
+			TypeInfo ParamTyInfo = FuncTy->ParamTypes[i];
+			CreateCast(Arg, ParamTyInfo.Ty);
 		}
 
-		Call->Ty = FuncTy->RetTy;
+		Call->Ty = FuncTy->RetTyInfo.Ty;
 		Call->IsFoldable = false;
+		Call->HasConstAddress = FuncTy->RetTyInfo.ConstMemory;
 
 		return;
 	} else if (SiteTy->GetKind() != TypeKind::FuncRef) {
@@ -1355,6 +1382,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 	Call->IsFoldable = false;
 	Call->Ty = Call->CalledFunc->RetTy;
+	Call->HasConstAddress = Call->CalledFunc->ReturnsConstAddress;
 
 }
 
@@ -1391,7 +1419,7 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 		FuncDecl* Canidate = (*Canidates)[i];
 		if (!Canidate->ParamTypesChecked) {
 			SemAnalyzer Analyzer(Context, Canidate);
-			Analyzer.CheckFuncParamTypes(Canidate);
+			Analyzer.CheckFuncParams(Canidate);
 		}
 
 		ulen NumConflicts = 0;
@@ -1420,6 +1448,9 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 		if (!IsAssignableTo(Param->Ty, Arg)) {
 			return false;
 		}
+		if (ViolatesConstAssignment(Param, Arg)) {
+			return false;
+		}
 		if (!Param->Ty->Equals(Arg->Ty)) {
 			++NumConflicts;
 		}
@@ -1436,10 +1467,13 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 
 	if (Canidates && Canidates->size() == 1) {
 		FuncDecl* SingleCanidate = (*Canidates)[0];
-		llvm::SmallVector<Type*> ParamTypes;
+		llvm::SmallVector<TypeInfo> ParamTypes;
 		ParamTypes.reserve(SingleCanidate->Params.size());
 		for (VarDecl* Param : SingleCanidate->Params) {
-			ParamTypes.push_back(Param->Ty);
+			ParamTypes.push_back(TypeInfo{
+				Param->Ty,
+				Param->HasConstAddress
+				});
 		}
 		DisplayErrorForSingleFuncForFuncCall(CallType,
 			                                 ErrorLoc,
@@ -1462,7 +1496,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
 	const char* CallType,
 	SourceLoc CallLoc,
-	const llvm::SmallVector<Type*>& ParamTypes,
+	const llvm::SmallVector<TypeInfo>& ParamTypes,
 	const llvm::SmallVector<NonNamedValue, 2>& Args,
 	const std::string& OptFuncName) {
 
@@ -1480,30 +1514,35 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
 			break;
 		}
 			
-		Expr* Arg     = Args[ArgCount].E;
-		Type* ParamTy = ParamTypes[ArgCount];
+		Expr*    Arg         = Args[ArgCount].E;
+		TypeInfo ParamTyInfo = ParamTypes[ArgCount];
 
-		if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+		if (!IsAssignableTo(ParamTyInfo.Ty, Arg->Ty, Arg)) {
 			if (EncounteredError)  Log.EndError();
 			Log.BeginError(Args[ArgCount].ExpandedLoc,
 				"Cannot assign argument %s of type '%s' to parameter of type '%s'",
 				ArgCount+1,
-				Arg->Ty->ToString(), ParamTy->ToString());
-			DisplayNoteInfoForTypeMismatch(Arg, ParamTy);
+				Arg->Ty->ToString(), ParamTyInfo.Ty->ToString());
+			DisplayNoteInfoForTypeMismatch(Arg, ParamTyInfo.Ty);
 			EncounteredError = true;
+		}
+		if (ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
+			if (EncounteredError)  Log.EndError();
+			Log.BeginError(Arg->Loc, "Cannot assign const memory to non-const parameter");
+			EncounteredError = true; 
 		}
 	}
 
 	if (!EncounteredError) {
-		Log.BeginError(CallLoc, "Could not find %s for call", CallType);
+		Log.BeginError(CallLoc, "Invalid arguments for %s call", CallType);
 	}
 
 	// Displaying the function.
 	std::string FuncDec = OptFuncName;
 	FuncDec += "(";
 	for (ulen i = 0; i < ParamTypes.size(); i++) {
-		Type* ParamTy = ParamTypes[i];
-		FuncDec += ParamTy->ToString();
+		FuncDec += ParamTypes[i].ConstMemory ? "const " : "";
+		FuncDec += ParamTypes[i].Ty->ToString();
 		if (i != ParamTypes.size() - 1) {
 			FuncDec += ", ";
 		}
@@ -1532,6 +1571,11 @@ void arco::SemAnalyzer::CheckArray(Array* Arr) {
 
 		if (!Elm->IsFoldable) {
 			Arr->IsFoldable = false;
+		}
+
+		if ((Elm->Ty->GetKind() == TypeKind::Pointer &&
+			 Elm->HasConstAddress)) {
+			Error(Elm, "Cannot add const pointers to arrays");
 		}
 
 		if (!ElmTypes) {
@@ -1571,6 +1615,13 @@ void arco::SemAnalyzer::CheckArray(Array* Arr) {
 		ElmTypes = Context.EmptyArrayElmType;
 	}
 	
+	// Making sure all the elements are the same type.
+	if (!ElmAreArrs) {
+		for (Expr* Elm : Arr->Elements) {
+			CreateCast(Elm, ElmTypes);
+		}
+	}
+
 	Arr->Ty = ArrayType::Create(ElmTypes, Arr->RequiredNumElements, Context);
 
 }
@@ -1597,6 +1648,7 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
 	Access->IsFoldable = false;
 	if (Kind == TypeKind::CStr) {
 		Access->Ty = Context.CharType;
+		Access->HasConstAddress = true;
 	} else {
 		Access->Ty = static_cast<ContainerType*>(Access->Site->Ty)->GetElementType();
 	}
@@ -1954,6 +2006,18 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
 	}
 }
 
+bool arco::SemAnalyzer::ViolatesConstAssignment(VarDecl* DestVar, Expr* Assignment) {
+	return ViolatesConstAssignment(DestVar->Ty, DestVar->HasConstAddress, Assignment);
+}
+
+bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddress, Expr* Assignment) {
+	TypeKind DestTyKind = DestTy->GetKind();
+	return !DestConstAddress           &&
+		   Assignment->HasConstAddress &&
+		   (DestTyKind == TypeKind::Pointer || DestTyKind == TypeKind::CStr ||
+			DestTyKind == TypeKind::Array   || DestTyKind == TypeKind::Function);
+}
+
 bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 	if (Ty->GetKind() == TypeKind::Array) {
 		return FixupArrayType(static_cast<ArrayType*>(Ty), AllowDynamicArrays);
@@ -1994,7 +2058,7 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 	
 	if (LengthExpr->IsFoldable) {
 		llvm::ConstantInt* LLInt =
-		llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
+			llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
 
 		if (LLInt->isZero()) {
 			Error(ErrorLoc, "The length of the array cannot be zero");

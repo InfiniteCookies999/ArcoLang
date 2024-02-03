@@ -291,7 +291,6 @@ arco::AstNode* arco::Parser::ParseStmt() {
 	case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
 	case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
 	case TokenKind::KW_NATIVE:
-	case TokenKind::KW_CONST:
 	case TokenKind::KW_PRIVATE: {
 		Modifiers Mods = ParseModifiers();
 		if (CTok.Is(TokenKind::KW_FN)) {
@@ -315,7 +314,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
 	case TokenKind::IDENT: {
 		switch (PeekToken(1).Kind) {
 		case IDENT:
-		case TYPE_KW_START_CASES: {
+		case TYPE_KW_START_CASES:
+		case TokenKind::KW_CONST: {
 			Stmt = ParseVarDecl(0);
 			Match(';');
 			break;
@@ -380,6 +380,10 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 	if ((!(Mods & ModKinds::NATIVE) && CTok.IsNot('{')) ||
 		  (Mods & ModKinds::NATIVE) && CTok.IsNot(';')) {
+		if (CTok.Is(TokenKind::KW_CONST)) {
+			NextToken(); // Consuming 'const' token.
+			Func->ReturnsConstAddress = true;
+		}
 		Func->RetTy = ParseType(true);
 	} else {
 		Func->RetTy = Context.VoidType;
@@ -410,7 +414,15 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 
 	ulen NumErrs = TotalAccumulatedErrors;
 
-	VarDecl* Var = CreateVarDecl(CTok, ParseIdentifier("Expected identifier for variable declaration"), Mods);
+	// Have to pull these out because C++ is stupid and does not do statements in order
+	// of arguments.
+	Token NameTok = CTok;
+	Identifier Name = ParseIdentifier("Expected identifier for variable declaration");
+	VarDecl* Var = CreateVarDecl(NameTok, Name, Mods);
+	if (CTok.Is(TokenKind::KW_CONST)) {
+		NextToken(); // Consuming 'const' token.
+		Var->HasConstAddress = true;
+	}
 	Var->Ty = ParseType(true);
 
 	if (CTok.Is('=')) {
@@ -767,13 +779,6 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 
 			break;
 		}
-		case TokenKind::KW_CONST: {
-			if (Mods & ModKinds::CONST)
-				Error(CTok, "Duplicate modifier");
-			Mods |= ModKinds::CONST;
-			NextToken();
-			break;
-		}
 		case TokenKind::KW_PRIVATE: {
 			if (Mods & ModKinds::PRIVATE)
 				Error(CTok, "Duplicate modifier");
@@ -860,23 +865,40 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 arco::Type* arco::Parser::ParseFunctionType() {
 	Match(TokenKind::KW_FN);
 
-	llvm::SmallVector<Type*> ParamTypes;
+	llvm::SmallVector<TypeInfo> ParamTypes;
 	Match('(', "For function type");
 	if (CTok.IsNot(')')) {
 		bool MoreParamTypes = false;
 		do {
+			Type* Ty;
+			bool  HasConstAddress = false;
 			if (CTok.Is(TokenKind::IDENT)) {
 				switch (PeekToken(1).Kind) {
+				case KW_CONST:
+					NextToken(); // Consuming the identifier.
+					NextToken(); // Consuming 'const' token.
+					HasConstAddress = true;
+					Ty = ParseType(false);
+					break;
 				case TYPE_KW_START_CASES:
 				case TokenKind::IDENT:
 					// Allowing the parameters to have names.
 					NextToken(); // Consuming the name identifier.
-					ParamTypes.push_back(ParseType(false));
+					Ty = ParseType(false);
+					break;
+				default:
+					Ty = ParseType(false);
 					break;
 				}
 			} else {
-				ParamTypes.push_back(ParseType(false));
+				if (CTok.Is(TokenKind::KW_CONST)) {
+					NextToken(); // Consuming 'const' token.
+					HasConstAddress = true;
+				}
+				Ty = ParseType(false);
 			}
+
+			ParamTypes.push_back(TypeInfo{ Ty, HasConstAddress });
 
 			MoreParamTypes = CTok.Is(',');
 			if (MoreParamTypes) {
@@ -885,10 +907,16 @@ arco::Type* arco::Parser::ParseFunctionType() {
 		} while (MoreParamTypes);
 	}
 	Match(')', "For function type");
+	bool ReturnsConstAddress = false;
+	if (CTok.Is(TokenKind::KW_CONST)) {
+		NextToken(); // Consuming 'const' token.
+		ReturnsConstAddress = true;
+	}
+	
 	// TODO: allow the return type to be optional and default to void?
 	Type* RetTy = ParseType(false);
 
-	return FunctionType::Create(RetTy, std::move(ParamTypes));
+	return FunctionType::Create(TypeInfo{ RetTy, ReturnsConstAddress }, std::move(ParamTypes));
 }
 
 arco::Type* arco::Parser::ParseBasicType() {
@@ -1768,8 +1796,10 @@ void arco::Parser::SkipRecovery() {
 	case TokenKind::KW_RETURN:
 	case TokenKind::KW_FN:
 	case TokenKind::KW_LOOP:
+	case TokenKind::KW_IF:
 	case TokenKind::KW_BREAK:
 	case TokenKind::KW_CONTINUE:
+	case TokenKind::KW_DELETE:
 		return;
 	case ';':
 	case TokenKind::TK_EOF:

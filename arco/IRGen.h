@@ -86,6 +86,7 @@ namespace arco {
 		llvm::Value* GenStringLiteral(StringLiteral* String);
 		llvm::Value* GenIdentRef(IdentRef* IRef);
 		llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
+		llvm::Constant* GenComptimeValue(VarDecl* Var);
 		llvm::Value* GenFuncCall(FuncCall* Call, llvm::Value* LLAddr);
 		llvm::Value* GenFuncCallGeneral(Expr* CallNode,
 			                            FuncDecl* CalledFunc,
@@ -94,7 +95,8 @@ namespace arco {
 		void GenFuncCallArgs(ulen& ArgIdx,
 			                 llvm::SmallVector<llvm::Value*, 2>& LLArgs,
 			                 llvm::SmallVector<NonNamedValue, 2>& Args);
-		llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr);
+		llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
+		ArrayType* GetGenArrayDestType(Array* Arr);
 		llvm::Constant* GenConstArray(Array* Arr, ArrayType* DestTy);
 		void FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy);
 		llvm::Value* GenArrayAccess(ArrayAccess* Access);
@@ -185,7 +187,7 @@ namespace arco {
 
 		void GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, llvm::BasicBlock* LLFalseBB);
 
-		void GenAssignment(llvm::Value* LLAddress, Expr* Value);
+		void GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress);
 		void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
 
 		void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);

@@ -55,7 +55,7 @@ namespace arco {
 			bool AllPathsReturn = false;
 		}  * LocScope = nullptr;
 
-		void CheckFuncParamTypes(FuncDecl* Func);
+		void CheckFuncParams(FuncDecl* Func);
 
 		void CheckNode(AstNode* Node);
 
@@ -99,7 +99,7 @@ namespace arco {
 		void DisplayErrorForSingleFuncForFuncCall(
 			const char* CallType,
 			SourceLoc CallLoc,
-			const llvm::SmallVector<Type*>& ParamTypes,
+			const llvm::SmallVector<TypeInfo>& ParamTypes,
 			const llvm::SmallVector<NonNamedValue, 2>& Args,
 			const std::string& OptFuncName = ""
 		);
@@ -120,6 +120,8 @@ namespace arco {
 		bool IsAssignableTo(Type* ToTy, Expr* FromExpr);
 		bool IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr);
 		bool IsCastableTo(Type* ToTy, Type* FromTy);
+		bool ViolatesConstAssignment(VarDecl* DestVar, Expr* Assignment);
+		bool ViolatesConstAssignment(Type* DestTy, bool DestConstAddress, Expr* Assignment);
 
 		bool FixupType(Type* Ty, bool AllowDynamicArrays = false);
 		bool FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic);
