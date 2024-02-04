@@ -657,8 +657,13 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 	if (Var->IsComptime()) return GenComptimeValue(Var);
 
-	// TODO: Take into account RVO.
-	AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
+	// If using RVO then there is no need to actually
+	// add the object to be destroyed because the caller
+	// will recieve a version of that object and manage
+	// the object's memory.
+	if (!(CFunc->NumReturns == 1 && CFunc->UsesParamRetSlot && Var->IsLocalRetValue)) {
+		AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
+	}
 
 	if (Var->Assignment) {
 		GenAssignment(Var->LLAddress, Var->Assignment, Var->HasConstAddress);

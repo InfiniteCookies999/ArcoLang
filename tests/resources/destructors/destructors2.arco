@@ -1,0 +1,16 @@
+
+A struct {
+	fn ~A() {
+		print("Destroyed!", 10);
+	}
+}
+
+fn f() A {
+	a A;
+	return a;
+}
+
+fn main() {
+	a A = f();
+	print("Begin ", 6);
+}
