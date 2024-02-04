@@ -184,12 +184,25 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 			Struct->FieldsHaveAssignment = true;
 		}
 
+		// TODO: Does the field need to be checked for a complete type here?
 		if (Field->Ty->GetKind() == TypeKind::Struct) {
 			StructType* StructTy = static_cast<StructType*>(Field->Ty);
 			StructDecl* OStruct = StructTy->GetStruct();
 			if (Struct) {
 				Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
 				Struct->NeedsDestruction |= OStruct->NeedsDestruction;
+			}
+		} else if (Field->Ty->GetKind() == TypeKind::Array) {
+			ArrayType* ArrayTy = static_cast<ArrayType*>(Field->Ty);
+
+			Type* BaseTy = ArrayTy->GetBaseType();
+			if (BaseTy->GetKind() == TypeKind::Struct) {
+				StructType* StructTy = static_cast<StructType*>(Field->Ty);
+				StructDecl* OStruct = StructTy->GetStruct();
+				if (Struct) {
+					Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
+					Struct->NeedsDestruction |= OStruct->NeedsDestruction;
+				}
 			}
 		}
 	}

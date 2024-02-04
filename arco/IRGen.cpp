@@ -2403,6 +2403,16 @@ void arco::IRGenerator::AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr) {
 		if (Struct->NeedsDestruction) {
 			AddObjectToDestroy(Ty, LLAddr);
 		}
+	} else if (Ty->GetKind() == TypeKind::Array) {
+		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
+		Type*      BaseTy  = ArrayTy->GetBaseType();
+
+		if (BaseTy->GetKind() == TypeKind::Struct) {
+			StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
+			if (Struct->NeedsDestruction) {
+				AddObjectToDestroy(Ty, LLAddr);
+			}
+		}
 	}
 }
 
@@ -2434,6 +2444,15 @@ void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
 		GenFuncDecl(Struct->Destructor);
 		Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
+	} else if (Ty->GetKind() == TypeKind::Array) {
+		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
+
+		llvm::Value* LLArrStartPtr       = MultiDimensionalArrayToPointerOnly(LLAddr, ArrayTy);
+		llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
+		GenInternalArrayLoop(ArrayTy->GetBaseType(), LLArrStartPtr, LLTotalLinearLength,
+			[this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
+				CallDestructors(BaseTy, LLElmAddr);
+			});
 	}
 }
 
