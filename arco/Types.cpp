@@ -140,6 +140,22 @@ bool arco::Type::IsPointer() const {
 		   Kind == TypeKind::Null    || Kind == TypeKind::Function;
 }
 
+bool arco::Type::TypeNeedsDestruction() const {
+	if (GetKind() == TypeKind::Struct) {
+		const StructDecl* Struct = static_cast<const StructType*>(this)->GetStruct();
+		return Struct->NeedsDestruction;
+	} else if (GetKind() == TypeKind::Array) {
+		const ArrayType* ArrayTy = static_cast<const ArrayType*>(this);
+		const Type*      BaseTy  = ArrayTy->GetBaseType();
+
+		if (BaseTy->GetKind() == TypeKind::Struct) {
+			const StructDecl* Struct = static_cast<const StructType*>(BaseTy)->GetStruct();
+			return Struct->NeedsDestruction;
+		}
+	}
+	return false;
+}
+
 arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
 	if (GetKind() == TypeKind::CStr) {
 		return Context.CharType;

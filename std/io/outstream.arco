@@ -5,10 +5,18 @@
  */
 OutStream struct {
 	
-	handle void*;
+	handle     void*;
+	auto_close bool;
 
-	fn OutStream(handle void*) {
-		this.handle = handle;
+	fn ~OutStream() {
+		if auto_close {
+			close();
+		}
+	}
+
+	fn OutStream(handle void*, auto_close bool = true) {
+		this.handle     = handle;
+		this.auto_close = auto_close;
 	}
 
 	fn write(msg cstr, length int) {
@@ -86,5 +94,9 @@ OutStream struct {
 
 	fn writeln() {
 		write("\n", 1);
+	}
+
+	fn close() {
+		win32.CloseHandle(handle);
 	}
 }

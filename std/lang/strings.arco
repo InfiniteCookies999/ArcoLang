@@ -4,6 +4,10 @@ String struct {
 	length int;
 	buffer char*;
 
+	fn ~String() {
+		delete buffer;
+	}
+
 	/*
 	 * Defaults to having zero length.
 	 */
@@ -29,12 +33,22 @@ String struct {
 	 *
 	 * If the buffer is null terminated
 	 * do not include the null termination in the length.
+	 *
+	 * @Param copy_buffer if true it allocates new memory
+	 *                    and copies the buffer over.
 	 */
-	fn String(buffer char*, length int) {
-		// TODO: Check if length < 0
+	fn String(buffer char*, length int, copy_buffer bool = true) {
+		if length < 0 {
+			panic("String length length < 0");
+		}
+		
 		this.length = length;
-		this.buffer = new char[length + 1]; // +1 for null terminator.
-		memcpy(this.buffer, buffer, length);
+		if copy_buffer {
+			this.buffer = new char[length + 1]; // +1 for null terminator.
+			memcpy(this.buffer, buffer, length);
+		} else {
+			this.buffer = buffer;
+		}
 		this.buffer[length] = '\0';
 	}
 

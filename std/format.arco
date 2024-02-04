@@ -1,8 +1,8 @@
 
-out OutStream = OutStream{ win32.GetStdHandle(-11) };
-err OutStream = OutStream{ win32.GetStdHandle(-12) };
+out OutStream = OutStream{ win32.GetStdHandle(-11), false };
+err OutStream = OutStream{ win32.GetStdHandle(-12), false };
 
-in  InStream  = InStream { win32.GetStdHandle(-10) };
+in  InStream  = InStream { win32.GetStdHandle(-10), false };
 
 // TODO: Functions are redundent because there is no support for
 //       templating yet!

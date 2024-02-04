@@ -188,6 +188,8 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		IRGen.GenImplicitDefaultConstructorBody(Struct);
 	}
 
+	IRGen.GenGlobalDestroyFuncBody();
+
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
 	i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 

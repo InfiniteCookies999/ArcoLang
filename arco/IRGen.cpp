@@ -281,6 +281,19 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
 	Builder.CreateRetVoid();
 }
 
+void arco::IRGenerator::GenGlobalDestroyFuncBody() {
+	llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "entry.block", Context.LLDestroyGlobalsFunc);
+		
+	LLFunc = Context.LLDestroyGlobalsFunc;
+	Builder.SetInsertPoint(LLEntryBlock);
+
+	for (VarDecl* Global : Context.GlobalsNeedingDestruction) {
+		CallDestructors(Global->Ty, Global->LLAddress);
+	}
+
+	Builder.CreateRetVoid();
+}
+
 void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 	if (Func->LLFunction) return;
 
@@ -488,6 +501,18 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		Builder.SetInsertPoint(LLFuncEndBB);
 	}
 
+	if (Func == Context.MainEntryFunc) {
+		Context.LLDestroyGlobalsFunc = GenDestroyGlobalsFuncDecl();
+		if (Func->NumReturns == 1 && EncounteredReturn) {
+			// User defined return so must insert before the
+			// return instruction.
+			Builder.SetInsertPoint(&Builder.GetInsertBlock()->back());
+			Builder.CreateCall(Context.LLDestroyGlobalsFunc);
+		} else {
+			Builder.CreateCall(Context.LLDestroyGlobalsFunc);
+		}
+	}
+
 	if (Func->NumReturns > 1) {
 		CallDestructors(AlwaysInitializedDestroyedObjects);
 		if (Func->UsesOptimizedIntRet) {
@@ -521,6 +546,19 @@ llvm::Function* arco::IRGenerator::GenGlobalInitFuncDecl() {
 			LLModule
 		);
 	return LLInitFunc;
+}
+
+llvm::Function* arco::IRGenerator::GenDestroyGlobalsFuncDecl() {
+	llvm::FunctionType* LLFuncType =
+		llvm::FunctionType::get(llvm::Type::getVoidTy(LLContext), false);
+	llvm::Function* LLDestroyFunc =
+		llvm::Function::Create(
+			LLFuncType,
+			llvm::Function::ExternalLinkage,
+			"__arco.destroy.globals",
+			LLModule
+		);
+	return LLDestroyFunc;
 }
 
 llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
@@ -603,6 +641,10 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
 
 	llvm::GlobalVariable* LLGVar = GenLLVMGlobalVariable(Name, GenType(Global->Ty));
 	Global->LLAddress = LLGVar;
+
+	if (Global->Ty->TypeNeedsDestruction()) {
+		Context.GlobalsNeedingDestruction.push_back(Global);
+	}
 
 	if (Global->Mods & ModKinds::NATIVE) {
 #ifdef _WIN32
@@ -2142,6 +2184,12 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 	case TypeKind::UnsignedInt64:   return GetLLUInt64(0, LLContext);
 	case TypeKind::Int:             return GetSystemInt(0, LLContext, LLModule);
 	case TypeKind::UnsignedInt:     return GetSystemUInt(0, LLContext, LLModule);
+	case TypeKind::Bool:
+		return llvm::ConstantInt::getFalse(LLContext);
+	case TypeKind::Float32:
+		return llvm::ConstantFP::get(LLContext, llvm::APFloat((float)0.0F));
+	case TypeKind::Float64:
+		return llvm::ConstantFP::get(LLContext, llvm::APFloat((double)0.0));
 	case TypeKind::Pointer:
 	case TypeKind::CStr:
 	case TypeKind::Function:
@@ -2407,21 +2455,8 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 }
 
 void arco::IRGenerator::AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr) {
-	if (Ty->GetKind() == TypeKind::Struct) {
-		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
-		if (Struct->NeedsDestruction) {
-			AddObjectToDestroy(Ty, LLAddr);
-		}
-	} else if (Ty->GetKind() == TypeKind::Array) {
-		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
-		Type*      BaseTy  = ArrayTy->GetBaseType();
-
-		if (BaseTy->GetKind() == TypeKind::Struct) {
-			StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
-			if (Struct->NeedsDestruction) {
-				AddObjectToDestroy(Ty, LLAddr);
-			}
-		}
+	if (Ty->TypeNeedsDestruction()) {
+		AddObjectToDestroy(Ty, LLAddr);
 	}
 }
 
@@ -2494,21 +2529,8 @@ void arco::IRGenerator::GenCompilerDestructorAndCall(StructDecl* Struct, llvm::V
 	Builder.SetInsertPoint(LLEntryBlock);
 
 	for (VarDecl* Field : Struct->Fields) {
-		if (Field->Ty->GetKind() == TypeKind::Struct) {
-			StructDecl* Struct = static_cast<StructType*>(Field->Ty)->GetStruct();
-			if (Struct->NeedsDestruction) {
-				CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
-			}
-		} else if (Field->Ty->GetKind() == TypeKind::Array) {
-			ArrayType* ArrayTy = static_cast<ArrayType*>(Field->Ty);
-			Type*      BaseTy  = ArrayTy->GetBaseType();
-
-			if (BaseTy->GetKind() == TypeKind::Struct) {
-				StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
-				if (Struct->NeedsDestruction) {
-					CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
-				}
-			}
+		if (Field->Ty->TypeNeedsDestruction()) {
+			CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
 		}
 	}
 

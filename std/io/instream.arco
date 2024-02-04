@@ -5,10 +5,18 @@
  */
 InStream struct {
 
-	handle void*;
+	handle     void*;
+	auto_close bool;
 
-	fn InStream(handle void*) {
-		this.handle = handle;
+	fn ~InStream() {
+		if auto_close {
+			close();
+		}
+	}
+
+	fn InStream(handle void*, auto_close bool = true) {
+		this.handle     = handle;
+		this.auto_close = auto_close;
 	}
 
 	fn read(buffer char*, length int) int {

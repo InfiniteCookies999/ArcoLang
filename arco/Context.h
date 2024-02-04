@@ -92,8 +92,10 @@ namespace arco {
 		llvm::Module&      LLArcoModule;
 		ulen               NumGeneratedGlobalVars = 0;
 		llvm::Function*    LLInitGlobalFunc;
+		llvm::Function*    LLDestroyGlobalsFunc;
 		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
 		llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
+		llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
 
 		llvm::DenseMap<Type*, PointerType*>                PointerCache;
 		llvm::DenseMap<std::pair<Type*, ulen>, ArrayType*> ArrayCache;

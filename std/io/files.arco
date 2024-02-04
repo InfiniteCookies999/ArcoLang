@@ -22,8 +22,7 @@ FLAG_CREATE uint = 0x0008;
  * Reads an entire file into a string.
  */
 fn read(path cstr) String {
-	// TODO: cleanup allocated memory.
-
+	
 	stream InStream = open(path, FLAG_IN);
 	size   int   = stream.get_size();
 	buffer char* = new char[size];
@@ -31,7 +30,7 @@ fn read(path cstr) String {
 	stream.read(buffer, size);
 	stream.close();
 	
-	return String{ buffer, size };
+	return String{ buffer, size, false };
 }
 
 /*

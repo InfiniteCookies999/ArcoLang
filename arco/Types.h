@@ -71,6 +71,8 @@ namespace arco {
 		bool IsSystemInt() const;
 		bool IsPointer() const;
 
+		bool TypeNeedsDestruction() const;
+
 		Type* GetPointerElementType(ArcoContext& Context) const;
 
 		ulen GetTrivialTypeSizeInBytes() const;

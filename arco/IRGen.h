@@ -24,6 +24,7 @@ namespace arco {
 		void GenImplicitDefaultConstructorBody(StructDecl* Struct);
 
 		void GenGlobalInitFuncBody();
+		void GenGlobalDestroyFuncBody();
 
 		llvm::Value* GenRValue(Expr* E);
 
@@ -83,6 +84,7 @@ namespace arco {
 		void GenFuncBody(FuncDecl* Func);
 
 		llvm::Function* GenGlobalInitFuncDecl();
+		llvm::Function* GenDestroyGlobalsFuncDecl();
 
 		llvm::Value* GenNode(AstNode* Node);
 
