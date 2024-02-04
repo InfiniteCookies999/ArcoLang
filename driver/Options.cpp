@@ -16,16 +16,16 @@ void OptionManager::AddOption(const char* OptName, const OptCB& Callback, bool O
     Options.push_back(Opt);
 }
 
-bool OptionManager::ProcessOption(llvm::StringRef Opt) {
+bool OptionManager::ProcessOption(int ArgNum, llvm::StringRef Opt) {
     for (const Option& Option : Options) {
         if (Option.OnlyStartsWith) {
             if (Opt.startswith(Option.OptName)) {
-                RunOption(Option, Opt);
+                RunOption(ArgNum, Option, Opt);
                 return true;
             }
         } else {
             if (Opt == Option.OptName) {
-                RunOption(Option, Opt);
+                RunOption(ArgNum, Option, Opt);
                 return true;
             }
         }
@@ -33,10 +33,10 @@ bool OptionManager::ProcessOption(llvm::StringRef Opt) {
     return false;
 }
 
-void OptionManager::RunOption(const Option& Option, llvm::StringRef Opt) {
+void OptionManager::RunOption(int ArgNum, const Option& Option, llvm::StringRef Opt) {
     if (Option.State) {
         *Option.State = !(*Option.State);
     } else {
-        Option.Callback(Opt.substr(strlen(Option.OptName)));
+        Option.Callback(ArgNum, Opt.substr(strlen(Option.OptName)));
     }
 }

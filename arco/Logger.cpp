@@ -217,7 +217,7 @@ void arco::Logger::GlobalError(llvm::raw_ostream& OS, const std::function<void()
 	// Printing the message
 	Printer();
 
-	OS << '\n';
+	OS << ".\n";
 
 	FoundCompileError = true;
 }

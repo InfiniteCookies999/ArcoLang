@@ -8,13 +8,13 @@
 class OptionManager {
 public:
 
-	using OptCB = std::function<void(llvm::StringRef)>;
+	using OptCB = std::function<void(int, llvm::StringRef)>;
 
 	void AddOption(const char* OptName, bool* State);
 
 	void AddOption(const char* OptName, const OptCB& Callback, bool OnlyStartsWith = true);
 
-	bool ProcessOption(llvm::StringRef Opt);
+	bool ProcessOption(int ArgNum, llvm::StringRef Opt);
 
 private:
 
@@ -27,7 +27,7 @@ private:
 	
 	std::vector<Option> Options;
 
-	void RunOption(const Option& Option, llvm::StringRef Opt);
+	void RunOption(int ArgNum, const Option& Option, llvm::StringRef Opt);
 
 
 };
