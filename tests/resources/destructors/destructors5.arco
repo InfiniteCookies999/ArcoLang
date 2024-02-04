@@ -1,0 +1,15 @@
+
+A struct {
+	fn ~A() {
+		print("Destroyed!", 10);
+	}
+
+	fn foo() int {
+		return 14;
+	}
+}
+
+fn main() {
+	e int = A{}.foo();
+	print("Begin ", 6);
+}

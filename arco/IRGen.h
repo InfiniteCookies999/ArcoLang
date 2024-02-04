@@ -68,6 +68,15 @@ namespace arco {
 		// objects.
 		llvm::SmallVector<std::pair<Type*, llvm::Value*>> AlwaysInitializedDestroyedObjects;
 
+		struct Scope {
+			Scope* Parent = nullptr;
+
+			// When the scope is poped, but not returned (TODO: Or control flow changed?)
+			// then the objects in this list are destroyed.
+			llvm::SmallVector<std::pair<Type*, llvm::Value*>> ObjectsNeedingDestroyed;
+
+		}* LocScope = nullptr;
+
 		bool EncounteredReturn = false;
 
 		void GenFuncDecl(FuncDecl* Func);
@@ -182,6 +191,8 @@ namespace arco {
 
 		void CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects);
 		void CallDestructors(Type* Ty, llvm::Value* LLAddr);
+
+		void DestroyLocScopeInitializedObjects();
 
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already

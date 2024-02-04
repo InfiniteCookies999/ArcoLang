@@ -180,6 +180,17 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
 	return LLStructTy;
 }
 
+
+
+#define PUSH_SCOPE()        \
+Scope NewScope;             \
+NewScope.Parent = LocScope; \
+LocScope = &NewScope;
+
+#define POP_SCOPE()                  \
+DestroyLocScopeInitializedObjects(); \
+LocScope = LocScope->Parent;
+
 arco::IRGenerator::IRGenerator(ArcoContext& Context)
 	: Context(Context),
 	  LLContext(Context.LLContext),
@@ -289,7 +300,8 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		StructType* StructTy = static_cast<StructType*>(Func->RetTy);
 		
 		ulen SizeInBytes = SizeOfTypeInBytes(GenStructType(StructTy));
-		if (SizeInBytes <= LLModule.getDataLayout().getPointerSize()) {
+		if (!StructTy->GetStruct()->NeedsDestruction &&
+			SizeInBytes <= LLModule.getDataLayout().getPointerSize()) {
 			// Return type is optimized to fit into an integer.
 			auto NextPow2 = [](ulen V) {
 				--V;
@@ -397,6 +409,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		}
 	}
 
+	PUSH_SCOPE(); // Push function scope!
 	// Allocating space for the variables
 	//
 	for (VarDecl* Var : Func->AllocVars) {
@@ -465,6 +478,13 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		LLFunc->getBasicBlockList().push_back(LLFuncEndBB); // Because the parent was not originally set
 		GenBranchIfNotTerm(LLFuncEndBB);
 		Builder.SetInsertPoint(LLFuncEndBB);
+	}
+
+	// Before branching and destroying the objects which are
+	// always destroyed need to still cleanup the function
+	// scope's objects.
+	if (Func->NumReturns > 1) { // If Func->NumReturns == 1 then the return stmt cleans up.
+		POP_SCOPE();
 	}
 
 	if (Func->NumReturns > 1) {
@@ -661,6 +681,9 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 	// add the object to be destroyed because the caller
 	// will recieve a version of that object and manage
 	// the object's memory.
+	//
+	// NOTE: When there are destructors functions do not use optimized integer returning
+	//       but instead fall back on parameter return slots.
 	if (!(CFunc->NumReturns == 1 && CFunc->UsesParamRetSlot && Var->IsLocalRetValue)) {
 		AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
 	}
@@ -772,9 +795,11 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
 	LoopContinueStack.push_back(LLCondBB);
 
 	// Generating the condition block
+	PUSH_SCOPE();
 	GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);	
 
 	GenBlock(LLBodyBB, Loop->Scope.Stmts);
+	POP_SCOPE();
 
 	LoopBreakStack.pop_back();
 	LoopContinueStack.pop_back();
@@ -802,14 +827,19 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 	LoopBreakStack.push_back(LLEndBB);
 	LoopContinueStack.push_back(LLContinueBB);
 
+	// Do not want to place these objects in the generation scope
+	// because then they would be destroyed for every iteration of
+	// the loop.
 	for (VarDecl* Decl : Loop->Decls) {
 		GenNode(Decl);
 	}
 
+	PUSH_SCOPE();
 	// Generating the condition block
 	GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);
 
 	GenBlock(LLBodyBB, Loop->Scope.Stmts);
+	POP_SCOPE();
 
 	LoopBreakStack.pop_back();
 	LoopContinueStack.pop_back();
@@ -853,9 +883,11 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
 		LLElseBB = llvm::BasicBlock::Create(LLContext, "if.else", LLFunc);
 	}
 
+	PUSH_SCOPE();
 	GenBranchOnCond(If->Cond, LLThenBB, LLElseBB);
 
 	GenBlock(LLThenBB, If->Scope.Stmts);
+	POP_SCOPE();
 
 	// Jump out of the body of the if statement
 	GenBranchIfNotTerm(LLEndBB);
@@ -874,7 +906,9 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
 }
 
 llvm::Value* arco::IRGenerator::GenNestedScope(NestedScopeStmt* NestedScope) {
+	PUSH_SCOPE();
 	GenBlock(nullptr, NestedScope->Scope.Stmts);
+	POP_SCOPE();
 	return nullptr;
 }
 
@@ -1433,6 +1467,7 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
 		FuncCall* Call = static_cast<FuncCall*>(Site);
 		LLSite = CreateUnseenAlloca(GenType(Call->Ty), "tmp.obj");
+		AddObjectToDestroyOpt(Call->Ty, LLSite);
 		GenStoreStructRetFromCall(Call, LLSite);
 	} else {
 		LLSite = GenNode(Site);
@@ -1509,6 +1544,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 	llvm::SmallVector<llvm::Value*, 2> LLArgs;
 	LLArgs.resize(NumArgs);
 
+	// TODO: This stuff probably also belongs where we call variables.
 	ulen ArgIdx = 0;
 	if (CalledFunc->Struct) {
 		if (CalledFunc->IsConstructor) {
@@ -1531,6 +1567,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 			// the return value so a temporary object needs
 			// to be created.
 			LLAddr = CreateUnseenAlloca(GenType(CallNode->Ty), "ignored.ret");
+			AddObjectToDestroyOpt(CallNode->Ty, LLAddr);
 			LLArgs[ArgIdx++] = LLAddr;
 		}
 	}
@@ -1576,7 +1613,15 @@ void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
 
 llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
 	llvm::Value* LLArg = nullptr;
+	// TODO: If the object is a struct but not from another call
+	// then the object will need copied.
+
 	if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
+		// The argument is a call that returns a struct.
+		// There is no reason to destroy the memory since
+		// the called function will just take ownership
+		// over the memory.
+
 		LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
 		GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
 
@@ -1605,6 +1650,7 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 
 	if (!LLAddr && !DestIsPointer) {
 		LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
+		AddObjectToDestroyOpt(Arr->Ty, LLAddr);
 	}
 
 	if (Arr->IsFoldable) {
@@ -1621,6 +1667,7 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 			// Need a temporary array that can be memcopied into
 			// and then pointed at by the pointer.
 			LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
+			AddObjectToDestroyOpt(Arr->Ty, LLAddr);
 		}
 
 
@@ -1653,6 +1700,7 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 			} else {
 				// Creating a temporary array that the pointer can point to.
 				LLAddr = CreateUnseenAlloca(GenType(DestTy), "tmp.array");
+				AddObjectToDestroyOpt(Arr->Ty, LLAddr);
 			}
 		}
 
@@ -1790,6 +1838,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 
 	if (!LLAddr) {
 		LLAddr = CreateUnseenAlloca(GenStructType(StructTy), "tmp.structinit");
+		AddObjectToDestroyOpt(StructTy, LLAddr);
 	}
 
 	if (StructInit->CalledConstructor) {
@@ -2364,11 +2413,11 @@ void arco::IRGenerator::AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr) {
 	//  a A;  <-- if cond is encountered then 'a' does not need to
 	//            be destroyed and is therefore not put into
 	//            AlwaysInitializedDestroyedObjects.
-	// TODO: if !encounteredReturn && scope has no parent {
-	AlwaysInitializedDestroyedObjects.push_back({ Ty, LLAddr });
-	// } else {
-	// TODO: local object destruction.
-	// }
+	if (!EncounteredReturn && !LocScope->Parent) {
+		AlwaysInitializedDestroyedObjects.push_back({ Ty, LLAddr });
+	} else {
+		LocScope->ObjectsNeedingDestroyed.push_back({ Ty, LLAddr });
+	}
 }
 
 void arco::IRGenerator::CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects) {
@@ -2385,6 +2434,14 @@ void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
 		GenFuncDecl(Struct->Destructor);
 		Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
+	}
+}
+
+void arco::IRGenerator::DestroyLocScopeInitializedObjects() {
+	// Only want to destroy the objects if the scope did not
+	// branch because branching handles destruction.
+	if (!Builder.GetInsertBlock()->getTerminator()) {
+		CallDestructors(LocScope->ObjectsNeedingDestroyed);
 	}
 }
 
@@ -2531,10 +2588,11 @@ llvm::Value* arco::IRGenerator::GetElisionRetSlotAddr(FuncDecl* Func) {
 }
 
 void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr) {
+	StructDecl* Struct = static_cast<StructType*>(Call->Ty)->GetStruct();
 	llvm::StructType* LLStructTy = GenStructType(static_cast<StructType*>(Call->Ty));
 
 	ulen StructByteSize = SizeOfTypeInBytes(LLStructTy);
-	if (StructByteSize <= LLModule.getDataLayout().getPointerSize()) {
+	if (!Struct->NeedsDestruction && StructByteSize <= LLModule.getDataLayout().getPointerSize()) {
 		// The return type is small enough to be shoved into an
 		// integer so that returned value needs to be reinterpreted
 		// as an integer to store the result.

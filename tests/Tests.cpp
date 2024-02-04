@@ -148,6 +148,9 @@ int main() {
 	
 	RunTest(SRC("destructors/destructors1.arco"), "Begin Destroyed!");
 	RunTest(SRC("destructors/destructors2.arco"), "Begin Destroyed!");
+	RunTest(SRC("destructors/destructors3.arco"), "Begin Destroyed!");
+	RunTest(SRC("destructors/destructors4.arco"), "Begin Destroyed! End");
+	RunTest(SRC("destructors/destructors5.arco"), "Begin Destroyed!");
 
 	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
