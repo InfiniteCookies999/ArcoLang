@@ -72,6 +72,8 @@ namespace arco {
 		struct Scope {
 			Scope* Parent = nullptr;
 
+			bool IsLoopScope = false;
+
 			// When the scope is poped, but not returned (TODO: Or control flow changed?)
 			// then the objects in this list are destroyed.
 			llvm::SmallVector<std::pair<Type*, llvm::Value*>> ObjectsNeedingDestroyed;

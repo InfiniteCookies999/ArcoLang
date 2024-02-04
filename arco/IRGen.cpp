@@ -827,6 +827,17 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 }
 
 llvm::Value* arco::IRGenerator::GenLoopControl(LoopControlStmt* LoopControl) {
+
+	Scope* ScopeItr = LocScope;
+	while (ScopeItr) {
+		CallDestructors(ScopeItr->ObjectsNeedingDestroyed);
+
+		if (ScopeItr->IsLoopScope) {
+			break;
+		}
+		ScopeItr = ScopeItr->Parent;
+	}
+
 	if (LoopControl->Kind == AstKind::BREAK) {
 		llvm::BasicBlock* LoopExit = LoopBreakStack[LoopBreakStack.size() - 1 - (LoopControl->LoopCount-1)];
 		Builder.CreateBr(LoopExit);
@@ -847,6 +858,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
 
 	// Generating the condition block
 	PUSH_SCOPE();
+	LocScope->IsLoopScope = true;
 	GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);	
 
 	GenBlock(LLBodyBB, Loop->Scope.Stmts);
@@ -886,6 +898,7 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 	}
 
 	PUSH_SCOPE();
+	LocScope->IsLoopScope = true;
 	// Generating the condition block
 	GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);
 
@@ -2375,8 +2388,8 @@ void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value) {
 	// return address.
 	//
 	// Ex.
-	//     'func() A {
-	//         a A = A:{ 44, 22 };
+	//     'fn func() A {
+	//         a A = A{ 44, 22 };
 	//         a.g = 33;
 	//         return a;
 	//     }'

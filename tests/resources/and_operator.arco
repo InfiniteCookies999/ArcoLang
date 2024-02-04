@@ -1,0 +1,15 @@
+
+fn main() {
+	if true && true {
+		print("case1", 5);
+	}
+	if true && false {
+		print("case1", 5);
+	}
+	if false && true {
+		print("case1", 5);
+	}
+	if false && false {
+		print("case1", 5);
+	}
+}
