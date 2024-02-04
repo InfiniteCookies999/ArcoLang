@@ -17,8 +17,8 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 	llvm::outs() << "----------------------------\n";
 
 	llvm::SmallVector<arco::Source> Sources;
-	Sources.push_back(arco::Source{ "default.program.module", SRC("test_utils.arco") });
-	Sources.push_back(arco::Source{ "default.program.module", TestSource });
+	Sources.push_back(arco::Source{ true, "default.program.module", SRC("test_utils.arco") });
+	Sources.push_back(arco::Source{ true, "default.program.module", TestSource });
 
 	arco::Compiler Compiler;
 	Compiler.StandAlone = true;

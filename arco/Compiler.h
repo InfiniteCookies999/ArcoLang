@@ -19,6 +19,7 @@ namespace arco {
 	struct FileScope;
 
 	struct Source {
+		bool            PartOfMainProject;
 		llvm::StringRef ModName;
 		llvm::StringRef Path;
 	};

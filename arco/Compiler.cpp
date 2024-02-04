@@ -60,7 +60,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 
 	if (!StandAlone) {
 		if (auto StdLibPath = GetStdLibPath()) {
-			Sources.push_back(Source{ "std", StdLibPath });
+			Sources.push_back(Source{ false, "std", StdLibPath });
 		} else {
 			Logger::GlobalError(llvm::errs(),
 				"Environment variable missing for arco's standard library. Please set variable 'ArcoStdLibPath' to point towards the standard library");
@@ -100,10 +100,14 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		Module* Mod = Context.ModNamesToMods[Source.ModName];
 
 		if (fs::is_directory(FLPath)) {
-			std::string PathS = Path.generic_string();
-			std::string RootDir = PathS.empty() ? "." : PathS;
-			
-			ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+			if (Source.PartOfMainProject) {
+				std::string PathS = Path.generic_string();
+				ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+			} else {
+				std::string PathS = Path.has_parent_path() ? Path.parent_path().generic_string()
+					                                       : Path.generic_string();
+				ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+			}
 		} else {
 			// The user specified an absolute path to a file.
 			if (Path.extension() != ".arco") {

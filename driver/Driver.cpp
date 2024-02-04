@@ -121,6 +121,7 @@ int main(int argc, char* argv[]) {
 			}
 		} else {
 			arco::Source Source = {
+				true,
 				"default.program.module",
 				argv[i]
 			};

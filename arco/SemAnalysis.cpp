@@ -2141,15 +2141,21 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	StructDecl* Struct;
 	auto Itr = FScope->StructOrNamespaceImports.find(StructName);
 	if (Itr == FScope->StructOrNamespaceImports.end() || Itr->second.Struct == nullptr) {
-		
 		auto Itr2 = Mod->DefaultNamespace->Structs.find(StructName);
 		if (Itr2 == Mod->DefaultNamespace->Structs.end()) {
-			Itr2 = FScope->UniqueNSpace->Structs.find(StructName);
-			if (Itr2 == FScope->UniqueNSpace->Structs.end()) {
+			bool Found = FScope->UniqueNSpace;
+			if (FScope->UniqueNSpace) {
+				Itr2 = FScope->UniqueNSpace->Structs.find(StructName);
+				if (Itr2 == FScope->UniqueNSpace->Structs.end()) {
+					Found = false;				
+				}
+			}
+			if (!Found) {
 				Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
 				return false;
 			}
 		}
+
 		Struct = Itr2->second;
 	} else {
 		Struct = Itr->second.Struct;
