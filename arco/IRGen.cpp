@@ -452,6 +452,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	for (VarDecl* Param : Func->Params) {
 		if (Param->IsComptime()) continue;
 		Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
+		AddObjectToDestroyOpt(Param->Ty, Param->LLAddress);
 	}
 
 	if (Func->IsConstructor) {
@@ -468,6 +469,13 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		GenNode(Stmt);
 	}
 
+	// Before branching and destroying the objects which are
+	// always destroyed need to still cleanup the function
+	// scope's objects.
+	if (Func->NumReturns > 1) { // If Func->NumReturns == 1 then the return stmt cleans up.
+		POP_SCOPE();
+	}
+
 	// Branching to LLFuncEndBB if its needed.
 	if (Func->NumReturns > 1 && Builder.GetInsertBlock()->empty()) {
 		// If the current block is empty we can just use
@@ -478,13 +486,6 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		LLFunc->getBasicBlockList().push_back(LLFuncEndBB); // Because the parent was not originally set
 		GenBranchIfNotTerm(LLFuncEndBB);
 		Builder.SetInsertPoint(LLFuncEndBB);
-	}
-
-	// Before branching and destroying the objects which are
-	// always destroyed need to still cleanup the function
-	// scope's objects.
-	if (Func->NumReturns > 1) { // If Func->NumReturns == 1 then the return stmt cleans up.
-		POP_SCOPE();
 	}
 
 	if (Func->NumReturns > 1) {
@@ -732,6 +733,11 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 		} else if (Ret->Value) {
 			LLRetValue = GenRValue(Ret->Value);
 		}
+
+		// Destroy all objects that have been generated up to
+		// this point.
+		CallDestructors(AlwaysInitializedDestroyedObjects);
+		DestroyCurrentlyInitializedObjects();
 	
 		if (LLRetValue) {
 			if (CFunc == Context.MainEntryFunc &&
@@ -768,6 +774,9 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 		} else if (Ret->Value) {
 			Builder.CreateStore(GenRValue(Ret->Value), LLRetAddr);
 		}
+
+		DestroyCurrentlyInitializedObjects();
+		// DestroyAlwaysInitializedObjects is handled by the end block.
 
 		Builder.CreateBr(LLFuncEndBB);
 	}
@@ -2442,8 +2451,13 @@ void arco::IRGenerator::CallDestructors(llvm::SmallVector<std::pair<Type*, llvm:
 void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 	if (Ty->GetKind() == TypeKind::Struct) {
 		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
-		GenFuncDecl(Struct->Destructor);
-		Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
+		if (Struct->Destructor) {
+			GenFuncDecl(Struct->Destructor);
+			Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
+		} else {
+			// Calling compiler generated destructor.
+			GenCompilerDestructorAndCall(Struct, LLAddr);
+		}
 	} else if (Ty->GetKind() == TypeKind::Array) {
 		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
 
@@ -2456,11 +2470,69 @@ void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 	}
 }
 
+void arco::IRGenerator::GenCompilerDestructorAndCall(StructDecl* Struct, llvm::Value* LLAddr) {
+	auto Itr = Context.CompilerGeneratedDestructors.find(Struct);
+	if (Itr != Context.CompilerGeneratedDestructors.end()) {
+		Builder.CreateCall(Itr->second, LLAddr);
+		return;
+	}
+
+	llvm::Type* LLStructPtrTy = llvm::PointerType::get(GenStructType(Struct), 0);
+
+	llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
+		llvm::Type::getVoidTy(LLContext), { LLStructPtrTy }, false);
+
+	llvm::Function* LLFunc = llvm::Function::Create(
+		LLFuncType,
+		llvm::Function::ExternalLinkage,
+		"__compiler.gen.destructor",
+		LLModule
+	);
+
+	llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "entry.block", LLFunc);
+	llvm::BasicBlock* LLBackupBasicBlock = Builder.GetInsertBlock();
+	Builder.SetInsertPoint(LLEntryBlock);
+
+	for (VarDecl* Field : Struct->Fields) {
+		if (Field->Ty->GetKind() == TypeKind::Struct) {
+			StructDecl* Struct = static_cast<StructType*>(Field->Ty)->GetStruct();
+			if (Struct->NeedsDestruction) {
+				CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
+			}
+		} else if (Field->Ty->GetKind() == TypeKind::Array) {
+			ArrayType* ArrayTy = static_cast<ArrayType*>(Field->Ty);
+			Type*      BaseTy  = ArrayTy->GetBaseType();
+
+			if (BaseTy->GetKind() == TypeKind::Struct) {
+				StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
+				if (Struct->NeedsDestruction) {
+					CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
+				}
+			}
+		}
+	}
+
+	Builder.CreateRetVoid();
+
+	Builder.SetInsertPoint(LLBackupBasicBlock);
+	Builder.CreateCall(LLFunc, LLAddr);
+
+	Context.CompilerGeneratedDestructors.insert({ Struct, LLFunc });
+}
+
 void arco::IRGenerator::DestroyLocScopeInitializedObjects() {
 	// Only want to destroy the objects if the scope did not
 	// branch because branching handles destruction.
 	if (!Builder.GetInsertBlock()->getTerminator()) {
 		CallDestructors(LocScope->ObjectsNeedingDestroyed);
+	}
+}
+
+void arco::IRGenerator::DestroyCurrentlyInitializedObjects() {
+	Scope* S = LocScope;
+	while (S) {
+		CallDestructors(S->ObjectsNeedingDestroyed);
+		S = S->Parent;
 	}
 }
 

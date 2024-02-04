@@ -191,8 +191,10 @@ namespace arco {
 
 		void CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects);
 		void CallDestructors(Type* Ty, llvm::Value* LLAddr);
+		void GenCompilerDestructorAndCall(StructDecl* Struct, llvm::Value* LLAddr);
 
 		void DestroyLocScopeInitializedObjects();
+		void DestroyCurrentlyInitializedObjects();
 
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already
