@@ -1488,7 +1488,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 		return GenLLVMIntrinsicCall(CalledFunc, Args);
 	}
 
-	ulen NumArgs = Args.size();
+	ulen NumArgs = CalledFunc->Params.size();
 	if (CalledFunc->Struct) {
 		++NumArgs;
 	}
@@ -1526,6 +1526,14 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 	}
 
 	GenFuncCallArgs(ArgIdx, LLArgs, Args);
+	
+	if (CalledFunc->NumDefaultArgs) {
+		for (ulen i = 0; i < CalledFunc->Params.size() - Args.size(); i++) {
+			VarDecl* Param = CalledFunc->Params[Args.size() + i];
+			LLArgs[ArgIdx++] = GenCallArg(Param->Assignment);
+		}
+	}
+	
 
 	llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
 
@@ -1552,29 +1560,32 @@ void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
 	                                    llvm::SmallVector<llvm::Value*, 2>& LLArgs,
 	                                    llvm::SmallVector<NonNamedValue, 2>& Args) {
 	for (ulen i = 0; i < Args.size(); i++) {
-		Expr* Arg = Args[i].E;
-		llvm::Value* LLArg = nullptr;
-		if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
-			LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
-			GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
-
-			// TODO: If there ends up being further optimizations such that parameters
-			// take into account similar constraints to return values where structs
-			// get passed as integers/pointers depending on memory size then this will
-			// not need to be loaded.
-			LLArg = CreateLoad(LLArg);
-
-		} else {
-			LLArg = GenRValue(Arg);
-			
-			if (Arg->Ty->GetKind() == TypeKind::Array) {
-				// Arrays are passed as pointers. Cannot simply decay though
-				// because the argument might be an already decayed array.
-				LLArg = ArrayToPointer(LLArg);
-			}
-		}
-		LLArgs[ArgIdx++] = LLArg;
+		LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
 	}
+}
+
+llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
+	llvm::Value* LLArg = nullptr;
+	if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
+		LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
+		GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
+
+		// TODO: If there ends up being further optimizations such that parameters
+		// take into account similar constraints to return values where structs
+		// get passed as integers/pointers depending on memory size then this will
+		// not need to be loaded.
+		LLArg = CreateLoad(LLArg);
+
+	} else {
+		LLArg = GenRValue(Arg);
+			
+		if (Arg->Ty->GetKind() == TypeKind::Array) {
+			// Arrays are passed as pointers. Cannot simply decay though
+			// because the argument might be an already decayed array.
+			LLArg = ArrayToPointer(LLArg);
+		}
+	}
+	return LLArg;
 }
 
 llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest) {

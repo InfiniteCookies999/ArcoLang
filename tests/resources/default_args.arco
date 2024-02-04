@@ -1,0 +1,16 @@
+
+fn foo(a int, b int = 55, c int = 9) {
+	print(a);
+	print(" ", 1);
+	print(b);
+	print(" ", 1);
+	print(c);
+}
+
+fn main() {
+	foo(3);
+	print(" ", 1);
+	foo(3, 2);
+	print(" ", 1);
+	foo(3, 2, 1);
+}

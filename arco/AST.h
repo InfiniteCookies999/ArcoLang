@@ -200,7 +200,8 @@ namespace arco {
 		// function.
 		llvm::StringRef NativeName;
 
-		ulen NumReturns = 0;
+		ulen NumReturns     = 0;
+		ulen NumDefaultArgs = 0;
 
 		LexScope Scope;
 

@@ -95,6 +95,7 @@ namespace arco {
 		void GenFuncCallArgs(ulen& ArgIdx,
 			                 llvm::SmallVector<llvm::Value*, 2>& LLArgs,
 			                 llvm::SmallVector<NonNamedValue, 2>& Args);
+		llvm::Value* GenCallArg(Expr* Arg);
 		llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
 		ArrayType* GetGenArrayDestType(Array* Arr);
 		llvm::Constant* GenConstArray(Array* Arr, ArrayType* DestTy);

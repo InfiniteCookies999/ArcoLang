@@ -206,8 +206,19 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
 	}
 
 	llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
+	bool ParamsHaveAssignment = false, ParamAssignmentNotLast = false;
 	for (VarDecl* Param : Params) {
 		CheckVarDecl(Param);
+		if (Param->Assignment) {
+			++Func->NumDefaultArgs;
+			ParamsHaveAssignment = true;
+		} else if (ParamsHaveAssignment) {
+			ParamAssignmentNotLast = true;
+		}
+	}
+
+	if (ParamAssignmentNotLast) {
+		Error(Func, "Parameter default arguments must come last in the parameter list");
 	}
 }
 
@@ -1490,8 +1501,15 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 	                                      const llvm::SmallVector<NonNamedValue, 2>& Args,
 	                                      ulen& NumConflicts) {
-	if (Canidate->Params.size() != Args.size()) {
-		return false;
+	if (Canidate->NumDefaultArgs) {
+		if (!(Args.size() >= Canidate->Params.size() - Canidate->NumDefaultArgs &&
+			  Args.size() <= Canidate->Params.size())) {
+			return false;
+		}
+	} else {
+		if (Args.size() != Canidate->Params.size()) {
+			return false;
+		}
 	}
 
 	for (ulen i = 0; i < Args.size(); i++) {
