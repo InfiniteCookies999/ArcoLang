@@ -52,6 +52,22 @@ namespace arco {
 		// The restart points of the next loop iteration
 		llvm::SmallVector<llvm::BasicBlock*, 4> LoopContinueStack;
 
+		// Objects which have destructors and need to be destroyed
+		// and are encountered before any returns or branching is
+		// encountered.
+		//
+		// These objects can always be gaurenteed to be destroyed so
+		// any object in this list has its destructor called no matter
+		// where a return occured.
+		//
+		// The entire point to having this list is to reduce the number
+		// of instructions needed to be generated since when there are
+		// multiple returns the return statements branch to a common
+		// function return.
+		// This common return can then manage the cleanup of all of these
+		// objects.
+		llvm::SmallVector<std::pair<Type*, llvm::Value*>> AlwaysInitializedDestroyedObjects;
+
 		bool EncounteredReturn = false;
 
 		void GenFuncDecl(FuncDecl* Func);
@@ -160,6 +176,12 @@ namespace arco {
 		void GenConstructorBodyFieldAssignments(StructDecl* Struct);
 
 		std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
+
+		void AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr);
+		void AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr);
+
+		void CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects);
+		void CallDestructors(Type* Ty, llvm::Value* LLAddr);
 
 		/// This will only unconditionally branch to the given
 		/// block as long as the current block does not already

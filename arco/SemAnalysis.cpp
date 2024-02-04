@@ -174,6 +174,10 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 	FScope  = Struct->FScope;
 	CStruct = Struct;
 
+	if (Struct->Destructor) {
+		Struct->NeedsDestruction = true;
+	}
+
 	for (VarDecl* Field : Struct->Fields) {
 		CheckVarDecl(Field);
 		if (Field->Assignment) {
@@ -185,8 +189,13 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 			StructDecl* OStruct = StructTy->GetStruct();
 			if (Struct) {
 				Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
+				Struct->NeedsDestruction |= OStruct->NeedsDestruction;
 			}
 		}
+	}
+
+	if (Struct->Destructor) {
+		Context.RequestGen(Struct->Destructor);
 	}
 
 	Struct->IsBeingChecked = false;

@@ -184,6 +184,7 @@ namespace arco {
 		bool UsesParamRetSlot    = false;
 		bool IsConstructor       = false;
 		bool ReturnsConstAddress = false;
+		bool IsDestructor        = false;
 
 		// Non-nullptr if the function is a member function.
 		StructDecl* Struct = nullptr;
@@ -260,6 +261,7 @@ namespace arco {
 		llvm::SmallVector<VarDecl*>           Fields;
 		FuncsList                             Constructors;
 		FuncDecl*                             DefaultConstructor = nullptr;
+		FuncDecl*                             Destructor         = nullptr;
 		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
 		llvm::StructType* LLStructTy         = nullptr;
@@ -267,6 +269,10 @@ namespace arco {
 
 		// At least one field has assignment.
 		bool FieldsHaveAssignment = false;
+		// This is true if either their is a user defined
+		// destructor or if the structure contains another
+		// structure which needs destruction.
+		bool NeedsDestruction = false;
 
 		inline VarDecl* FindField(Identifier Name) {
 			auto Itr = std::find_if(Fields.begin(), Fields.end(), [=](VarDecl* Field) {

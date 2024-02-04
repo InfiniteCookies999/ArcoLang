@@ -146,6 +146,8 @@ int main() {
 	RunTest(SRC("globals/globals8.arco"), "4 6 3");
 	RunTest(SRC("globals/globals9.arco"), "4 6 3");
 
+	RunTest(SRC("destructors/destructors1.arco"), "Begin Destroyed!");
+
 	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 

@@ -354,7 +354,20 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
 	Func->Mod        = Mod;
 	Func->FScope     = FScope;
-	Func->Name       = ParseIdentifier("Expected identifier for function declaration");
+	if (CTok.Is('~')) {
+		// The function is a destructor.
+		NextToken(); // Consuming '~' token.
+		Func->IsDestructor = true;
+	}
+	Token      NameTok = CTok;
+	Identifier Name    = ParseIdentifier("Expected identifier for function declaration");
+	if (Func->IsDestructor) {
+		llvm::StringRef DestructorName =
+			llvm::StringRef(NameTok.Loc.Text.begin() - 1, NameTok.GetText().size() + 1);
+		Func->Name = Identifier(DestructorName);
+	} else {
+		Func->Name = Name;
+	}
 	Func->Mods       = Mods;
 	Func->NativeName = NativeModifierName;
 
@@ -576,6 +589,16 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 			FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
 			if (!Func->Name.IsNull()) {
 				Func->Struct = Struct;
+				if (Func->IsDestructor) {
+					if (Struct->Destructor) {
+						Error(Func->Loc, "Duplicate destructor");
+					}
+					if (!Func->Params.empty()) {
+						Error(Func->Loc, "Destructors cannot have parameters");
+					}
+					Struct->Destructor = Func;
+				}
+				
 				if (Func->Name == Struct->Name) {
 					// TODO: Should it also go into the Funcs list?
 					Func->IsConstructor = true;

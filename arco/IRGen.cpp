@@ -468,6 +468,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	}
 
 	if (Func->NumReturns > 1) {
+		CallDestructors(AlwaysInitializedDestroyedObjects);
 		if (Func->UsesOptimizedIntRet) {
 			Builder.CreateRet(GenReturnValueForOptimizedStructAsInt(LLRetAddr));
 		} else if (LLRetAddr) {
@@ -477,6 +478,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		}
 	} else if (Func->NumReturns == 1 && Func->RetTy == Context.VoidType) {
 		if (!EncounteredReturn) {
+			CallDestructors(AlwaysInitializedDestroyedObjects);
 			// Implicit void return.
 			if (Func == Context.MainEntryFunc) {
 				Builder.CreateRet(GetLLInt32(0, LLContext));
@@ -654,6 +656,9 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 
 llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 	if (Var->IsComptime()) return GenComptimeValue(Var);
+
+	// TODO: Take into account RVO.
+	AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
 
 	if (Var->Assignment) {
 		GenAssignment(Var->LLAddress, Var->Assignment, Var->HasConstAddress);
@@ -2335,6 +2340,46 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 		} else {
 			return { true, GenZeroedValue(Ty) };
 		}
+	}
+}
+
+void arco::IRGenerator::AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr) {
+	if (Ty->GetKind() == TypeKind::Struct) {
+		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
+		if (Struct->NeedsDestruction) {
+			AddObjectToDestroy(Ty, LLAddr);
+		}
+	}
+}
+
+void arco::IRGenerator::AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr) {
+	//  if cond {
+	//     return;  
+	//  } 
+	//  a A;  <-- if cond is encountered then 'a' does not need to
+	//            be destroyed and is therefore not put into
+	//            AlwaysInitializedDestroyedObjects.
+	// TODO: if !encounteredReturn && scope has no parent {
+	AlwaysInitializedDestroyedObjects.push_back({ Ty, LLAddr });
+	// } else {
+	// TODO: local object destruction.
+	// }
+}
+
+void arco::IRGenerator::CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects) {
+	for (auto& ObjectNeedingDestroyed : Objects) {
+		Type*        Ty     = std::get<0>(ObjectNeedingDestroyed);
+		llvm::Value* LLAddr = std::get<1>(ObjectNeedingDestroyed);
+
+		CallDestructors(Ty, LLAddr);
+	}
+}
+
+void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
+	if (Ty->GetKind() == TypeKind::Struct) {
+		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
+		GenFuncDecl(Struct->Destructor);
+		Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
 	}
 }
 
