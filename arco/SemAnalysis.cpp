@@ -170,6 +170,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 	Context.UncheckedDecls.erase(Struct);
 	if (Struct->ParsingError) return;
 
+	Struct->IsBeingChecked = true;
 	FScope  = Struct->FScope;
 	CStruct = Struct;
 
@@ -178,7 +179,17 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 		if (Field->Assignment) {
 			Struct->FieldsHaveAssignment = true;
 		}
+
+		if (Field->Ty->GetKind() == TypeKind::Struct) {
+			StructType* StructTy = static_cast<StructType*>(Field->Ty);
+			StructDecl* OStruct = StructTy->GetStruct();
+			if (Struct) {
+				Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
+			}
+		}
 	}
+
+	Struct->IsBeingChecked = false;
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
@@ -379,6 +390,30 @@ return;
 
 	if (!FixupType(Var->Ty)) {
 		VAR_YIELD(, true);
+	}
+	if (Var->Ty->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(Var->Ty);
+		if (StructTy->GetStruct()->IsBeingChecked) {
+			VAR_YIELD(
+				Log.BeginError(
+						Var->Loc,
+						"Cannot declare variable with struct type '%s' because the type is incomplete",
+						StructTy->ToString());
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "This often happens due to cyclical struct dependencies.";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "Example:";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "\tA struct { b B; } // A depends on B.";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "\tB struct { a A; } // B depends on A.";
+				});
+				Log.EndError();
+					, true);
+		}
 	}
 	if (Var->Ty->Equals(Context.CStrType)) {
 		Var->HasConstAddress = true;
@@ -1282,7 +1317,24 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 			static_cast<PointerType*>(Site->Ty)->GetElementType());
 	}
 
-	CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
+	if (StructTy->GetStruct()->IsBeingChecked) {
+		// Disallows nonsense like the following:
+		// 
+		// A struct {
+		// 	b B* = new B;
+		// 	ca int = b.cb;
+		// }
+		// 
+		// B struct {
+		// 	a A* = new A;
+		// 	cb int = a.ca;
+		// }
+		Error(FieldAcc, "Cannot access field of struct '%s' because the type is incomplete",
+			StructTy->ToString());
+		YIELD_ERROR(FieldAcc);
+	} else {
+		CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
+	}
 }
 
 void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
@@ -1793,6 +1845,13 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 
 void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
 	FixupType(SOf->TypeToGetSizeOf);
+	if (SOf->TypeToGetSizeOf->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(SOf->TypeToGetSizeOf);
+		if (StructTy->GetStruct()->IsBeingChecked) {
+			Error(SOf, "Cannot get sizeof struct '%s' because the type is incomplete",
+				StructTy->ToString());
+		}
+	}
 }
 
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {

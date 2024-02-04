@@ -155,6 +155,7 @@ namespace arco {
 		bool GenRequestedAlready = false;
 		bool ParsingError        = false;
 		bool HasBeenChecked      = false;
+		bool IsBeingChecked      = false;
 
 		Module*     Mod;
 
@@ -216,7 +217,6 @@ namespace arco {
 		// If the variable is declared inside a function
 		// and returned.
 		bool IsLocalRetValue = false;
-		bool IsBeingChecked  = false;
 		bool IsGlobal        = false;
 		bool HasConstAddress = false;
 
