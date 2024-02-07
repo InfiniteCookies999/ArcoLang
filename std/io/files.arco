@@ -6,27 +6,27 @@ import std.InStream;
 // TODO: Will eventually want to replace with an enum!
 //
 
-FLAG_IN  uint = 0x0001;
-FLAG_OUT uint = 0x0002;
+FLAG_IN  :: 0x0001u;
+FLAG_OUT :: 0x0002u;
 
 /*
  * More than once open instance of the
  * file can be opened and accessed at
  * the same time.
  */
-FLAG_SHARE uint = 0x0004;
+FLAG_SHARE :: 0x0004u;
 
 /* Creates the file if it does not exist. */
-FLAG_CREATE uint = 0x0008;
+FLAG_CREATE :: 0x0008u;
 
 /*
  * Reads an entire file into a string.
  */
 fn read(path cstr) String {
 	
-	stream InStream = open(path, FLAG_IN);
-	size   int   = stream.get_size();
-	buffer char* = new char[size + 1];
+	stream := open(path, FLAG_IN);
+	size   := stream.get_size();
+	buffer := new char[size + 1];
 	
 	stream.read(buffer, size);
 	stream.close();

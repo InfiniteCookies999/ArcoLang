@@ -223,6 +223,7 @@ namespace arco {
 		bool IsLocalRetValue = false;
 		bool IsGlobal        = false;
 		bool HasConstAddress = false;
+		bool TyIsInfered     = false;
 
 		// One variable may depend on another variable in its
 		// declaration.

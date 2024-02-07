@@ -1,9 +1,9 @@
 import win32;
 
-out OutStream = OutStream{ win32.GetStdHandle(-11), false };
-err OutStream = OutStream{ win32.GetStdHandle(-12), false };
+out := OutStream{ win32.GetStdHandle(-11), false };
+err := OutStream{ win32.GetStdHandle(-12), false };
 
-in  InStream  = InStream { win32.GetStdHandle(-10), false };
+in  := InStream { win32.GetStdHandle(-10), false };
 
 // TODO: Functions are redundent because there is no support for
 //       templating yet!

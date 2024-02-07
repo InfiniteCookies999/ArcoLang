@@ -34,7 +34,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 			++Failed;
 			return;
 		}
-
+		
 		if (StdOutResult == ExpectedOutput) {
 			llvm::outs() << "Status:";
 			arco::SetTerminalColor(arco::TerminalColorBrightGreen);
@@ -89,7 +89,7 @@ int main() {
 	RunTest(SRC("default_args.arco"), "3 55 9 3 2 9 3 2 1");
 	RunTest(SRC("and_operator.arco"), "case1case1");
 	RunTest(SRC("or_operator.arco"), "case1case2case3case1case2case3");
-
+	RunTest(SRC("infered_types.arco"), "5 a message! 16 31 53 99 6 8 nice");
 	 
 	RunTest(SRC("loops/loops1.arco"), "10");
 	RunTest(SRC("loops/loops2.arco"), "10");

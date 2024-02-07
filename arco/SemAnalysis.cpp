@@ -474,57 +474,50 @@ if constexpr (TyErr)             \
 	Var->Ty = Context.ErrorType; \
 return;
 
-	if (!FixupType(Var->Ty)) {
+	if (!Var->TyIsInfered && !FixupType(Var->Ty)) {
 		VAR_YIELD(, true);
-	}
-	if (Var->Ty->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(Var->Ty);
-		if (StructTy->GetStruct()->IsBeingChecked) {
-			VAR_YIELD(
-				Log.BeginError(
-						Var->Loc,
-						"Cannot declare variable with struct type '%s' because the type is incomplete",
-						StructTy->ToString());
-				Log.AddNoteLine([](llvm::raw_ostream& OS) {
-					OS << "This often happens due to cyclical struct dependencies.";
-				});
-				Log.AddNoteLine([](llvm::raw_ostream& OS) {
-					OS << "Example:";
-				});
-				Log.AddNoteLine([](llvm::raw_ostream& OS) {
-					OS << "\tA struct { b B; } // A depends on B.";
-				});
-				Log.AddNoteLine([](llvm::raw_ostream& OS) {
-					OS << "\tB struct { a A; } // B depends on A.";
-				});
-				Log.EndError();
-					, true);
-		}
-	}
-	if (Var->Ty->Equals(Context.CStrType)) {
-		Var->HasConstAddress = true;
 	}
 
 	if (Var->IsGlobal) {
 		Context.RequestGen(Var);
 	}
 
-	if (Var->HasConstAddress && !Var->Assignment &&
-		!Var->Ty->IsPointer() && !Var->IsParam()) {
-		Error(Var, "Must initialize variables marked with const");
-	}
-
-	if (Var->Ty->Equals(Context.VoidType)) {
-		VAR_YIELD(Error(Var, "Variables cannot have type 'void'"), true);
-	}
 
 	if (Var->Assignment) {
 		CheckNode(Var->Assignment);
 		if (Var->Assignment->Ty == Context.ErrorType) {
 			VAR_YIELD(, true);
 		}
-	
-		if (Var->Ty->GetKind() == TypeKind::Array &&
+
+		if (Var->TyIsInfered) {
+			// The type is infered.
+			
+			Var->Ty = Var->Assignment->Ty;
+			Var->HasConstAddress |= Var->Assignment->HasConstAddress;
+
+			switch (Var->Ty->GetKind()) {
+			case TypeKind::Null:
+				VAR_YIELD(Error(Var, "Cannot infer pointer type from null"), true);
+				break;
+			case TypeKind::Array: {
+				ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+				Type* BaseTy = ArrayTy->GetBaseType();
+				TypeKind Kind = BaseTy->GetKind();
+				if (Kind == TypeKind::EmptyArrayElm) {
+					VAR_YIELD(Error(Var, "Cannot infer array type from an empty array"), true);
+				} else if (Kind == TypeKind::Null) {
+					VAR_YIELD(Error(Var, "Cannot infer array pointer type from a null array"), true);
+				} else if (Kind == TypeKind::Import || Kind == TypeKind::FuncRef) {
+					VAR_YIELD(Error(Var, "Cannot infer type from an incomplete expression"), true);
+				}
+				break;
+			}
+			case TypeKind::Import:
+			case TypeKind::FuncRef:
+				VAR_YIELD(Error(Var, "Cannot infer type from an incomplete expression"), true);
+				break;
+			}
+		} else if (Var->Ty->GetKind() == TypeKind::Array &&
 			!static_cast<ArrayType*>(Var->Ty)->GetLengthExpr()) {
 
 			if (Var->Assignment->IsNot(AstKind::ARRAY)) {
@@ -570,7 +563,7 @@ return;
 				    Var->Loc,
 					Var->Assignment,
 					Var->Ty),
-				false);
+				true);
 		}
 
 		if (ViolatesConstAssignment(Var, Var->Assignment)) {
@@ -598,6 +591,44 @@ return;
 				Context.RequestGen(StructForTy->DefaultConstructor);
 			}
 		}
+	}
+
+	if (Var->Ty->GetKind() == TypeKind::Struct) {
+		StructType* StructTy = static_cast<StructType*>(Var->Ty);
+		if (StructTy->GetStruct()->IsBeingChecked) {
+			VAR_YIELD(
+				Log.BeginError(
+						Var->Loc,
+						"Cannot declare variable with struct type '%s' because the type is incomplete",
+						StructTy->ToString());
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "This often happens due to cyclical struct dependencies.";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "Example:";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "\tA struct { b B; } // A depends on B.";
+				});
+				Log.AddNoteLine([](llvm::raw_ostream& OS) {
+					OS << "\tB struct { a A; } // B depends on A.";
+				});
+				Log.EndError();
+					, true);
+		}
+	}
+
+	if (Var->Ty->Equals(Context.CStrType)) {
+		Var->HasConstAddress = true;
+	}
+
+	if (Var->HasConstAddress && !Var->Assignment &&
+		!Var->Ty->IsPointer() && !Var->IsParam()) {
+		Error(Var, "Must initialize variables marked with const");
+	}
+
+	if (Var->Ty->Equals(Context.VoidType)) {
+		VAR_YIELD(Error(Var, "Variables cannot have type 'void'"), true);
 	}
 
 	VAR_YIELD(, false);
@@ -1328,10 +1359,11 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	switch (IRef->RefKind) {
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
-		IRef->Ty = VarRef->Ty;
 		if (VarRef->IsGlobal || VarRef->IsField()) {
 			EnsureChecked(IRef->Loc, VarRef);
 		}
+
+		IRef->Ty = VarRef->Ty;
 
 		IRef->HasConstAddress = VarRef->HasConstAddress;
 		if (!VarRef->IsComptime()) {
@@ -2268,6 +2300,14 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 		return FixupStructType(static_cast<StructType*>(Ty));
 	} else if (Ty->GetKind() == TypeKind::Pointer) {
 		return FixupType(static_cast<PointerType*>(Ty)->GetElementType(), AllowDynamicArrays);
+	} else if (Ty->GetKind() == TypeKind::Function) {
+		FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
+		for (auto ParamTy : FuncTy->ParamTypes) {
+			if (!FixupType(ParamTy.Ty)) {
+				return false;
+			}
+		}
+		return true;
 	}
 	return true;
 }

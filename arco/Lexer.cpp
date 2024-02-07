@@ -60,6 +60,10 @@ restartLex:
 	case ';': return CreateToken(';', TokStart);
 	case ',': return CreateToken(',', TokStart);
 	case '.': return CreateToken('.', TokStart);
+	case ':':
+		if (*CurPtr == '=')      return CreateTokenAndEat(TokenKind::COL_EQ, TokStart);
+		else if (*CurPtr == ':') return CreateTokenAndEat(TokenKind::COL_COL, TokStart);
+		else                     return CreateToken(':', TokStart);
 	case '+':
 		if (*CurPtr == '+')      return CreateTokenAndEat(TokenKind::PLUS_PLUS, TokStart);
 		else if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::PLUS_EQ, TokStart);

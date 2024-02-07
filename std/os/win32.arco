@@ -3,58 +3,58 @@ namespace win32;
 // ------------------------------------------------
 // Win32: winnt.h
 
-GENERIC_READ    uint32 = 0x80000000;
-GENERIC_WRITE   uint32 = 0x40000000;
-GENERIC_EXECUTE uint32 = 0x20000000;
-GENERIC_ALL     uint32 = 0x10000000;
+GENERIC_READ    :: 0x80000000'u32;
+GENERIC_WRITE   :: 0x40000000'u32;
+GENERIC_EXECUTE :: 0x20000000'u32;
+GENERIC_ALL     :: 0x10000000'u32;
 
-FILE_SHARE_READ                      uint32 = 0x00000001;
-FILE_SHARE_WRITE                     uint32 = 0x00000002;
-FILE_SHARE_DELETE                    uint32 = 0x00000004;
-FILE_ATTRIBUTE_READONLY              uint32 = 0x00000001;
-FILE_ATTRIBUTE_HIDDEN                uint32 = 0x00000002;
-FILE_ATTRIBUTE_SYSTEM                uint32 = 0x00000004;
-FILE_ATTRIBUTE_DIRECTORY             uint32 = 0x00000010;
-FILE_ATTRIBUTE_ARCHIVE               uint32 = 0x00000020;
-FILE_ATTRIBUTE_DEVICE                uint32 = 0x00000040;
-FILE_ATTRIBUTE_NORMAL                uint32 = 0x00000080;
-FILE_ATTRIBUTE_TEMPORARY             uint32 = 0x00000100;
-FILE_ATTRIBUTE_SPARSE_FILE           uint32 = 0x00000200;
-FILE_ATTRIBUTE_REPARSE_POINT         uint32 = 0x00000400;
-FILE_ATTRIBUTE_COMPRESSED            uint32 = 0x00000800;
-FILE_ATTRIBUTE_OFFLINE               uint32 = 0x00001000;
-FILE_ATTRIBUTE_NOT_CONTENT_INDEXED   uint32 = 0x00002000;
-FILE_ATTRIBUTE_ENCRYPTED             uint32 = 0x00004000;
-FILE_ATTRIBUTE_INTEGRITY_STREAM      uint32 = 0x00008000;
-FILE_ATTRIBUTE_VIRTUAL               uint32 = 0x00010000;
-FILE_ATTRIBUTE_NO_SCRUB_DATA         uint32 = 0x00020000;
-FILE_ATTRIBUTE_EA                    uint32 = 0x00040000;
-FILE_ATTRIBUTE_PINNED                uint32 = 0x00080000;
-FILE_ATTRIBUTE_UNPINNED              uint32 = 0x00100000;
-FILE_ATTRIBUTE_RECALL_ON_OPEN        uint32 = 0x00040000;
-FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS uint32 = 0x00400000;
+FILE_SHARE_READ                      :: 0x00000001'u32;
+FILE_SHARE_WRITE                     :: 0x00000002'u32;
+FILE_SHARE_DELETE                    :: 0x00000004'u32;
+FILE_ATTRIBUTE_READONLY              :: 0x00000001'u32;
+FILE_ATTRIBUTE_HIDDEN                :: 0x00000002'u32;
+FILE_ATTRIBUTE_SYSTEM                :: 0x00000004'u32;
+FILE_ATTRIBUTE_DIRECTORY             :: 0x00000010'u32;
+FILE_ATTRIBUTE_ARCHIVE               :: 0x00000020'u32;
+FILE_ATTRIBUTE_DEVICE                :: 0x00000040'u32;
+FILE_ATTRIBUTE_NORMAL                :: 0x00000080'u32;
+FILE_ATTRIBUTE_TEMPORARY             :: 0x00000100'u32;
+FILE_ATTRIBUTE_SPARSE_FILE           :: 0x00000200'u32;
+FILE_ATTRIBUTE_REPARSE_POINT         :: 0x00000400'u32;
+FILE_ATTRIBUTE_COMPRESSED            :: 0x00000800'u32;
+FILE_ATTRIBUTE_OFFLINE               :: 0x00001000'u32;
+FILE_ATTRIBUTE_NOT_CONTENT_INDEXED   :: 0x00002000'u32;
+FILE_ATTRIBUTE_ENCRYPTED             :: 0x00004000'u32;
+FILE_ATTRIBUTE_INTEGRITY_STREAM      :: 0x00008000'u32;
+FILE_ATTRIBUTE_VIRTUAL               :: 0x00010000'u32;
+FILE_ATTRIBUTE_NO_SCRUB_DATA         :: 0x00020000'u32;
+FILE_ATTRIBUTE_EA                    :: 0x00040000'u32;
+FILE_ATTRIBUTE_PINNED                :: 0x00080000'u32;
+FILE_ATTRIBUTE_UNPINNED              :: 0x00100000'u32;
+FILE_ATTRIBUTE_RECALL_ON_OPEN        :: 0x00040000'u32;
+FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS :: 0x00400000'u32;
 
 // ------------------------------------------------
 // Win32: processenv.h
 
-STD_INPUT_HANDLE  uint32 = -10;
-STD_OUTPUT_HANDLE uint32 = -11;
-STD_ERROR_HANDLE  uint32 = -12;
+STD_INPUT_HANDLE  :: -10'u32;
+STD_OUTPUT_HANDLE :: -11'u32;
+STD_ERROR_HANDLE  :: -12'u32;
 
 native fn GetStdHandle(nStdHandle uint32) void*;
 
 // ------------------------------------------------
 // Win32: fileapi.h
 
-CREATE_NEW        uint32 = 1;
-CREATE_ALWAYS     uint32 = 2;
-OPEN_EXISTING     uint32 = 3;
-OPEN_ALWAYS       uint32 = 4;
-TRUNCATE_EXISTING uint32 = 5;
+CREATE_NEW        :: 1'u32;
+CREATE_ALWAYS     :: 2'u32;
+OPEN_EXISTING     :: 3'u32;
+OPEN_ALWAYS       :: 4'u32;
+TRUNCATE_EXISTING :: 5'u32;
 
-INVALID_FILE_SIZE        uint32 = 0xFFFFFFFF;
-INVALID_SET_FILE_POINTER uint32 = -1;
-INVALID_FILE_ATTRIBUTES  uint32 = -1;
+INVALID_FILE_SIZE        :: 0xFFFFFFFF'u32;
+INVALID_SET_FILE_POINTER :: -1'u32;
+INVALID_FILE_ATTRIBUTES  :: -1'u32;
 
 native fn WriteFile(hFile                  void*,
                     lpBuffer               cstr,
@@ -91,6 +91,6 @@ native fn ExitProcess(uExitCode uint32) void;
 // ------------------------------------------------
 // Win32: handleapi.h
 
-INVALID_HANDLE_VALUE void* = cast(void*) -1'i64;
+INVALID_HANDLE_VALUE :: cast(void*) -1'i64;
 
 native fn CloseHandle(hObject void*) int32;

@@ -58,16 +58,16 @@ OutStream struct {
 
 		// TODO: Performance wise this can be improved just writing
 		//       backwards into the buffer using pointer arithmetic.
-		length int = 0;
+		length := 0;
 		buffer char[21];
 
-		v uint64 = i;
+		v := i;
 		loop v > 0 {
 			v = v / 10;
 			length = length + 1;
 		}
 
-		scan int = length - 1;
+		scan := length - 1;
 		loop i > 0 {
 			val uint64 = (i % 10) + 48;
 			buffer[scan] = cast(char) val;

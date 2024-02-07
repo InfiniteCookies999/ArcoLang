@@ -105,6 +105,8 @@ namespace arco {
 		BAR_BAR,     // ||
 		EQ_EQ,       // ==
 		EXL_EQ,      // !=
+		COL_EQ,      // :=
+		COL_COL,     // ::
 
 		// End of file
 		TK_EOF

@@ -311,7 +311,9 @@ arco::AstNode* arco::Parser::ParseStmt() {
 		switch (PeekToken(1).Kind) {
 		case IDENT:
 		case TYPE_KW_START_CASES:
-		case TokenKind::KW_CONST: {
+		case TokenKind::KW_CONST:
+		case TokenKind::COL_EQ:
+		case TokenKind::COL_COL: {
 			Stmt = ParseVarDecl(0);
 			Match(';');
 			break;
@@ -450,11 +452,24 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 		NextToken(); // Consuming 'const' token.
 		Var->HasConstAddress = true;
 	}
-	Var->Ty = ParseType(true);
-
-	if (CTok.Is('=')) {
-		NextToken(); // Consuming '=' token.
+	if (!Var->HasConstAddress && CTok.Is(TokenKind::COL_EQ)) {
+		NextToken(); // Consuming ':=' token.
 		Var->Assignment = ParseExpr();
+		Var->Ty = Context.ErrorType;
+		Var->TyIsInfered = true;
+	} else if (!Var->HasConstAddress && CTok.Is(TokenKind::COL_COL)) {
+		NextToken(); // Consuming '::' token.
+		Var->Assignment = ParseExpr();
+		Var->Ty = Context.ErrorType;
+		Var->TyIsInfered = true;
+		Var->HasConstAddress = true;
+	} else {
+		Var->Ty = ParseType(true);
+	
+		if (CTok.Is('=')) {
+			NextToken(); // Consuming '=' token.
+			Var->Assignment = ParseExpr();
+		}
 	}
 
 	if (NumErrs != TotalAccumulatedErrors) {
@@ -488,7 +503,18 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 		// TODO: Allow for implicit array types? The problem with allowing them here
 		// is that the same instance of the type is passed to each variable so the
 		// each variable could end up with different size initializations.
-		Type* Ty = ParseType(false);
+		Type* Ty = Context.ErrorType;
+		bool IsInfered = false, HasConstAddress = false;
+		if (CTok.Is(TokenKind::COL_EQ)) {
+			NextToken();
+			IsInfered = true;
+		} else if (CTok.Is(TokenKind::COL_COL)) {
+			NextToken();
+			IsInfered = true;
+			HasConstAddress = true;
+		} else {
+			Ty = ParseType(false);
+		}
 		
 		if (NumErrs != TotalAccumulatedErrors) {
 			for (VarDecl* Var : SingleVarDeclList->List) {
@@ -499,10 +525,14 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 
 		for (VarDecl* Var : SingleVarDeclList->List) {
 			Var->Ty = Ty;
+			Var->TyIsInfered = IsInfered;
+			Var->HasConstAddress = HasConstAddress;
 		}
 
-		if (CTok.Is('=')) {
-			NextToken(); // Consuming '=' token.
+		if (IsInfered || CTok.Is('=')) {
+			if (!IsInfered) {
+				NextToken(); // Consuming '=' token.
+			}
 
 			ulen Count = 0;
 			while (true) {
@@ -709,6 +739,9 @@ arco::AstNode* arco::Parser::ParseLoop() {
 	} else if (CTok.Is(TokenKind::IDENT)) {
 		switch (PeekToken(1).Kind) {
 		case TYPE_KW_START_CASES:
+		case TokenKind::KW_CONST:
+		case TokenKind::COL_EQ:
+		case TokenKind::COL_COL:
 		case '=':
 			return ParseRangeLoop(LoopTok);
 		default:
@@ -1868,7 +1901,11 @@ void arco::Parser::SkipRecovery() {
 		switch (PeekToken(1).Kind) {
 		case TYPE_KW_START_CASES:
 		case TokenKind::IDENT:
-			// Variable declaration
+		case TokenKind::KW_CONST:
+		case TokenKind::COL_EQ:
+		case TokenKind::COL_COL:
+		case '=':
+			// Variable declaration or assignment
 			return;
 		}
 		// Skip and continue
