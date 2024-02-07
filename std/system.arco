@@ -1,3 +1,4 @@
+import win32;
 
 /*
  * Terminates the application with an exit code.

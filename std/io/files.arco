@@ -1,4 +1,5 @@
 namespace files;
+import win32;
 
 import std.InStream;
 
@@ -25,11 +26,13 @@ fn read(path cstr) String {
 	
 	stream InStream = open(path, FLAG_IN);
 	size   int   = stream.get_size();
-	buffer char* = new char[size];
+	buffer char* = new char[size + 1];
 	
 	stream.read(buffer, size);
 	stream.close();
 	
+	// Null terminating
+	buffer[size] = '\0';
 	return String{ buffer, size, false };
 }
 

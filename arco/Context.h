@@ -11,6 +11,9 @@
 namespace llvm {
 	class LLVMContext;
 	class Module;
+	namespace CallingConv {
+		using ID = unsigned;
+	}
 }
 
 namespace arco {
@@ -45,6 +48,11 @@ namespace arco {
 		Identifier MainIdentifier;
 		// 'length' identifier (for identifying array lengths)
 		Identifier LengthIdentifier;
+		// Identifiers for calling conventions
+		Identifier StdcallIdentifier;
+		Identifier CdeclIdentifier;
+		Identifier FastcallIdentifier;
+		llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
 
 		Type* IntType;
 		Type* UIntType;

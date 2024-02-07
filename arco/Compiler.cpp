@@ -127,7 +127,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 
 	// Mapping the imports to the structs within different files.
 	for (FileScope* FScope : FileScopes) {
-		SemAnalyzer::ResolveImports(FScope);
+		SemAnalyzer::ResolveImports(FScope, Context);
 	}
 
 	if (Context.MainEntryFunc) {
@@ -280,6 +280,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		Counts.push_back(CountDigits(TotalTime));
 		std::streamsize MaxCount = *std::max_element(std::begin(Counts), std::end(Counts));
 
+		std::cout << "Total Lines Parsed: " << TotalLinesParsed << '.' << '\n';
 		std::cout << "Parsed Time:       "  << std::setw(MaxCount) << std::left << ParsedIn           << " ms.  |  " << std::fixed << std::setprecision(3) << (ParsedIn           / 1000.0f) << " s." << '\n';
 		std::cout << "Checks/IRGen Time: "  << std::setw(MaxCount) << std::left << CheckAndIRGenIn    << " ms.  |  " << std::fixed << std::setprecision(3) << (CheckAndIRGenIn    / 1000.0f) << " s." << '\n';
 		std::cout << "Code Emit Time:    "  << std::setw(MaxCount) << std::left << EmiteMachineCodeIn << " ms.  |  " << std::fixed << std::setprecision(3) << (EmiteMachineCodeIn / 1000.0f) << " s." << '\n';
@@ -330,6 +331,7 @@ void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, con
 
 	Parser Parser(Context, Mod, RelativePath.c_str(), Buffer);
 	FileScope* FScope = Parser.Parse();
+	TotalLinesParsed += Parser.GetLinesParsed();
 
 	if (!FScope->ParsingErrors) {
 		SemAnalyzer::ReportStatementsInInvalidContext(FScope);

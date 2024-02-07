@@ -383,8 +383,15 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 
 	if (Func->Mods & ModKinds::NATIVE) {
 #ifdef _WIN32
-		LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
-		LLFunc->setCallingConv(llvm::CallingConv::X86_StdCall);
+		if (!Func->CallingConv.IsNull()) {
+			LLFunc->setCallingConv(Context.CallConventions[Func->CallingConv]);
+		} else {
+			LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+			LLFunc->setCallingConv(llvm::CallingConv::X86_StdCall);
+		}
+		if (Func->Mods & ModKinds::DLLIMPORT) {
+			LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+		}
 #endif
 	} else {
 		// Will resolve the symbol within the same compilation unit.
@@ -893,8 +900,8 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 	// Do not want to place these objects in the generation scope
 	// because then they would be destroyed for every iteration of
 	// the loop.
-	for (VarDecl* Decl : Loop->Decls) {
-		GenNode(Decl);
+	for (AstNode* InitNode : Loop->InitNodes) {
+		GenNode(InitNode);
 	}
 
 	PUSH_SCOPE();
@@ -1323,6 +1330,107 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 			}	
 		}
 	}
+	case TokenKind::AMP_AMP: { // &&
+		if (BinOp->IsFoldable) {
+			llvm::ConstantInt* LLLHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->LHS));
+			llvm::ConstantInt* LLRHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->RHS));
+			if (LLLHS->isOne() && LLRHS->isOne()) {
+				return llvm::ConstantInt::getTrue(LLContext);
+			} else {
+				return llvm::ConstantInt::getFalse(LLContext);
+			}
+		}
+
+		// See: https://github.com/llvm/llvm-project/blob/839ac62c5085d895d3165bc5024db623a7a78813/clang/lib/CodeGen/CGExprScalar.cpp
+		// VisitBinLAnd
+
+		// ... We gen the nodes lower on the tree first
+		//     then after returning back up from the
+		//     children node emission we calculate the very
+		//     last conidition which gets fed to the PHI node.
+		//
+		//     It only reaches this last condition block if it
+		//     suceeded all children LHS of '&&' operator.
+
+		//   P1 && P2 && P3
+		//
+		//
+		//           &&
+		//          /  \
+		//         &&   P3  <- Only evaluted in the end after children.
+		//        /  \
+		//       P1   P2
+
+		llvm::BasicBlock* LLEndBB     = llvm::BasicBlock::Create(LLContext, "and.end", LLFunc);
+		llvm::BasicBlock* LLLHSTrueBB = llvm::BasicBlock::Create(LLContext, "and.lhs.true", LLFunc);
+		
+		// Generate children
+		GenBranchOnCond(BinOp->LHS, LLLHSTrueBB, LLEndBB);
+
+		// All children blocks result in false if they
+		// arrive from those blocks.
+		llvm::PHINode* LLResPHINode = llvm::PHINode::Create(
+			llvm::Type::getInt1Ty(LLContext), 2 /* At least 2 but can add more */,
+			"cond.res", LLEndBB);
+		for (llvm::pred_iterator PI = llvm::pred_begin(LLEndBB),
+			                     PE = llvm::pred_end(LLEndBB);
+			PI != PE; ++PI) {
+			LLResPHINode->addIncoming(llvm::ConstantInt::getFalse(LLContext), *PI);
+		}
+
+		// Now dealing with the final RHS.
+		// Basically if we made it here there is
+		// only one condition left to check!
+		Builder.SetInsertPoint(LLLHSTrueBB);
+		llvm::Value* LLRHSCondV = GenCond(BinOp->RHS);
+		// Need to re-obtain the last block since the condiition might have
+		// added more blocks.
+		LLLHSTrueBB = Builder.GetInsertBlock();
+		
+		Builder.CreateBr(LLEndBB);
+		Builder.SetInsertPoint(LLEndBB);
+		LLResPHINode->addIncoming(LLRHSCondV, LLLHSTrueBB);
+
+		return LLResPHINode;
+	}
+	case TokenKind::BAR_BAR: { // ||
+		if (BinOp->IsFoldable) {
+			llvm::ConstantInt* LLLHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->LHS));
+			llvm::ConstantInt* LLRHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->RHS));
+			if (LLLHS->isOne() || LLRHS->isOne()) {
+				return llvm::ConstantInt::getTrue(LLContext);
+			} else {
+				return llvm::ConstantInt::getFalse(LLContext);
+			}
+		}
+
+		llvm::BasicBlock* LLEndBB      = llvm::BasicBlock::Create(LLContext, "or.end", LLFunc);
+		llvm::BasicBlock* LLLHSFalseBB = llvm::BasicBlock::Create(LLContext, "or.lhs.false", LLFunc);
+
+		// Generate children
+		GenBranchOnCond(BinOp->LHS, LLEndBB, LLLHSFalseBB);
+
+		llvm::PHINode* LLResPHINode = llvm::PHINode::Create(
+			llvm::Type::getInt1Ty(LLContext), 2 /* At least 2 but can add more */,
+			"cond.res", LLEndBB);
+		for (llvm::pred_iterator PI = llvm::pred_begin(LLEndBB),
+			                     PE = llvm::pred_end(LLEndBB);
+			PI != PE; ++PI) {
+			LLResPHINode->addIncoming(llvm::ConstantInt::getTrue(LLContext), *PI);
+		}
+
+		Builder.SetInsertPoint(LLLHSFalseBB);
+		llvm::Value* LLRHSCondV = GenCond(BinOp->RHS);
+		// Need to re-obtain the last block since the condiition might have
+		// added more blocks.
+		LLLHSFalseBB = Builder.GetInsertBlock();
+		
+		Builder.CreateBr(LLEndBB);
+		Builder.SetInsertPoint(LLEndBB);
+		LLResPHINode->addIncoming(LLRHSCondV, LLLHSFalseBB);
+
+		return LLResPHINode;
+	}
 	default:
 		assert(!"Failed to implement GenBinaryOp() case!");
 		return nullptr;
@@ -1613,14 +1721,19 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 	if (CalledFunc->Struct) {
 		if (CalledFunc->IsConstructor) {
 			LLArgs[ArgIdx++] = LLAddr;
-		} else if (LLThis && CFunc && CalledFunc->Struct == CFunc->Struct) {
-			// Calling one member function from another.
-			LLArgs[ArgIdx++] = LLThis;
 		} else {
+			
+
 			// Calling a member function from a variable so
 			// that the variable's address gets passed in.
 			FuncCall* Call = static_cast<FuncCall*>(CallNode);
-			LLArgs[ArgIdx++] = GenNode(Call->Site);
+			if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
+				// TODO: does this.memfunc() work?
+				LLArgs[ArgIdx++] = GenNode(Call->Site);
+			} else {
+				// Calling one member function from another.
+				LLArgs[ArgIdx++] = LLThis;
+			}
 		}
 	}
 	if (CalledFunc->UsesParamRetSlot) {
@@ -2584,7 +2697,57 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 	// See: https://github.com/llvm/llvm-project/blob/839ac62c5085d895d3165bc5024db623a7a78813/clang/lib/CodeGen/CodeGenFunction.cpp
 	// EmitBranchOnBoolExpr
 
-	Builder.CreateCondBr(GenCond(Cond), LLTrueBB, LLFalseBB);
+	if (Cond->Is(AstKind::BINARY_OP)) {
+		BinaryOp* BinOp = static_cast<BinaryOp*>(Cond);
+
+		// Binary operators in the form:  a && b
+		if (BinOp->Op == TokenKind::AMP_AMP) {
+			if (BinOp->IsFoldable) {
+				llvm::ConstantInt* LLLHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->LHS));
+				llvm::ConstantInt* LLRHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->RHS));
+				if (LLLHS->isOne() && LLRHS->isOne()) {
+					Builder.CreateBr(LLTrueBB);
+				} else {
+					Builder.CreateBr(LLFalseBB);
+				}
+				return;
+			}
+
+			// a and b    <= if a is true go to the new 'LLLHSTrueBB' otherwise go to false block
+
+			llvm::BasicBlock* LLLHSTrueBB = llvm::BasicBlock::Create(LLContext, "and.lhs.true", LLFunc);
+			GenBranchOnCond(BinOp->LHS, LLLHSTrueBB, LLFalseBB);
+			
+			Builder.SetInsertPoint(LLLHSTrueBB);
+			GenBranchOnCond(BinOp->RHS, LLTrueBB, LLFalseBB);
+			return;
+		}
+		// Binary operators in the form:  a || b
+		else if (BinOp->Op == TokenKind::BAR_BAR) {
+			if (BinOp->IsFoldable) {
+				llvm::ConstantInt* LLLHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->LHS));
+				llvm::ConstantInt* LLRHS = llvm::cast<llvm::ConstantInt>(GenCond(BinOp->RHS));
+				if (LLLHS->isOne() || LLRHS->isOne()) {
+					Builder.CreateBr(LLTrueBB);
+				} else {
+					Builder.CreateBr(LLFalseBB);
+				}
+				return;
+			}
+
+			// a or b    <= if a is true don't check b.
+
+			llvm::BasicBlock* LLLHSFalseBB = llvm::BasicBlock::Create(LLContext, "or.lhs.false", LLFunc);
+			GenBranchOnCond(BinOp->LHS, LLTrueBB, LLLHSFalseBB);
+
+			Builder.SetInsertPoint(LLLHSFalseBB);
+			GenBranchOnCond(BinOp->RHS, LLTrueBB, LLFalseBB);
+			return;
+		}
+	}
+
+	llvm::Value* LLCond = GenCond(Cond);
+	Builder.CreateCondBr(LLCond, LLTrueBB, LLFalseBB);
 }
 
 void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress) {

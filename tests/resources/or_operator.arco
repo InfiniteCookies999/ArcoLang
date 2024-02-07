@@ -1,35 +1,35 @@
 
 fn main() {
-	if true && true {
+	if true || true {
 		print("case1", 5);
 	}
-	if true && false {
+	if true || false {
 		print("case2", 5);
 	}
-	if false && true {
+	if false || true {
 		print("case3", 5);
 	}
-	if false && false {
+	if false || false {
 		print("case4", 5);
 	}
 	b1 bool = true;
 	b2 bool = true;
-	if b1 && b2 {
+	if b1 || b2 {
 		print("case1", 5);
 	}
 	b1 = false;
 	b2 = true;
-	if b1 && b2 {
+	if b1 || b2 {
 		print("case2", 5);
 	}
 	b1 = true;
 	b2 = false;
-	if b1 && b2 {
+	if b1 || b2 {
 		print("case3", 5);
 	}
 	b1 = false;
 	b2 = false;
-	if b1 && b2 {
+	if b1 || b2 {
 		print("case4", 5);
 	}
 }

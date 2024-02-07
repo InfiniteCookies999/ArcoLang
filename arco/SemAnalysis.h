@@ -15,7 +15,7 @@ namespace arco {
 
 		static void ReportStatementsInInvalidContext(FileScope* FScope);
 
-		static void ResolveImports(FileScope* FScope);
+		static void ResolveImports(FileScope* FScope, ArcoContext& Context);
 
 		static void CheckForDuplicateFuncDeclarations(Module* Mod);
 		static void CheckForDuplicateFuncDeclarations(Namespace* NSpace);

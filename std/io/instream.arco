@@ -1,3 +1,4 @@
+import win32;
 
 /**
  * An input stream for reading from files or other readable

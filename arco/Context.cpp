@@ -10,6 +10,14 @@ arco::ArcoContext::ArcoContext()
 
 	MainIdentifier(Identifier("main")),
 	LengthIdentifier(Identifier("length")),
+	StdcallIdentifier(Identifier("stdcall")),
+	CdeclIdentifier(Identifier("cdecl")),
+	FastcallIdentifier(Identifier("fastcall")),
+	CallConventions({
+		{ StdcallIdentifier,  llvm::CallingConv::X86_StdCall  },
+		{ CdeclIdentifier,	  llvm::CallingConv::C            },
+		{ FastcallIdentifier, llvm::CallingConv::X86_FastCall }
+		}),
 
 	IntType(new Type(TypeKind::Int)),
 	UIntType(new Type(TypeKind::UnsignedInt)),
@@ -140,6 +148,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "native"   , TokenKind::KW_NATIVE    });
 	TokenKeywordMap.insert({ "const"    , TokenKind::KW_CONST     });
 	TokenKeywordMap.insert({ "private"  , TokenKind::KW_PRIVATE   });
+	TokenKeywordMap.insert({ "dllimport", TokenKind::KW_DLLIMPORT });
 
 	for (const auto& [Text, Kind] : TokenKeywordMap) {
 		TokenKeywordInvertedMap.insert({ static_cast<u32>(Kind), Text });

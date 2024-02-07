@@ -35,7 +35,9 @@ String struct {
 	 * do not include the null termination in the length.
 	 *
 	 * @Param copy_buffer if true it allocates new memory
-	 *                    and copies the buffer over.
+	 *                    and copies the buffer over otherwise
+	 *                    the buffer is assumed to be already
+	 *                    allocated and null terminated.
 	 */
 	fn String(buffer char*, length int, copy_buffer bool = true) {
 		if length < 0 {
@@ -46,10 +48,10 @@ String struct {
 		if copy_buffer {
 			this.buffer = new char[length + 1]; // +1 for null terminator.
 			memcpy(this.buffer, buffer, length);
+			this.buffer[length] = '\0';
 		} else {
 			this.buffer = buffer;
 		}
-		this.buffer[length] = '\0';
 	}
 
 	fn empty() bool {

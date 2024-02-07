@@ -63,6 +63,7 @@ namespace arco {
 
 	private:
 		ArcoContext& Context;
+		ulen TotalLinesParsed = 0;
 
 		llvm::SmallVector<FileScope*> FileScopes;
 		llvm::SmallVector<Module*>    Modules;

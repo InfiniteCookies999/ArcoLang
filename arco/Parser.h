@@ -27,6 +27,8 @@ namespace arco {
 
 		FileScope* Parse();
 
+		ulen GetLinesParsed() const { return Lex.GetLinesLexed(); }
+
 	private:
 		static const ulen MAX_SAVED_TOKENS = 8;
 

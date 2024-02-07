@@ -1,3 +1,4 @@
+import win32;
 
 /**
  * An output stream for writing to files or other writable
@@ -30,6 +31,14 @@ OutStream struct {
 
 	fn write(msg String*) {
 		write(msg.buffer, msg.length);
+	}
+
+	fn write(b bool) {
+		if b {
+			write("true");
+		} else {
+			write("false");
+		}
 	}
 
 	fn write(i int64) {
@@ -89,6 +98,11 @@ OutStream struct {
 
 	fn writeln(i uint) {
 		write(cast(uint64) i);
+		write("\n", 1);
+	}
+
+	fn writeln(b bool) {
+		write(b);
 		write("\n", 1);
 	}
 

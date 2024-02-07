@@ -15,6 +15,8 @@ namespace arco {
 
 		Token NextToken();
 
+		ulen GetLinesLexed() const { return LineNumber; }
+
 	private:
 		const char* CurPtr;
 		ulen        LineNumber = 1;

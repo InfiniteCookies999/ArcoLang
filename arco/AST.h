@@ -65,9 +65,9 @@ namespace arco {
 	};
 
 	enum ModKinds {
-		NATIVE  = 0x01,
-		CONST   = 0x02,
-		PRIVATE = 0x04,
+		NATIVE    = 0x01,
+		PRIVATE   = 0x02,
+		DLLIMPORT = 0x04,
 	};
 	using Modifiers = u16;
 
@@ -92,10 +92,11 @@ namespace arco {
 
 		struct StructOrNamespaceImport {
 			SourceLoc   ErrorLoc;
-			Module*     Mod;
+			Identifier  ModOrNamespace;
 			Identifier  StructOrNamespace;
 			Identifier  StructName;
-			StructDecl* Struct;
+			StructDecl* Struct = nullptr;
+			Namespace*  NSpace = nullptr;
 		};
 
 		struct StaticImport {
@@ -107,8 +108,7 @@ namespace arco {
 
 		std::string                                         Path;
 		SourceBuf                                           Buffer;
-		llvm::DenseMap<Identifier, Namespace*>              NamespaceImports;
-		llvm::DenseMap<Identifier, StructOrNamespaceImport> StructOrNamespaceImports;
+		llvm::DenseMap<Identifier, StructOrNamespaceImport> Imports;
 		llvm::SmallVector<StaticImport>                     StaticImports;
 
 		Module*    Mod;
@@ -172,6 +172,8 @@ namespace arco {
 
 		// Zero means it is not a LLVMIntrinsic.
 		llvm::Intrinsic::ID LLVMIntrinsicID = 0;
+
+		Identifier CallingConv;
 
 		bool ParamTypesChecked   = false;
 		// If this is true then the function will return
@@ -330,7 +332,7 @@ namespace arco {
 	struct RangeLoopStmt : AstNode {
 		RangeLoopStmt() : AstNode(AstKind::RANGE_LOOP) {}
 
-		llvm::SmallVector<VarDecl*> Decls;
+		llvm::SmallVector<AstNode*> InitNodes;
 		Expr*                       Cond = nullptr;
 		// Multiple increments are allowed by adding ','
 		llvm::SmallVector<Expr*>    Incs;

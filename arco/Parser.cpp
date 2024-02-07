@@ -224,39 +224,34 @@ void arco::Parser::ParseImport() {
 
 	Match(';');
 
-	auto Itr = Context.ModNamesToMods.find(ModOrNamespace.Text);
 	if (!IsStaticImport) {
-		if (Itr == Context.ModNamesToMods.end()) {
-			Error(ImportTok, "Could not find import module for '%s'", ModOrNamespace.Text);
+
+		// import namespace;
+		// import mod;
+		// import mod.namespace;
+		// import mod.struct;
+		// import mod.namespace.struct;
+
+		Identifier LookupIdent = StructOrNamespace.IsNull() ? ModOrNamespace :
+			                     StructName.IsNull()        ? StructOrNamespace : StructName;
+
+		if (FScope->Imports.find(LookupIdent) != FScope->Imports.end()) {
+			Error(ImportTok, "Duplicate import");
 			return;
 		}
 
-		Module* ImportMod = Itr->second;
-		if (StructOrNamespace.IsNull()) {
-			if (FScope->NamespaceImports.find(ModOrNamespace) != FScope->NamespaceImports.end()) {
-				Error(ImportTok, "Duplicate import");
-				return;
-			}
+		FScope->Imports[LookupIdent] = {
+			ImportTok.Loc,
+			ModOrNamespace,
+			StructOrNamespace,
+			StructName
+		};
 
-			FScope->NamespaceImports[ModOrNamespace] = ImportMod->DefaultNamespace;
-		} else {
-			Identifier LookupIdent = StructName.IsNull() ? StructOrNamespace : StructName;
-
-			if (FScope->StructOrNamespaceImports.find(LookupIdent) != FScope->StructOrNamespaceImports.end()) {
-				Error(ImportTok, "Duplicate import");
-				return;
-			}
-
-			FScope->StructOrNamespaceImports[LookupIdent] = {
-				ImportTok.Loc,
-				ImportMod,
-				StructOrNamespace,
-				StructName
-			};
-		}
 	} else {
-		// static import
+		auto Itr = Context.ModNamesToMods.find(ModOrNamespace.Text);
 		bool ModFound = Itr != Context.ModNamesToMods.end();
+
+		// static import
 		if (!StructOrNamespace.IsNull() && !ModFound) {
 			Error(ImportTok, "Could not find import module for '%s'", ModOrNamespace.Text);
 			return;
@@ -291,7 +286,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
 	case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
 	case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
 	case TokenKind::KW_NATIVE:
-	case TokenKind::KW_PRIVATE: {
+	case TokenKind::KW_PRIVATE:
+	case TokenKind::KW_DLLIMPORT: {
 		Modifiers Mods = ParseModifiers();
 		if (CTok.Is(TokenKind::KW_FN)) {
 			return ParseFuncDecl(Mods);
@@ -349,9 +345,23 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	
 	ulen NumErrs = TotalAccumulatedErrors;
 
-	NextToken(); // Consuming 'fn' keyword.
-
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
+
+	NextToken(); // Consuming 'fn' keyword.
+	if (CTok.Is('(')) {
+		NextToken();
+		Token Tok = CTok;
+		Identifier CallingConv = ParseIdentifier("Expected identifier for calling convention");
+		if (!CallingConv.IsNull()) {
+			auto Itr = Context.CallConventions.find(CallingConv);
+			if (Itr == Context.CallConventions.end()) {
+				Error(Tok, "%s is not a valid calling convention", CallingConv);
+			}
+		}
+		Match(')', "Expected for calling convention");
+		Func->CallingConv = CallingConv;
+	}
+
 	Func->Mod        = Mod;
 	Func->FScope     = FScope;
 	if (CTok.Is('~')) {
@@ -370,6 +380,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	}
 	Func->Mods       = Mods;
 	Func->NativeName = NativeModifierName;
+	NativeModifierName = "";
 
 	Context.UncheckedDecls.insert(Func);
 
@@ -534,6 +545,7 @@ arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers
 	Var->Name       = Name;
 	Var->Mods       = Mods;
 	Var->NativeName = NativeModifierName;
+	NativeModifierName = "";
 
 	if (LocScope && !Name.IsNull()) {
 		auto Itr = LocScope->VarDecls.find(Name);
@@ -697,6 +709,7 @@ arco::AstNode* arco::Parser::ParseLoop() {
 	} else if (CTok.Is(TokenKind::IDENT)) {
 		switch (PeekToken(1).Kind) {
 		case TYPE_KW_START_CASES:
+		case '=':
 			return ParseRangeLoop(LoopTok);
 		default:
 			return ParsePredicateLoop(LoopTok);
@@ -739,8 +752,22 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 	RangeLoopStmt* Loop = NewNode<RangeLoopStmt>(LoopTok);
 	
 	PUSH_SCOPE();
-	if (CTok.IsNot(';')) {
-		Loop->Decls.push_back(ParseVarDecl(0));
+	switch (CTok.Kind) {
+	case TokenKind::IDENT:
+		if (PeekToken(1).Is('=')) {
+			Loop->InitNodes.push_back(ParseAssignmentAndExprs());
+			break;
+		}
+		[[fallthrough]];
+	default:
+		ParseVarDeclList(0);
+		for (VarDecl* Var : SingleVarDeclList->List) {
+			Loop->InitNodes.push_back(Var);
+		}
+		SingleVarDeclList->List.clear();
+		break;
+	case ';':
+		break;
 	}
 	Match(';');
 
@@ -777,7 +804,6 @@ arco::DeleteStmt* arco::Parser::ParseDelete() {
 }
 
 arco::Modifiers arco::Parser::ParseModifiers() {
-	NativeModifierName = "";
 	Modifiers Mods = 0;
 	while (true) {
 		switch (CTok.Kind) {
@@ -809,6 +835,13 @@ arco::Modifiers arco::Parser::ParseModifiers() {
 			if (Mods & ModKinds::PRIVATE)
 				Error(CTok, "Duplicate modifier");
 			Mods |= ModKinds::PRIVATE;
+			NextToken();
+			break;
+		}
+		case TokenKind::KW_DLLIMPORT: {
+			if (Mods & ModKinds::DLLIMPORT)
+				Error(CTok, "Duplicate modifier");
+			Mods |= ModKinds::DLLIMPORT;
 			NextToken();
 			break;
 		}
