@@ -3,6 +3,8 @@
 #include "Context.h"
 #include "IRGen.h"
 
+#include <sstream>
+
 #define YIELD_ERROR(N)     \
 N->Ty = Context.ErrorType; \
 return;
@@ -1473,7 +1475,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 			                                     Call->Loc,
 			                                     FuncTy->ParamTypes,
 			                                     Call->Args,
-				                                 "fn");
+				                                 0 /* Num default args */);
 			YIELD_ERROR(Call);
 		}
 
@@ -1485,9 +1487,10 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 				ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
 				DisplayErrorForSingleFuncForFuncCall("function",
 			                                         Call->Loc,
+					                                 
 			                                         FuncTy->ParamTypes,
 			                                         Call->Args,
-				                                     "fn");
+					                                 0 /* Num default args */);
 				YIELD_ERROR(Call);
 			}
 		}
@@ -1616,31 +1619,78 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 	
 	const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
-	if (Canidates && Canidates->size() == 1) {
-		FuncDecl* SingleCanidate = (*Canidates)[0];
+	auto ParamsToTypeInfo = [](FuncDecl* Func) {
 		llvm::SmallVector<TypeInfo> ParamTypes;
-		ParamTypes.reserve(SingleCanidate->Params.size());
-		for (VarDecl* Param : SingleCanidate->Params) {
+		ParamTypes.reserve(Func->Params.size());
+		for (VarDecl* Param : Func->Params) {
 			ParamTypes.push_back(TypeInfo{
 				Param->Ty,
 				Param->HasConstAddress
 				});
 		}
+		return ParamTypes;
+	};
+
+	if (Canidates && Canidates->size() == 1) {
+		FuncDecl* SingleCanidate = (*Canidates)[0];
+		
 		DisplayErrorForSingleFuncForFuncCall(CallType,
 			                                 ErrorLoc,
-			                                 ParamTypes,
+			                                 ParamsToTypeInfo(SingleCanidate),
 			                                 Args,
-			                                 SingleCanidate->Name.Text.str());
+			                                 SingleCanidate->NumDefaultArgs,
+			                                 SingleCanidate);
 	} else {
-		std::string FuncDef = "(";
-		for (ulen i = 0; i < Args.size(); i++) {
-			FuncDef += Args[i].E->Ty->ToString();
-			if (i+1 != Args.size()) FuncDef += ", ";
+		if (!Canidates) {
+			Error(ErrorLoc, "Could not find %s for call", CallType);
+			return;
 		}
-		FuncDef += ")";
 
-		Error(ErrorLoc, "Could not find %s with parameter types '%s'",
-			  CallType, FuncDef);
+		FuncDecl* FirstCanidate = (*Canidates)[0];
+
+		std::string ErrorMsg = "Could not find overloaded " + std::string(CallType)
+			+ " '" + FirstCanidate->Name.Text.str() + "'.";
+
+		ErrorMsg += "\n\n  Possible Canidates:";
+		ulen LongestDefLength = 0;
+		for (FuncDecl* Canidate : *Canidates) {
+			ulen Len = GetFuncDefForError(ParamsToTypeInfo(Canidate), Canidate).length();
+			if (Len > LongestDefLength) {
+				LongestDefLength = Len;
+			}
+		}
+		const ulen BailMax = 6;
+		ulen Count = 0;
+		for (FuncDecl* Canidate : *Canidates) {
+			if (Count == BailMax) {
+				ErrorMsg += "\n\n  And " + std::to_string(Canidates->size() - Count) + " more...";
+				break;
+			}
+			llvm::SmallVector<TypeInfo> ParamTypes = ParamsToTypeInfo(Canidate);
+			ErrorMsg += "\n\n     ";
+			std::string Def = GetFuncDefForError(ParamTypes, Canidate);
+			ErrorMsg += Def;
+			ErrorMsg += std::string(LongestDefLength - Def.length(), ' ') + "   - declared at: "
+				+ Canidate->FScope->Path + std::string(":") + std::to_string(Canidate->Loc.LineNumber);
+			ErrorMsg += "\n";
+			std::string MismatchInfo = GetCallMismatchInfo(ParamTypes, Args, Canidate->NumDefaultArgs);
+			std::stringstream StrStream(MismatchInfo.c_str());
+			std::string Line;
+			bool First = true;
+			while (std::getline(StrStream, Line, '\n')) {	
+				if (!First) {
+					ErrorMsg += "\n"; 
+				}
+				First = false;
+				ErrorMsg += "        " + Line;
+			}
+			++Count;
+		}
+
+		ErrorMsg += "\n";
+		Log.BeginError(ErrorLoc, ErrorMsg.c_str(), false);
+		Log.EndError();
+
 	}
 }
 
@@ -1649,7 +1699,8 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
 	SourceLoc CallLoc,
 	const llvm::SmallVector<TypeInfo>& ParamTypes,
 	const llvm::SmallVector<NonNamedValue, 2>& Args,
-	const std::string& OptFuncName) {
+	ulen NumDefaultArgs,
+	FuncDecl* CalledFunc) {
 
 	// Single canidate so explicit details about
 	// how there is a mismatch between the call and
@@ -1657,53 +1708,87 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
 		
 	bool EncounteredError = false;
 
-	for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
-		if (ArgCount >= ParamTypes.size()) {
-			if (EncounteredError)  Log.EndError();
-			Log.BeginError(CallLoc, "Too many arguments for %s call", CallType);
-			EncounteredError = true;
-			break;
-		}
-			
-		Expr*    Arg         = Args[ArgCount].E;
-		TypeInfo ParamTyInfo = ParamTypes[ArgCount];
-
-		if (!IsAssignableTo(ParamTyInfo.Ty, Arg->Ty, Arg)) {
-			if (EncounteredError)  Log.EndError();
-			Log.BeginError(Args[ArgCount].ExpandedLoc,
-				"Cannot assign argument %s of type '%s' to parameter of type '%s'",
-				ArgCount+1,
-				Arg->Ty->ToString(), ParamTyInfo.Ty->ToString());
-			DisplayNoteInfoForTypeMismatch(Arg, ParamTyInfo.Ty);
-			EncounteredError = true;
-		}
-		if (ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
-			if (EncounteredError)  Log.EndError();
-			Log.BeginError(Arg->Loc, "Cannot assign const memory to non-const parameter");
-			EncounteredError = true; 
-		}
+	std::string FuncDef = GetFuncDefForError(ParamTypes, CalledFunc);
+	std::string ErrorMsg = "Expected call to " + std::string(CallType) + " declaration: " + FuncDef + ".";
+	if (CalledFunc) {
+		std::string First = std::string(CallType);
+		First[0] = std::toupper(First[0]);
+		ErrorMsg += "\n" + std::string(Log.CalcHeaderIndent(CallLoc), ' ')
+			 + First + " declared at: "
+		     + CalledFunc->FScope->Path + std::string(":") + std::to_string(CalledFunc->Loc.LineNumber);
 	}
+	ErrorMsg += "\n\n";
 
-	if (!EncounteredError) {
-		Log.BeginError(CallLoc, "Invalid arguments for %s call", CallType);
-	}
-
-	// Displaying the function.
-	std::string FuncDec = OptFuncName;
-	FuncDec += "(";
-	for (ulen i = 0; i < ParamTypes.size(); i++) {
-		FuncDec += ParamTypes[i].ConstMemory ? "const " : "";
-		FuncDec += ParamTypes[i].Ty->ToString();
-		if (i != ParamTypes.size() - 1) {
-			FuncDec += ", ";
-		}
-	}
-	FuncDec += ")";
-
-	Log.AddNoteLine([=](llvm::raw_ostream& OS) {
-		OS << "Expected call to " << CallType << " declaration: " << FuncDec;
-	});
+	std::string ExtMsg = GetCallMismatchInfo(ParamTypes, Args, NumDefaultArgs);
+	
+	Log.SetMsgToShowAbovePrimaryLocAligned(ExtMsg.c_str());
+	Log.BeginError(CallLoc, ErrorMsg.c_str(), false);
 	Log.EndError();
+}
+
+std::string arco::SemAnalyzer::GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc) {
+	std::string FuncDef = CalledFunc ? ("fn " + CalledFunc->Name.Text.str()) : "fn";
+	FuncDef += "(";
+	for (ulen i = 0; i < ParamTypes.size(); i++) {
+		FuncDef += ParamTypes[i].ConstMemory ? "const " : "";
+		FuncDef += ParamTypes[i].Ty->ToString();
+		if (i != ParamTypes.size() - 1) {
+			FuncDef += ", ";
+		}
+	}
+	FuncDef += ")";
+	return FuncDef;
+}
+
+std::string arco::SemAnalyzer::GetCallMismatchInfo(const llvm::SmallVector<TypeInfo>& ParamTypes,
+	                                               const llvm::SmallVector<NonNamedValue, 2>& Args,
+	                                               ulen NumDefaultArgs) {
+	bool IncorrectNumberOfArgs = false;
+	std::string MismatchInfo = "";
+	if (NumDefaultArgs) {
+		ulen MinArgs = ParamTypes.size() - NumDefaultArgs;
+		ulen MaxArgs = ParamTypes.size();
+		if (!(Args.size() >= MinArgs &&
+			  Args.size() <= MaxArgs)) {
+			IncorrectNumberOfArgs = true;
+			MismatchInfo = "- Incorrect number of arguments. Expected between "
+				     + std::to_string(MinArgs) + std::string("-") + std::to_string(MaxArgs)
+				     + ". Got " + std::to_string(Args.size()) + ".";
+			
+		}
+	} else {
+		if (Args.size() != ParamTypes.size()) {
+			IncorrectNumberOfArgs = true;
+			MismatchInfo = "- Incorrect number of arguments. Expected "
+				     + std::to_string(ParamTypes.size())
+				     + ". Got " + std::to_string(Args.size()) + ".";
+		}
+	}
+
+	if (!IncorrectNumberOfArgs) {
+		// One or more of the arguments are incorrect.
+		bool EncounteredError = false;
+		for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
+			Expr*    Arg         = Args[ArgCount].E;
+			TypeInfo ParamTyInfo = ParamTypes[ArgCount];
+		
+			if (!IsAssignableTo(ParamTyInfo.Ty, Arg->Ty, Arg)) {
+				if (EncounteredError)  MismatchInfo += "\n";
+				MismatchInfo += "- Cannot assign argument "
+					   + std::to_string(ArgCount+1) + " of type '" + Arg->Ty->ToString() + "' "
+					   + "to parameter of type '" + ParamTyInfo.Ty->ToString() + "'.";
+				EncounteredError = true;
+			} else if (ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
+				if (EncounteredError)  MismatchInfo += "\n";
+				MismatchInfo += "- Cannot assign argument "
+					   + std::to_string(ArgCount+1) + " with const memory to non-const parameter.";
+				
+				EncounteredError = true;
+			}
+		}
+	}
+	
+	return MismatchInfo;
 }
 
 void arco::SemAnalyzer::CheckArray(Array* Arr) {

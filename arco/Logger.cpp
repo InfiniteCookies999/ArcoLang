@@ -1,6 +1,7 @@
 #include "Logger.h"
 
 #include "TermColors.h"
+#include <sstream>
 
 namespace arco {
 	// Satisfying linkage
@@ -58,11 +59,24 @@ void arco::Logger::EndError() {
 	LargestLineNum = PrimaryErrLoc.LineNumber + BetweenLines.size() - 1;
 	LNPad = std::string(std::to_string(LargestLineNum).size(), ' ');
 
+	if (ExtErrMsgAbovePrimaryLocAligned) {
+		std::stringstream StrStream(ExtErrMsgAbovePrimaryLocAligned);
+		std::string Line;
+		bool First = true;
+		while (std::getline(StrStream, Line, '\n')) {
+			if (!First) {
+				OS << "\n";
+			}
+			First = false;
+			OS << LNPad << "  " << Line;
+		}
+		ExtErrMsgAbovePrimaryLocAligned = nullptr;	
+	}
 	DisplayErrorLoc(PrimaryErrLoc, BetweenLines);
 
 	if (!NoteLines.empty()) {
 		SetTerminalColor(TerminalColorYellow);
-		OS << LNPad << " Note: ";
+		OS << LNPad << "  Help: ";
 		SetTerminalColor(TerminalColorDefault);
 		NoteLines[0](OS);
 		OS << '\n';
@@ -88,7 +102,14 @@ void arco::Logger::EndError() {
 	}
 }
 
-void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer) {
+ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
+	ulen Total = strlen(FilePath);
+	Total += 1 + std::to_string(Loc.LineNumber).length() + 1;
+	Total += strlen(" Error: ");
+	return Total;
+}
+
+void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod) {
 	
 	SetTerminalColor(TerminalColorWhite);
 	OS << FilePath;
@@ -100,7 +121,9 @@ void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::functio
 
 	SetTerminalColor(TerminalColorWhite);
 	Printer();
-	OS << ".";
+	if (ShowPeriod) {
+		OS << ".";
+	}
 	SetTerminalColor(TerminalColorDefault);
 	
 	FoundCompileError = true;

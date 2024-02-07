@@ -98,11 +98,17 @@ namespace arco {
 			                                   const llvm::SmallVector<NonNamedValue, 2>& Args);
 		void DisplayErrorForSingleFuncForFuncCall(
 			const char* CallType,
-			SourceLoc CallLoc,
+			SourceLoc Loc,
 			const llvm::SmallVector<TypeInfo>& ParamTypes,
 			const llvm::SmallVector<NonNamedValue, 2>& Args,
-			const std::string& OptFuncName = ""
+			ulen NumDefaultArgs = 0,
+			FuncDecl* CalledFunc = nullptr
 		);
+		std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
+		std::string GetCallMismatchInfo(const llvm::SmallVector<TypeInfo>& ParamTypes,
+			                            const llvm::SmallVector<NonNamedValue, 2>& Args,
+			                            ulen NumDefaultArgs);
+		
 		void CheckArray(Array* Arr);
 		void CheckArrayAccess(ArrayAccess* Access);
 		void CheckTypeCast(TypeCast* Cast);

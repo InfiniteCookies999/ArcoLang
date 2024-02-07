@@ -21,9 +21,15 @@ namespace arco {
 
 		Logger(const char* FilePath, SourceBuf Buffer);
 
-		void BeginError(SourceLoc Loc, const char* MsgHeader) {
+		void BeginError(SourceLoc Loc, const char* MsgHeader, bool ShowPeriod = true) {
 			PrimaryErrLoc = Loc;
-			InternalErrorHeaderPrinting(Loc, [this, MsgHeader]() { OS << MsgHeader; });
+			InternalErrorHeaderPrinting(Loc, [this, MsgHeader]() { OS << MsgHeader; }, ShowPeriod);
+		}
+
+		ulen CalcHeaderIndent(SourceLoc Loc);
+
+		void SetMsgToShowAbovePrimaryLocAligned(const char* Msg) {
+			ExtErrMsgAbovePrimaryLocAligned = Msg;
 		}
 
 		template<typename... TArgs>
@@ -31,7 +37,7 @@ namespace arco {
 			PrimaryErrLoc = Loc;
 			InternalErrorHeaderPrinting(Loc, [&]() {
 				ForwardFmt(OS, Fmt, std::forward<TArgs>(Args)...);
-			});
+			}, true);
 		}
 
 		static void GlobalError(llvm::raw_ostream& OS, const char* Msg) {
@@ -59,14 +65,15 @@ namespace arco {
 		const char* FilePath;
 		SourceBuf   Buffer;
 
+		const char* ExtErrMsgAbovePrimaryLocAligned = nullptr;
 		// Current information for printing the error.
+		SourceLoc   PrimaryErrLoc;
 		std::string LNPad; // New line pad for displaying error location.
 		ulen LargestLineNum;
-		SourceLoc   PrimaryErrLoc;
 
 		llvm::SmallVector<std::function<void(llvm::raw_ostream&)>> NoteLines;
 
-		void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer);
+		void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod);
 
 		void DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines);
 
