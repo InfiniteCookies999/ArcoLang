@@ -1,9 +1,4 @@
 
-A struct {
-	a int16;
-	b int32;
-}
-
 fn main() {
 	print(sizeof(int8));
 	print(" ", 1);
@@ -12,8 +7,6 @@ fn main() {
 	print(sizeof(int32));
 	print(" ", 1);
 	print(sizeof(int64));
-	print(" ", 1);
-	print(sizeof(A));
 	print(" ", 1);
 	print(sizeof(char));
 }

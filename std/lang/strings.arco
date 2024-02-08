@@ -79,7 +79,7 @@ String struct {
 	/*
 	 * Copy constructor.
 	 */
-	fn copy String(string String*) {
+	fn copyobj String(string String*) {
 		this.length = string.length;
 		this.buffer = new char[length + 1]; // +1 for null terminator.
 		memcpy(this.buffer, string.buffer, length);

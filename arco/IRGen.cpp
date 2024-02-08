@@ -1855,12 +1855,12 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 	
 		ulen TotalLinearLength = DestTy->GetTotalLinearLength();
 	
-		// TODO: Alignment!!
-		llvm::MaybeAlign LLAlignment = llvm::MaybeAlign();
+		llvm::Type* LLDestTy = GenType(DestTy->GetBaseType());
+		llvm::Align LLAlignment = GetAlignment(LLDestTy);
 		Builder.CreateMemCpy(
 			LLAddr  , LLAlignment,
 			LLGArray, LLAlignment,
-			TotalLinearLength * SizeOfTypeInBytes(GenType(DestTy->GetBaseType()))
+			TotalLinearLength * SizeOfTypeInBytes(LLDestTy)
 		);
 
 	} else {
@@ -2475,6 +2475,10 @@ inline ulen arco::IRGenerator::SizeOfTypeInBytes(llvm::Type* LLType) {
 	return LLTypeSize.getFixedSize();
 }
 
+inline llvm::Align arco::IRGenerator::GetAlignment(llvm::Type* LLType) {
+	return llvm::Align(LLModule.getDataLayout().getPrefTypeAlignment(LLType));
+}
+
 llvm::Value* arco::IRGenerator::GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal) {
 	if (LLRetVal->getType()->isPointerTy()) {
 		// Bitcast the struct type's address value to a integer pointer.
@@ -2519,7 +2523,7 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
 		// Fallback on memcopy if no copy constructor.
 		llvm::StructType* LLStructType =  llvm::cast<llvm::StructType>(LLFromAddr->getType()->getPointerElementType());
 		const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
-		llvm::Align LLAlignment = LLStructLayout->getAlignment();
+		llvm::Align LLAlignment =  LLStructLayout->getAlignment();
 		Builder.CreateMemCpy(
 			LLToAddr, LLAlignment,
 			LLFromAddr, LLAlignment,

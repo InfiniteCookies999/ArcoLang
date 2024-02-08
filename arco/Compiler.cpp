@@ -125,6 +125,19 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
 	i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
 
+	// Must do this early so that LLVM can correctly determine information for types
+	// during generating.
+	if (!InitLLVMNativeTarget()) {
+		Logger::GlobalError(llvm::errs(), "Failed to initialized LLVM native target");
+		return;
+	}
+
+	if (!LLMachineTarget) {
+		LLMachineTarget = CreateLLVMTargetMache();
+	}
+	
+	SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
+
 	// Mapping the imports to the structs within different files.
 	for (FileScope* FScope : FileScopes) {
 		SemAnalyzer::ResolveImports(FScope, Context);
@@ -205,19 +218,8 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		llvm::outs() << "\n\n";
 	}
 
-	if (!InitLLVMNativeTarget()) {
-		Logger::GlobalError(llvm::errs(), "Failed to initialized LLVM native target");
-		return;
-	}
-
 	i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
 	i64 LinkTimeBegin = GetTimeInMilliseconds();
-
-	if (!LLMachineTarget) {
-		LLMachineTarget = CreateLLVMTargetMache();
-	}
-	
-	SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
 
 	if (OutputName.ends_with(".exe")) {
 		OutputName = OutputName.substr(0, OutputName.length() - 4);

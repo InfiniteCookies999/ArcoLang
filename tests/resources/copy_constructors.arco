@@ -1,6 +1,6 @@
 
 A struct {
-	fn copy A(a A*) {
+	fn copyobj A(a A*) {
 		print("Called!", 7);
 	}
 }

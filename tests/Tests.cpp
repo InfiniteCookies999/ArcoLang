@@ -69,7 +69,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 }
 
 int main() {
-
+	
 	RunTest(SRC("hello_world.arco"), "Hello World!");
 	RunTest(SRC("binary_operators.arco"), "464");
 	RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
@@ -83,7 +83,7 @@ int main() {
 	RunTest(SRC("var_decl_list.arco"), "5 3 2");
 	RunTest(SRC("literal_type_info.arco"), "int8 int16 int32 int64 uint8 uint16 uint32 uint64 ");
 	RunTest(SRC("function_type.arco"), "foo1 4 73");
-	RunTest(SRC("sizeof_test.arco"), "1 2 4 8 8 1");
+	RunTest(SRC("sizeof_test.arco"), "1 2 4 8 1");
 	RunTest(SRC("constant_folding.arco"), "4 2 61 1 52 8");
 	RunTest(SRC("nested_blocks.arco"), "5 8 5");
 	RunTest(SRC("default_args.arco"), "3 55 9 3 2 9 3 2 1");

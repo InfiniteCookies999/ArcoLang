@@ -23,6 +23,14 @@ fn print(msg cstr) {
 	out.write(msg);
 }
 
+fn print(i int) {
+	out.write(i);
+}
+
+fn print(i uint) {
+	out.write(i);
+}
+
 fn print(msg String*) {
 	out.write(msg);
 }
@@ -71,6 +79,14 @@ fn eprint(i int64) {
 }
 
 fn eprint(i uint64) {
+	err.write(i);
+}
+
+fn eprint(i int) {
+	err.write(i);
+}
+
+fn eprint(i uint) {
 	err.write(i);
 }
 

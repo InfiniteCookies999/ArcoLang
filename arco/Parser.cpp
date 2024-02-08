@@ -350,7 +350,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
 
 	NextToken(); // Consuming 'fn' keyword.
-	if (CTok.Is(TokenKind::KW_COPY)) {
+	if (CTok.Is(TokenKind::KW_COPYOBJ)) {
 		NextToken(); // Consuming 'copy' keyword.
 		Func->IsCopyConstructor = true;
 	}
@@ -391,6 +391,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
 	Context.UncheckedDecls.insert(Func);
 
+	FuncDecl* PrevFunc = CFunc;
 	CFunc = Func;
 
 	PUSH_SCOPE();
@@ -412,7 +413,8 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	}
 	Match(')');
 
-	if (CTok.IsNot('{') && CTok.IsNot(':')) {
+	if (CTok.IsNot('{') && CTok.IsNot(':') &&
+		!((Mods & ModKinds::NATIVE) && CTok.Is(';'))) {
 		if (CTok.Is(TokenKind::KW_CONST)) {
 			NextToken(); // Consuming 'const' token.
 			Func->ReturnsConstAddress = true;
@@ -458,6 +460,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 		Func->ParsingError = true;
 	}
 
+	CFunc = PrevFunc;
 	return Func;
 }
 

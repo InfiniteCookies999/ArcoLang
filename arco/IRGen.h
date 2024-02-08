@@ -179,6 +179,7 @@ namespace arco {
 		llvm::GlobalVariable* GenConstGlobalArray(llvm::Constant* LLArray, bool DSOLocal = true);
 
 		inline ulen SizeOfTypeInBytes(llvm::Type* LLType);
+		inline llvm::Align GetAlignment(llvm::Type* LLType);
 
 		llvm::Value* GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal);
 

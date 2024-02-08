@@ -64,6 +64,14 @@ OutStream struct {
 		write(ptr, length);
 	}
 
+	fn write(i int) {
+		write(cast(int64) i);
+	}
+
+	fn write(i uint) {
+		write(cast(uint64) i);
+	}
+
 	// ----------------------------------------
 	// writeln functions
 
