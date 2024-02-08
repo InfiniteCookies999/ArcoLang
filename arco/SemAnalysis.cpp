@@ -204,12 +204,30 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	if (!Func->IsConstructor && !Func->InitializerValues.empty()) {
 		Error(Func, "Only constructors can have initializer values");
 	}
-	
+	if (!Func->IsConstructor && Func->IsCopyConstructor) {
+		Error(Func, "Only constructors can use keyword copy to indicate it is a copy constructor");
+	}
+
  	CheckFuncParams(Func);
 	if (Func->RetTy->GetKind() == TypeKind::Array) {
 		Error(Func, "Functions cannot return arrays");
 	}
 	
+	if (Func->IsConstructor && Func->IsCopyConstructor) {
+		if (Func->Params.empty()) {
+			Error(Func->Loc, "Copy constructor must have argument for struct to copy");
+		} else if (Func->Params.size() > 1) {
+			Error(Func->Loc, "Copy constructor must have only one argument for the struct to copy");
+		} else {
+			Type* ParamTy = Func->Params[0]->Ty;
+			Type* ExpectedType = PointerType::Create(StructType::Create(Func->Struct, Context), Context);
+			if (!ParamTy->Equals(ExpectedType)) {
+				Error(Func->Loc, "Copy constructor must have type '%s' but found type '%s'",
+					ExpectedType->ToString(), ParamTy->ToString());
+			}
+		}
+	}
+
 	if (Func->IsConstructor) {
 
 		StructDecl* Struct = Func->Struct;
@@ -315,11 +333,21 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 		}
 	}
 
+	// Want to set this to false before checking member functions or it will
+	// complain about the type not being complete but all the relavent
+	// type information has been determined already.
+	Struct->IsBeingChecked = false;
+
 	if (Struct->Destructor) {
+		SemAnalyzer A(Context, Struct->Destructor);
+		A.CheckFuncDecl(Struct->Destructor);
 		Context.RequestGen(Struct->Destructor);
 	}
-
-	Struct->IsBeingChecked = false;
+	if (Struct->CopyConstructor) {
+		SemAnalyzer A(Context, Struct->CopyConstructor);
+		A.CheckFuncDecl(Struct->CopyConstructor);
+		Context.RequestGen(Struct->CopyConstructor);
+	}
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {

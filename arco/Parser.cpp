@@ -350,6 +350,11 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	FuncDecl* Func = NewNode<FuncDecl>(CTok);
 
 	NextToken(); // Consuming 'fn' keyword.
+	if (CTok.Is(TokenKind::KW_COPY)) {
+		NextToken(); // Consuming 'copy' keyword.
+		Func->IsCopyConstructor = true;
+	}
+
 	if (CTok.Is('(')) {
 		NextToken();
 		Token Tok = CTok;
@@ -661,7 +666,14 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 				if (Func->Name == Struct->Name) {
 					// TODO: Should it also go into the Funcs list?
 					Func->IsConstructor = true;
-					Struct->Constructors.push_back(Func);
+					if (Func->IsCopyConstructor) {
+						if (Struct->CopyConstructor) {
+							Error(Func->Loc, "Duplicate copy constructor");
+						}
+						Struct->CopyConstructor = Func;
+					} else {
+						Struct->Constructors.push_back(Func);
+					}
 					if (Func->Params.empty()) {
 						Struct->DefaultConstructor = Func;
 					}

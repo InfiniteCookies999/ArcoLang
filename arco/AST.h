@@ -187,6 +187,7 @@ namespace arco {
 		bool IsConstructor       = false;
 		bool ReturnsConstAddress = false;
 		bool IsDestructor        = false;
+		bool IsCopyConstructor   = false;
 
 		// Non-nullptr if the function is a member function.
 		StructDecl* Struct = nullptr;
@@ -273,6 +274,7 @@ namespace arco {
 		llvm::SmallVector<VarDecl*>           Fields;
 		FuncsList                             Constructors;
 		FuncDecl*                             DefaultConstructor = nullptr;
+		FuncDecl*                             CopyConstructor = nullptr;
 		FuncDecl*                             Destructor         = nullptr;
 		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 

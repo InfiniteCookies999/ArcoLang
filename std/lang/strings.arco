@@ -33,8 +33,28 @@ String struct {
 	 * defined length the buffer does not have to be
 	 * null terminated.
 	 *
-	 * If the buffer is null terminated
-	 * do not include the null termination in the length.
+	 * If the buffer is null terminated do not include
+	 * the null termination in the length.
+	 */
+	fn String(buffer cstr, length int) {
+		if length < 0 {
+			panic("String length length < 0");
+		}
+
+		this.length = length;
+		this.buffer = new char[length + 1]; // +1 for null terminator.
+		memcpy(this.buffer, buffer, length);
+		this.buffer[length] = '\0';
+	}
+
+	/*
+	 * Creates a String from a character buffer and
+	 * an explicit length. Because of the explicity
+	 * defined length the buffer does not have to be
+	 * null terminated.
+	 *
+	 * If the buffer is null terminated do not include
+	 * the null termination in the length.
 	 *
 	 * @Param copy_buffer if true it allocates new memory
 	 *                    and copies the buffer over otherwise
@@ -54,6 +74,16 @@ String struct {
 		} else {
 			this.buffer = buffer;
 		}
+	}
+
+	/*
+	 * Copy constructor.
+	 */
+	fn copy String(string String*) {
+		this.length = string.length;
+		this.buffer = new char[length + 1]; // +1 for null terminator.
+		memcpy(this.buffer, string.buffer, length);
+		this.buffer[length] = '\0';
 	}
 
 	/*
@@ -221,4 +251,64 @@ String struct {
 	fn empty() bool {
 		return length == 0;
 	}
+}
+
+/*
+ * Converts a 64 bit unsigned integer to
+ * a string containing the digits in base-10.
+ */
+fn to_string(i uint64) String {
+	BUFFER_SIZE :: 21;
+	buffer char[BUFFER_SIZE];
+
+	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
+	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+	
+	return String{ ptr, length };
+}
+
+/*
+ * Converts a 64 bit signed integer to
+ * a string containing the digits in base-10.
+ */
+fn to_string(i int64) String {
+	BUFFER_SIZE :: 21 + 1;
+	buffer char[BUFFER_SIZE];
+
+	is_neg := i < 0;
+	if is_neg {
+		i = -i;
+	}
+
+	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
+	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+
+	if is_neg {
+		--ptr;
+		*ptr = '-';
+		++length;
+	}
+
+	return String{ ptr, length };
+}
+
+fn to_string(i uint) String {
+	return to_string(cast(uint64) i);
+}
+
+fn to_string(i int) String {
+	return to_string(cast(int64) i);
+}
+
+fn to_string(b bool) String {
+	// TODO: can be replaced with a ternary operator.
+	if b {
+		return String{ "true", 4 };
+	} else {
+		return String{ "false", 5 };
+	}
+}
+
+fn to_string(c char) String {
+	return String{ &c, 1 };
 }

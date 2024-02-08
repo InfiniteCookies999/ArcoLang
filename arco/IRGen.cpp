@@ -2511,15 +2511,21 @@ void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value) {
 }
 
 void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct) {
-	// TODO: In the future if their is a copy constructor call that instead!
-	llvm::StructType* LLStructType =  llvm::cast<llvm::StructType>(LLFromAddr->getType()->getPointerElementType());
-	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
-	llvm::Align LLAlignment = LLStructLayout->getAlignment();
-	Builder.CreateMemCpy(
-		LLToAddr, LLAlignment,
-		LLFromAddr, LLAlignment,
-		SizeOfTypeInBytes(LLStructType)
-	);
+	if (Struct->CopyConstructor) {
+		// It has a copy constructor let's use that.
+		GenFuncDecl(Struct->CopyConstructor);
+		Builder.CreateCall(Struct->CopyConstructor->LLFunction, { LLToAddr, LLFromAddr });
+	} else {
+		// Fallback on memcopy if no copy constructor.
+		llvm::StructType* LLStructType =  llvm::cast<llvm::StructType>(LLFromAddr->getType()->getPointerElementType());
+		const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
+		llvm::Align LLAlignment = LLStructLayout->getAlignment();
+		Builder.CreateMemCpy(
+			LLToAddr, LLAlignment,
+			LLFromAddr, LLAlignment,
+			SizeOfTypeInBytes(LLStructType)
+		);
+	}
 }
 
 void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct) {
@@ -2769,6 +2775,8 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool 
 			llvm::Value* LLAssignment = GenRValue(Value);
 			Builder.CreateStore(LLAssignment, LLAddress);
 		}
+	} else if (Value->Ty->GetKind() == TypeKind::Struct) {
+		CopyStructObject(LLAddress, GenNode(Value), static_cast<StructType*>(Value->Ty)->GetStruct());
 	} else {
 		llvm::Value* LLAssignment = GenRValue(Value);
 		// -- DEBUG

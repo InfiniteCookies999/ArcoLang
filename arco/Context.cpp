@@ -135,6 +135,8 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "static"   , TokenKind::KW_STATIC    });
 	TokenKeywordMap.insert({ "delete"   , TokenKind::KW_DELETE    });
 	TokenKeywordMap.insert({ "sizeof"   , TokenKind::KW_SIZEOF    });
+	TokenKeywordMap.insert({ "copy"     , TokenKind::KW_COPY      });
+	TokenKeywordMap.insert({ "move"     , TokenKind::KW_MOVE      });
 	TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });
 	TokenKeywordMap.insert({ "fn"       , TokenKind::KW_FN        });
 	TokenKeywordMap.insert({ "struct"   , TokenKind::KW_STRUCT    });
