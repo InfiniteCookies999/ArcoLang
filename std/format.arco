@@ -3,7 +3,7 @@ import win32;
 out := OutStream{ win32.GetStdHandle(-11), false };
 err := OutStream{ win32.GetStdHandle(-12), false };
 
-in  := InStream { win32.GetStdHandle(-10), false };
+in  := LineStream{ win32.GetStdHandle(-10), false };
 
 // TODO: Functions are redundent because there is no support for
 //       templating yet!
@@ -31,6 +31,10 @@ fn print(b bool) {
 	out.write(b);
 }
 
+fn print(c char) {
+	out.write(c);
+}
+
 fn println(msg cstr) {
 	out.writeln(msg);
 }
@@ -49,6 +53,10 @@ fn println(msg String*) {
 
 fn println(b bool) {
 	out.writeln(b);
+}
+
+fn println(c char) {
+	out.writeln(c);
 }
 
 fn println() {
@@ -78,6 +86,10 @@ fn eprint(b bool) {
 	err.write(b);
 }
 
+fn eprint(c char) {
+	err.write(c);
+}
+
 fn eprintln(msg cstr) {
 	err.writeln(msg);
 }
@@ -98,6 +110,10 @@ fn eprintln(b bool) {
 	err.writeln(b);
 }
 
+fn eprintln(c char) {
+	err.writeln(c);
+}
+
 fn eprintln() {
 	err.writeln();
 }
@@ -105,10 +121,26 @@ fn eprintln() {
 // Reading from terminal
 //----------------------------------------------
 
-fn read(buffer char*, length int) int {
-	return in.read(buffer, length);
-}
-
 fn read_line() String {
 	return in.read_line();
+}
+
+fn read_string() String {
+	return in.read_string();
+}
+
+fn read_int() int {
+	return in.read_int();
+}
+
+fn read_int(base int) int {
+	return in.read_int32(base);
+}
+
+fn read_bool() bool {
+	return in.read_bool();
+}
+
+fn read_char() char {
+	return in.read_char();
 }

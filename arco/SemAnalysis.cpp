@@ -1680,8 +1680,16 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 
 		FuncDecl* FirstCanidate = (*Canidates)[0];
 
+		llvm::SmallVector<TypeInfo> ArgTypes;
+		ArgTypes.reserve(Args.size());
+		for (NonNamedValue Arg : Args) {
+			ArgTypes.push_back(TypeInfo{
+				Arg.E->Ty,
+				Arg.E->HasConstAddress
+				});
+		}
 		std::string ErrorMsg = "Could not find overloaded " + std::string(CallType)
-			+ " '" + FirstCanidate->Name.Text.str() + "'.";
+			+ " '" + GetFuncDefForError(ArgTypes, FirstCanidate) + "'.";
 
 		ErrorMsg += "\n\n  Possible Canidates:";
 		ulen LongestDefLength = 0;

@@ -41,6 +41,10 @@ OutStream struct {
 		}
 	}
 
+	fn write(c char) {
+		write(&c, 1);
+	}
+
 	fn write(i int64) {
 		if i < 0 {
 			i = -i;
@@ -51,31 +55,13 @@ OutStream struct {
 	}
 
 	fn write(i uint64) {
-		if i == 0 {
-			write("0");
-			return;
-		}
+		BUFFER_SIZE :: 21;
+		buffer char[BUFFER_SIZE];
 
-		// TODO: Performance wise this can be improved just writing
-		//       backwards into the buffer using pointer arithmetic.
-		length := 0;
-		buffer char[21];
+		ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
 
-		v := i;
-		loop v > 0 {
-			v = v / 10;
-			length = length + 1;
-		}
-
-		scan := length - 1;
-		loop i > 0 {
-			val uint64 = (i % 10) + 48;
-			buffer[scan] = cast(char) val;
-			scan = scan - 1;
-			i = i / 10;
-		}
-
-		write(buffer, length);
+		length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+		write(ptr, length);
 	}
 
 	// ----------------------------------------
@@ -103,6 +89,11 @@ OutStream struct {
 
 	fn writeln(b bool) {
 		write(b);
+		write("\n", 1);
+	}
+
+	fn writeln(c char) {
+		write(c);
 		write("\n", 1);
 	}
 

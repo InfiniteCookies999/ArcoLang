@@ -24,12 +24,15 @@ FLAG_CREATE :: 0x0008u;
  */
 fn read(path cstr) String {
 	
+	// TODO: hacky: relying on obtaining the underlying
+	// InStream from the BufferedStream. open should be
+	// able to specify which stream you want.
+
 	stream := open(path, FLAG_IN);
-	size   := stream.get_size();
+	size   := stream.in.get_size();
 	buffer := new char[size + 1];
 	
-	stream.read(buffer, size);
-	stream.close();
+	stream.in.read(buffer, size);
 	
 	// Null terminating
 	buffer[size] = '\0';
@@ -45,7 +48,7 @@ fn exists(path cstr) bool {
 	return attribs != win32.INVALID_FILE_ATTRIBUTES;
 }
 
-fn open(path cstr, flags uint) InStream {
+fn open(path cstr, flags uint) BufferedStream {
 	access_flags uint32 = 0;
 	share_flags  uint32 = 0;
 	create_flags uint32 = 0;
@@ -86,5 +89,5 @@ fn open(path cstr, flags uint) InStream {
 	}
 	
 	// TODO: What if they want a stream to write?
-	return InStream{ handle };
+	return BufferedStream{ handle };
 }

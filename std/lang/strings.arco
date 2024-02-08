@@ -54,6 +54,168 @@ String struct {
 		}
 	}
 
+	/*
+	 * Parses the string into a signed an  integer
+	 * for using base-10. All the characters in the
+	 * string (excluding a leading + or -) must be digits
+	 * or _ for number seperation.
+	 *
+	 * The number is expected to fit into a 32 bit integer.
+	 *
+	 * @return a parsed signed integer.
+	 */
+	fn parse_int() int {
+		return parse_int32();
+	}
+
+	/*
+	 * Parses the string into a signed 32 bit integer
+	 * for using base-10. All the characters in the
+	 * string (excluding a leading + or -) must be digits
+	 * or _ for number seperation.
+	 *
+	 * @return a parsed signed integer.
+	 */
+	fn parse_int32() int32 {
+		return parse_int32(10);
+	}
+
+	/*
+	 * Parses the string into a signed 32 bit integer
+	 * for the given base. All the characters in the
+	 * string (excluding a leading + or -) must be digits
+	 * or _ for number seperation.
+	 *
+	 * @param  base to be used during parsing.
+	 * @return a parsed signed integer.
+	 */
+	fn parse_int32(base int) uint32 {
+		// TODO: Provide proper error handling once supported!
+		
+		if empty() {
+			panic("Parse errror: empty string");
+		}
+
+		if base < MIN_PARSE_BASE {
+			panic("Parse error: base < PARSE_MIN_BASE");
+		}
+
+		if base > MAX_PARSE_BASE {
+			panic("Parse error: base > PARSE_MAX_BASE");
+		}
+
+		is_neg := false;
+		i := 0;
+		if base == 16 && buffer[0] == '0' && buffer[1] == 'x' {
+			i = 2;
+		}
+		uc bool = base >= 11 && base <= 16;
+		
+
+		first := buffer[i];
+		if first < '0' {
+			if first == '-' {
+				is_neg = true;
+			} else if first != '+' {
+				panic("Parse error: Invalid start to characters");
+			}
+
+			if length == 1 {
+				panic("Parse error: + or - by itself");
+			}
+
+			++i; // Move over the + or - character.
+		}
+
+		result, prev_value int32;
+		loop i < length {
+			ch := buffer[i++];
+			if ch == NUMBER_SEPERATOR {
+				continue;
+			}
+
+			if uc {
+				ch = uppercase(ch);
+			}
+
+			digit int32 = cast(int32) to_digit_for_base(ch, base);
+			if digit < 0 {
+				panic("Parse error: character was not a digit");
+			}
+
+			prev_value = result;
+			result     = result * base + digit;
+
+			if result / base < prev_value {
+				panic("Parse error: Numeric overflow");
+			}
+		}
+		
+		// TODO: Would be nice to replace with ternary operator.
+		if is_neg {
+			return -result;
+		} else {
+			return result;
+		}
+	}
+
+	/*
+	 * Parses the string into a boolean.
+	 *
+	 * Must either be "true" or "false".
+	 */
+	fn parse_bool() bool {
+		// TODO: Provide proper error handling once supported!
+		if empty() {
+			panic("Parse error: empty string");
+		}
+
+		if equals("true", 4) {
+			return true;
+		} else if equals("false", 5) {
+			return false;
+		} else {
+			panic("Parse error: expected true or false");
+			return false;
+		}
+	}
+
+	/*
+	 * Parses the string into a character.
+	 */
+	fn parse_char() char {
+		// TODO: Provide proper error handling once supported!
+
+		if empty() {
+			panic("Parse error: empty string");
+		}
+		if length != 1 {
+			panic("Parse error: length > 1");
+		}
+
+		return buffer[0];
+	}
+
+	fn equals(s String*) bool {
+		return equals(s.buffer, s.length);
+	}
+
+	fn equals(s cstr) bool {
+		return equals(s, strlen(s));
+	}
+
+	fn equals(s cstr, s_length int) bool {
+		if s_length != length {
+			return false;
+		}
+		loop i := 0; i < length; i++ {
+			if buffer[i] != s[i] {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	fn empty() bool {
 		return length == 0;
 	}

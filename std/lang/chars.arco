@@ -1,0 +1,122 @@
+
+/*
+ * Allow numbers to have underscores when parsing.
+ */
+NUMBER_SEPERATOR :: '_';
+
+MIN_PARSE_BASE :: 2;
+MAX_PARSE_BASE :: 64;
+
+/*
+ * A digit table that takes a digit and returns the corresponding
+ * character within a base-64 range. This table may also work for
+ * bases less than 64 bits.
+ *
+ * This table does not correspond to RFC-4648 because it is designed
+ * designed to support easy conversions of standard base 10 and
+ * base 16 characters.
+ */
+DIGIT_TO_BASE64_TABLE :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz?=";
+
+/*
+ * A table that takes a character and returns the corresponding digit
+ * within a base-64 range. This table may also work for bases less than
+ * 64 bits.
+ *
+ * This table does not correspond to RFC-4648 because it is designed
+ * designed to support easy conversions of standard base 10 and
+ * base 16 characters.
+ */
+BASE64_CHAR_DIGIT_TABLE :: [
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 0-19
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 20-39
+    -1, -1, -1, -1, -1, -1, -1, -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1,   // 40-59
+    -1, 63, -1, 62, -1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   // 60-79
+    25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, -1, -1, -1, -1, -1, -1, 36, 37, 38,   // 80-99
+    39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,   // 100-119
+    59, 60, 61, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 120-139
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 140-159
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 160-179
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 180-199
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 200-219
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 220-229
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 230-249
+	-1, -1, -1, -1, -1, -1                                                            // 250-255
+];
+
+/*
+ * Convets a character into a subsequent digit for bases
+ * between MIN_PARSE_BASE and MAX_PARSE_BASE.
+ *
+ * If you are looking to convert hexidecimal characters convert
+ * the character to lowercase first.
+ */
+fn to_digit_for_base(c char, base int) int {
+	digit := BASE64_CHAR_DIGIT_TABLE[c];
+	// TODO: ternary operators.
+	if digit >= 0 && digit < base {
+		return digit;
+	} else {
+		return -1;
+	}
+}
+
+/*
+ * Fills a buffer with the digits of the valie given the
+ * provided base. This function does NOT null terminate
+ * the buffer.
+ *
+ * This function assumes MIN_PARSE_BASE <= base <= MAX_PARSE_BASE.
+ *
+ * @param value         the value whose digits fill the buffer.
+ * @param end_of_buffer the pointer to the end of a pre-allocated
+ *                      buffer to put digits into.
+ * @param base          the numeric base of the value.
+ *
+ * @return              the pointer to the start of the character
+ *                      string containing the digits.
+ */
+fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
+	ptr := end_of_buffer;
+
+	if value == 0 {
+		*ptr = '0';
+		return ptr;
+	}
+
+	loop value > 0 {
+		digit uint64 = value % base;
+		value /= cast(uint64) base;
+
+		*ptr = DIGIT_TO_BASE64_TABLE[digit];
+		--ptr;
+	}
+
+	return ptr + 1;
+}
+
+/*
+ * Converts the character to lowercase if the
+ * character is uppercase.
+ */
+fn lowercase(c char) char {
+	// TODO: ternary operator.
+	if c >= 65 && c <= 90 {
+		return c + 32;
+	} else {
+		return c;
+	}
+}
+
+/*
+ * Converts the character to uppercase if
+ * the character is lowercase.
+ */
+fn uppercase(c char) char {
+	// TODO: ternary operator.
+	if c >= 97 && c <= 122 {
+		return c - 32;
+	} else {
+		return c;
+	}
+}

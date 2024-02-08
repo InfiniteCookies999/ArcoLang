@@ -1,0 +1,29 @@
+
+/*
+ * A Buffered input stream that uses a buffer
+ * and reads from the handle larger chunks at
+ * a time.
+ */
+BufferedStream struct {
+	
+	BUFFER_SIZE :: 8192;
+	buffer char[BUFFER_SIZE];
+
+	// How long the currently read buffer is.
+	read_length := 0;
+	// Position offset into the buffer.
+	pos         := 0;
+
+	in := InStream{ null }; // TODO: Need way to detect initialization in constructors.
+
+	// TODO: Do not support move operators yet to implement this
+	// correctly. fn BufferedStream(in InStream) {}
+
+	fn BufferedStream(handle void*, auto_close := true) {
+		in = InStream{ handle, auto_close };
+	}
+
+	fn close() {
+		in.close();
+	}
+}
