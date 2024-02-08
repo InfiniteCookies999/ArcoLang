@@ -24,8 +24,8 @@ namespace arco {
 	struct FuncDecl;
 	struct VarDecl;
 	struct Expr;
-	using ScopeStmts = llvm::SmallVector<AstNode*, 8>;
-	using FuncsList  = llvm::SmallVector<FuncDecl*, 4>;
+	using ScopeStmts = llvm::SmallVector<AstNode*>;
+	using FuncsList  = llvm::SmallVector<FuncDecl*>;
 
 	enum class AstKind {
 		
@@ -198,6 +198,15 @@ namespace arco {
 		// function so they can be allocated at the
 		// start of the function
 		llvm::SmallVector<VarDecl*, 4> AllocVars;
+
+		struct InitializerValue {
+			Identifier FieldName;
+			Expr*      Assignment;
+		};
+		// Initializer values for constructors.
+		llvm::SmallVector<InitializerValue> InitializerValues;
+
+		Expr* GetInitializerValue(VarDecl* Field);
 
 		// If not empty it defines the explicit name for a linked
 		// function.

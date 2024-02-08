@@ -6,6 +6,8 @@ String struct {
 
 	fn ~String() {
 		delete buffer;
+		buffer = null;
+		length = 0;
 	}
 
 	/*

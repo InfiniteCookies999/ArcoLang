@@ -14,13 +14,13 @@ LineStream struct {
 	// Position offset into the buffer.
 	pos         := 0;
 
-	in := InStream{ null }; // TODO: Need way to detect initialization in constructors.
+	in InStream;
 
 	// TODO: Do not support move operators yet to implement this
 	// correctly. fn LineStream(in InStream) {}
 
-	fn LineStream(handle void*, auto_close := true) {
-		in = InStream{ handle, auto_close };
+	fn LineStream(handle void*, auto_close := true)
+		: in(InStream{ handle, auto_close }) {
 	}
 
 	/*

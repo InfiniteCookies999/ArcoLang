@@ -201,10 +201,65 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 	// -- DEBUG
 	// llvm::outs() << "Checking function: " << Func->Name << "\n";
 
-	CheckFuncParams(Func);
+	if (!Func->IsConstructor && !Func->InitializerValues.empty()) {
+		Error(Func, "Only constructors can have initializer values");
+	}
+	
+ 	CheckFuncParams(Func);
 	if (Func->RetTy->GetKind() == TypeKind::Array) {
 		Error(Func, "Functions cannot return arrays");
 	}
+	
+	if (Func->IsConstructor) {
+
+		StructDecl* Struct = Func->Struct;
+		if (!Struct->HasBeenChecked) {
+			SemAnalyzer Analyzer(Context, Struct);
+			Analyzer.CheckStructDecl(Struct);
+		}
+
+		for (const FuncDecl::InitializerValue& InitValue : Func->InitializerValues) {
+			CheckNode(InitValue.Assignment);
+			if (!Struct->FindField(InitValue.FieldName)) {
+				Error(Func, "No field '%s' for initializer value", InitValue.FieldName);
+			}
+		}
+
+		for (VarDecl* Field : Struct->Fields) {
+			if (Field->IsBeingChecked) {
+				// TODO: may be good to provide a better error message but honestly this
+				// should very rarely occure.
+				Error(Field, "Field of constructor has circular dependency");
+				continue;
+			}
+
+			Expr* InitValue = Func->GetInitializerValue(Field);
+			if (InitValue) {
+				if (!IsAssignableTo(Field->Ty, InitValue)) {
+					DisplayErrorForTypeMismatch(
+						"Cannot assign value of type '%s' to field of type '%s'",
+						InitValue->Loc,
+						InitValue,
+						Field->Ty);
+				}
+
+				if (ViolatesConstAssignment(Field, InitValue)) {
+					Error(InitValue, "Cannot assign const memory to non-const field");
+				}
+			}
+			
+			if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
+				StructDecl* StructForTy = static_cast<StructType*>(Field->Ty)->GetStruct();
+
+				if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
+					if (!InitValue) {
+						Error(Func, "No default constructor to initialize the '%s' field", Field->Name);
+					}
+				}
+			}
+		}
+	}
+
 
 	if (Func->Mods & ModKinds::NATIVE) {
 		return;
@@ -585,7 +640,8 @@ return;
 		}
 
 		if (StructForTy) {
-			if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
+			if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor &&
+				!Var->IsField() && !Var->IsParam()) {
 				VAR_YIELD(Error(Var, "No default constructor to initialize the variable"), false);
 			} else if (StructForTy->DefaultConstructor) {
 				Context.RequestGen(StructForTy->DefaultConstructor);
@@ -2001,7 +2057,15 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
 			continue;
 		}
 
-		Type* FieldTy = Struct->Fields[i]->Ty;
+		VarDecl* Field = Struct->Fields[i];
+		Type* FieldTy = Field->Ty;
+		if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
+			StructDecl* StructForTy = static_cast<StructType*>(Field->Ty)->GetStruct();
+
+			if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
+				Error(ErrorLoc, "No default constructor to initialize the '%s' field", Field->Name);
+			}
+		}
 		if (!IsAssignableTo(FieldTy, Value.E)) {
 			DisplayErrorForTypeMismatch(
 				"Cannot assign value of type '%s' to field of type '%s'",

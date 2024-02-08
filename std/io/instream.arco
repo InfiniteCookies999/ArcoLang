@@ -12,6 +12,7 @@ InStream struct {
 	fn ~InStream() {
 		if auto_close {
 			close();
+			handle = null;
 		}
 	}
 

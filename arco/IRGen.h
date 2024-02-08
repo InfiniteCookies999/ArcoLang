@@ -186,7 +186,7 @@ namespace arco {
 
 		void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 
-		void GenConstructorBodyFieldAssignments(StructDecl* Struct);
+		void GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct);
 
 		std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 

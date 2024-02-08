@@ -147,7 +147,6 @@ namespace arco {
 		void DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToTy);
 		void DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLoc ErrorLoc,
 			                             Expr* FromExpr, Type* ToTy);
-		
 
 		void Error(SourceLoc Loc, const char* Msg) {
 			Log.BeginError(Loc, Msg);

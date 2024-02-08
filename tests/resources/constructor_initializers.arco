@@ -1,0 +1,23 @@
+
+Bar struct {
+	a int;
+
+	fn Bar(a int) {
+		this.a = a;
+	}
+}
+
+Foo struct {
+	bar Bar;
+	b int;
+	fn Foo(bar Bar, b int)
+		: bar(bar), b(b) {
+	}
+}
+
+fn main() {
+	f Foo = Foo{ Bar{77}, 32 };
+	print(f.bar.a);
+	print(" ", 1);
+	print(f.b);
+}

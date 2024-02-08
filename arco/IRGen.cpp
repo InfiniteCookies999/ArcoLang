@@ -476,7 +476,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 	}
 
 	if (Func->IsConstructor) {
-		GenConstructorBodyFieldAssignments(Func->Struct);
+		GenConstructorBodyFieldAssignments(Func, Func->Struct);
 	}
 
 	if (Func == Context.MainEntryFunc) {
@@ -2522,10 +2522,12 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
 	);
 }
 
-void arco::IRGenerator::GenConstructorBodyFieldAssignments(StructDecl* Struct) {
+void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct) {
 	for (VarDecl* Field : Struct->Fields) {
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
-		if (Field->Assignment) {
+		if (Expr* InitValue = Func->GetInitializerValue(Field)) {
+			GenAssignment(LLFieldAddr, InitValue, Field->HasConstAddress);
+		} else if (Field->Assignment) {
 			GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);

@@ -407,14 +407,31 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	}
 	Match(')');
 
-	if ((!(Mods & ModKinds::NATIVE) && CTok.IsNot('{')) ||
-		  (Mods & ModKinds::NATIVE) && CTok.IsNot(';')) {
+	if (CTok.IsNot('{') && CTok.IsNot(':')) {
 		if (CTok.Is(TokenKind::KW_CONST)) {
 			NextToken(); // Consuming 'const' token.
 			Func->ReturnsConstAddress = true;
 		}
 		Func->RetTy = ParseType(true);
 	} else {
+		if (CTok.Is(':')) {
+			NextToken(); // Consuming ':' token.
+			bool MoreInitializers = false;
+			do {
+				Identifier FieldName = ParseIdentifier("Expected identifier for field of initializer value");
+				Match('(', "For initializer value");
+				Expr* Assignment = ParseExpr();
+				Match(')', "For initializer value");
+				Func->InitializerValues.push_back(FuncDecl::InitializerValue{
+					FieldName,
+					Assignment
+				});
+				MoreInitializers = CTok.Is(',');
+				if (MoreInitializers) {
+					NextToken();
+				}
+			} while (MoreInitializers);
+		}
 		Func->RetTy = Context.VoidType;
 	}
 
