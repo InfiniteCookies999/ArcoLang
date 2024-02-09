@@ -3,6 +3,13 @@ import win32;
 
 import std.InStream;
 
+// TODO: should support a Path struct for minipulating file
+// paths and allow the functions to be compatible.
+
+// TODO: directory iterating but need iterators in the lang first.
+
+// TODO: file renaming.
+
 // TODO: Will eventually want to replace with an enum!
 //
 
@@ -40,12 +47,143 @@ fn read(path cstr) String {
 }
 
 /*
+ * Reads an entire file into a string.
+ */
+fn read(path String*) String {
+	return read(path.buffer);
+}
+
+/*
  * Returns true if the file system has a file or
  * folder at the given path.
  */
 fn exists(path cstr) bool {
 	attribs uint32 = win32.GetFileAttributesA(path);
 	return attribs != win32.INVALID_FILE_ATTRIBUTES;
+}
+
+/*
+ * Returns true if the file system has a file or
+ * folder at the given path.
+ */
+fn exists(path String*) bool {
+	return exists(path.buffer);
+}
+
+/*
+ * Returns true if the file system has a file but
+ * is not a directory at the given path.
+ */
+fn file_exists(path cstr) bool {
+	attribs uint32 = win32.GetFileAttributesA(path);
+	return attribs != win32.INVALID_FILE_ATTRIBUTES &&
+	      (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+/*
+ * Returns true if the file system has a file but
+ * is not a directory at the given path.
+ */
+fn file_exists(path String*) bool {
+	return file_exists(path.buffer);
+}
+
+/*
+ * Returns true if the file system has a directory
+ * at the given path.
+ */
+fn directory_exists(path cstr) bool {
+	attribs uint32 = win32.GetFileAttributesA(path);
+	return attribs != win32.INVALID_FILE_ATTRIBUTES &&
+	      (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+/*
+ * Returns true if the file system has a directory
+ * at the given path.
+ */
+fn directory_exists(path String*) bool {
+	return directory_exists(path.buffer);
+}
+
+/*
+ * Creates the directory(s) at the given path. Returns
+ * true if created.
+ *
+ * @Param mkparents if true it will also make the
+ *                  necessary parent directories.
+ */
+fn mkdir(path cstr, mkparents := false) bool {
+	// TODO: implement making parents.
+	return win32.CreateDirectoryA(path, null) != 0;
+}
+
+/*
+ * Creates the directory(s) at the given path. Returns
+ * true if created.
+ *
+ * @Param mkparents if true it will also make the
+ *                  necessary parent directories.
+ */
+fn mkdir(path String*, mkparents := false) bool {
+	return mkdir(path.buffer);
+}
+
+/*
+ * Deletes the file or directory if it exists.
+ * Returns true if it succeeded.
+ *
+ * If deleting a directory the directory must be
+ * empty.
+ */
+fn remove(path cstr) bool {
+	attribs uint32 = win32.GetFileAttributesA(path);
+	if attribs == win32.INVALID_FILE_ATTRIBUTES {
+		return false;
+	}
+	if (attribs & win32.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		return win32.RemoveDirectoryA(path) != 0;
+	}
+	return win32.DeleteFileA(path) != 0;
+}
+
+/*
+ * Deletes the file or directory if it exists.
+ * Returns true if it succeeded.
+ *
+ * If deleting a directory the directory must be
+ * empty.
+ */
+fn remove(path String*) bool {
+	return remove(path.buffer);
+}
+
+/*
+ * Returns the last time the file was modified as a 64 bit
+ * unsigned integer representing the amount of 100-nanosecond
+ * intervals since January 1, 1601 (UTC).
+ */
+fn last_modified(path cstr) uint64 {
+	// TODO: Proper error handling.
+
+	handle := win32.CreateFileA(path,
+	                            win32.GENERIC_ALL,
+								win32.FILE_SHARE_READ,
+								null,
+								win32.OPEN_EXISTING,
+								0,
+								null);
+
+	if handle == win32.INVALID_HANDLE_VALUE {
+		panic("Could not get last modified time for path");
+	}
+
+	create_time, access_time, write_time uint64;
+	if win32.GetFileTime(handle, &create_time, &access_time, &write_time) == 0 {
+		panic("Could not get last modified time for path");
+	}
+
+	return write_time;
 }
 
 fn open(path cstr, flags uint) BufferedStream {

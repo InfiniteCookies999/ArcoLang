@@ -22,9 +22,9 @@ int main() {
 
 	if (!arco::FoundCompileError) {
 		std::string StdOutResult;
-		int Errors = arco::ExeHiddenProcess("program", StdOutResult);
+		int Ok = arco::ExeHiddenProcess("program", StdOutResult);
 
-		if (Errors) {
+		if (!Ok) {
 			llvm::outs() << "Failed to run the compiled program\n";
 			return 1;
 		} else {

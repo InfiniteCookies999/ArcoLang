@@ -11,7 +11,7 @@
 #include <Logger.h>
 #include <llvm/Support/raw_ostream.h>
 
-int arco::ExeHiddenProcess(const char* Process, std::string& Result) {
+bool arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 #ifdef _WIN32
 	HANDLE WriteHandleIn, WriteHandle;
 	
@@ -22,7 +22,7 @@ int arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 	
 	if (!CreatePipe(&WriteHandleIn, &WriteHandle, &SecurityAttr, 0)) {
 		Logger::GlobalError(llvm::errs(), "Internal compiler error: Failed to create pipe for process");
-		return 1;
+		return false;
 	}
 
 	PROCESS_INFORMATION ProcessInfo;
@@ -41,7 +41,7 @@ int arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 		                &ProcessInfo)) {
 		CloseHandle(WriteHandle);
 		CloseHandle(WriteHandleIn);
-		return 1;
+		return false;
 	}
 
 	bool RunningProcess = true;
@@ -78,7 +78,7 @@ int arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 	CloseHandle(WriteHandleIn);
 	CloseHandle(ProcessInfo.hProcess);
 	CloseHandle(ProcessInfo.hThread);
-	return ExitCode;
+	return true;
 #endif
 }
 

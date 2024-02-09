@@ -44,6 +44,15 @@ STD_ERROR_HANDLE  :: -12'u32;
 native fn GetStdHandle(nStdHandle uint32) void*;
 
 // ------------------------------------------------
+// Win32: winbase.h
+
+native fn CreateDirectoryA(lpPathName cstr, lpSecurityAttributes void*) int32;
+
+native fn DeleteFileA(lpFileName cstr) int32;
+
+native fn RemoveDirectoryA(lpPathName cstr) int32;
+
+// ------------------------------------------------
 // Win32: fileapi.h
 
 CREATE_NEW        :: 1'u32;
@@ -82,6 +91,11 @@ native fn CreateFileA(lpFileName            cstr,
 native fn GetFileAttributesA(lpFileName cstr) uint32;
 
 native fn GetFileSize(hFile void*, lpFileSizeHigh uint*) uint32;
+
+native fn GetFileTime(hFile void*,
+                      lpCreationTime uint64*,
+                      lpLastAccessTime uint64*,
+                      lpLastWriteTime uint64*) int32;
 
 // ------------------------------------------------
 // Win32: libloaderapi.h
