@@ -125,6 +125,16 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
 	i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
 
+	if (!StandAlone) {
+		Module* StdModule = Context.ModNamesToMods.find("std")->second;
+		auto Itr = StdModule->DefaultNamespace->Structs.find(Context.StringIdentifier);
+		if (Itr == StdModule->DefaultNamespace->Structs.end()) {
+			Logger::GlobalError(llvm::errs(), "Standard library is missing 'String' struct");
+			return 1;
+		}
+		Context.StdStringStruct = Itr->second;
+	}
+
 	// Must do this early so that LLVM can correctly determine information for types
 	// during generating.
 	if (!InitLLVMNativeTarget()) {

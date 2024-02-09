@@ -168,6 +168,16 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 			Import.NSpace = Itr->second;
 		}
 	}
+
+	// Auto importing important structures.
+	if (Context.StdStringStruct) {
+		auto Itr = FScope->Imports.find(Context.StringIdentifier);
+		if (Itr == FScope->Imports.end()) {
+			FileScope::StructOrNamespaceImport Import;
+			Import.Struct = Context.StdStringStruct;
+			FScope->Imports.insert({ Context.StringIdentifier, Import });
+		}
+	}
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {

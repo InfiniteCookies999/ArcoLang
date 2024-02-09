@@ -94,3 +94,9 @@ native fn ExitProcess(uExitCode uint32) void;
 INVALID_HANDLE_VALUE :: cast(void*) -1'i64;
 
 native fn CloseHandle(hObject void*) int32;
+
+// ------------------------------------------------
+// Win32: profileapi.h
+
+native fn QueryPerformanceFrequency(lpFrequency int64*) bool;
+native fn QueryPerformanceCounter(lpPerformanceCount int64*) bool;

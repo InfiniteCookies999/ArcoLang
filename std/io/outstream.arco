@@ -95,6 +95,16 @@ OutStream struct {
 		write("\n", 1);
 	}
 
+	fn writeln(i int64) {
+		write(i);
+		write("\n", 1);
+	}
+
+	fn writeln(i uint64) {
+		write(i);
+		write("\n", 1);
+	}
+
 	fn writeln(b bool) {
 		write(b);
 		write("\n", 1);

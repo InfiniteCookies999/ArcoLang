@@ -15,3 +15,19 @@ fn panic(msg cstr) {
 	eprintln(msg);
 	exit(1);
 }
+
+// Used to keep track of time.
+performance_freq int64;
+
+fn current_nano_time() int64 {
+	if performance_freq == 0 {
+		win32.QueryPerformanceFrequency(&performance_freq);
+	}
+	current int64;
+	win32.QueryPerformanceCounter(&current);
+	return cast(int64) ((cast(f64) current/performance_freq) * 1E+9);
+}
+
+fn current_milli_time() int64 {
+	return current_nano_time() / cast(int64) 1e+6;
+}

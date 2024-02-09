@@ -54,6 +54,9 @@ namespace arco {
 		Identifier FastcallIdentifier;
 		llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
 
+		Identifier StringIdentifier;
+		StructDecl* StdStringStruct = nullptr;
+
 		Type* IntType;
 		Type* UIntType;
 		Type* VoidType;

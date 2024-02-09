@@ -47,6 +47,14 @@ fn println(msg cstr) {
 	out.writeln(msg);
 }
 
+fn println(i int64) {
+	out.writeln(i);
+}
+
+fn println(i uint64) {
+	out.writeln(i);
+}
+
 fn println(i int) {
 	out.writeln(i);
 }
@@ -115,6 +123,14 @@ fn eprintln(i int) {
 }
 
 fn eprintln(i uint) {
+	err.writeln(i);
+}
+
+fn eprintln(i int64) {
+	err.writeln(i);
+}
+
+fn eprintln(i uint64) {
 	err.writeln(i);
 }
 

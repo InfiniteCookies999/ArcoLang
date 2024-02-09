@@ -13,6 +13,7 @@ arco::ArcoContext::ArcoContext()
 	StdcallIdentifier(Identifier("stdcall")),
 	CdeclIdentifier(Identifier("cdecl")),
 	FastcallIdentifier(Identifier("fastcall")),
+	StringIdentifier(Identifier("String")),
 	CallConventions({
 		{ StdcallIdentifier,  llvm::CallingConv::X86_StdCall  },
 		{ CdeclIdentifier,	  llvm::CallingConv::C            },
