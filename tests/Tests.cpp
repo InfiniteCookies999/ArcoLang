@@ -26,8 +26,8 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 	if (!arco::FoundCompileError) {
 		std::string StdOutResult;
-		int Errors = arco::ExeHiddenProcess("program", StdOutResult);
-		if (Errors) {
+		int Ok = arco::ExeHiddenProcess("program", StdOutResult);
+		if (!Ok) {
 			llvm::outs() << "Failed to run the compiled program\n";
 			FailedTests.push_back(TestSource);
 			++Failed;
