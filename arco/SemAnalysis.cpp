@@ -1281,7 +1281,7 @@ YIELD_ERROR(UniOp);
 			UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
 				                             std::move(ParamTypes));
 		} else {
-			if (!IsLValue(UniOp->Value)) {
+			if (!IsLValue(UniOp->Value) && UniOp->Value->Ty->GetKind() != TypeKind::Struct) {
 				Error(UniOp, "Operator '%s' requires the value to be modifiable",
 					Token::TokenKindToString(UniOp->Op, Context));
 			}

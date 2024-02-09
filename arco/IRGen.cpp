@@ -1506,6 +1506,17 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 		return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
 	}
 	case '&': {
+		if (UniOp->Value->Is(AstKind::FUNC_CALL) &&
+			UniOp->Value->Ty->GetKind() == TypeKind::Struct) {
+			// Need a temporary struct to get the address of it.
+			llvm::Value* LLReturnedStruct = GenNode(UniOp->Value);
+			llvm::Value* LLAddr = CreateUnseenAlloca(GenType(UniOp->Value->Ty), "tmp.struct");
+			// TODO: use move constructor if available.
+			AddObjectToDestroyOpt(UniOp->Value->Ty, LLAddr);
+			
+			GenStoreStructRetFromCall(static_cast<FuncCall*>(UniOp->Value), LLAddr);
+			return LLAddr;
+		}
 		// When GenRValue is called it makes sure
 		// not to shave off the pointer value for
 		// this operator. Because of that all this
@@ -1635,7 +1646,7 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	}
 
 	Expr* Site = FieldAcc->Site;
-	llvm::Value* LLSite;
+	llvm::Value* LLSite;	
 	if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
 		FuncCall* Call = static_cast<FuncCall*>(Site);
 		LLSite = CreateUnseenAlloca(GenType(Call->Ty), "tmp.obj");
@@ -1647,7 +1658,8 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 
 	// Automatically dereference pointers!
 	if (Site->Ty->GetKind() == TypeKind::Pointer &&
-		Site->IsNot(AstKind::THIS_REF) /* Reference is already loaded. */) {
+		Site->IsNot(AstKind::THIS_REF) && /* Reference is already loaded. */
+		Site->IsNot(AstKind::FUNC_CALL) /* no address to load */) {
 		LLSite = CreateLoad(LLSite);
 		LLSite->setName("ptr.deref");
 	}

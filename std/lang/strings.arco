@@ -228,6 +228,31 @@ String struct {
 		return buffer[0];
 	}
 
+	fn append(s String*) String* {
+		return append(s.buffer, s.length);
+	}
+
+	fn append(s cstr) String* {
+		return append(s, strlen(s));
+	}
+
+	fn append(s cstr, length int) String* {
+		// TODO: should probably use capacities and grow by *2 when not enough space.
+
+		new_length := this.length + length;
+		new_buffer := new char[new_length + 1]; // +1 for null termination.
+
+		memcpy(new_buffer, this.buffer, this.length);
+		memcpy(new_buffer + this.length, s, length);
+		
+		delete this.buffer;
+		this.buffer = new_buffer;
+		this.length = new_length;
+		this.buffer[this.length] = '\0';
+
+		return this;
+	}
+
 	fn equals(s String*) bool {
 		return equals(s.buffer, s.length);
 	}
