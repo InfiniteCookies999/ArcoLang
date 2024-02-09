@@ -40,7 +40,8 @@ namespace arco {
 		bool DisplayLLVMIR = false;
 		// Once the program has finished compiling and linking
 		// the program will be executed.
-		bool RunProgram    = false;
+		bool RunProgram          = false;
+		bool RunInSeperateWindow = false;
 		// Creates debug information that debuggers like gdb
 		// can use to place breakpoints and examine variables
 		// in the source code as the program executes.
@@ -52,7 +53,7 @@ namespace arco {
 
 		~Compiler();
 
-		void Compile(llvm::SmallVector<Source>& Sources);
+		int Compile(llvm::SmallVector<Source>& Sources);
 	
 		void AddLibrary(const char* LibName) { Libraries.push_back(LibName); }
 		void AddLibraryPath(const char* LibPath) { LibrarySearchPaths.push_back(LibPath); }

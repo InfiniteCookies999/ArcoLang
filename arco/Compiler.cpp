@@ -51,7 +51,7 @@ arco::Compiler::~Compiler() {
 	delete &Context;
 }
 
-void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
+int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	
 	i64 ParseTimeBegin = GetTimeInMilliseconds();
 
@@ -64,7 +64,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		} else {
 			Logger::GlobalError(llvm::errs(),
 				"Environment variable missing for arco's standard library. Please set variable 'ArcoStdLibPath' to point towards the standard library");
-			return;
+			return 1;
 		}
 	}
 
@@ -129,7 +129,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	// during generating.
 	if (!InitLLVMNativeTarget()) {
 		Logger::GlobalError(llvm::errs(), "Failed to initialized LLVM native target");
-		return;
+		return 1;
 	}
 
 	if (!LLMachineTarget) {
@@ -147,7 +147,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		Context.RequestGen(Context.MainEntryFunc);
 	} else {
 		Logger::GlobalError(llvm::errs(), "Could not find entry point function");
-		return;
+		return 1;
 	}
 
 	while (!Context.QueuedDeclsToGen.empty()) {
@@ -171,6 +171,21 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		}
 	}
 
+	if (FoundCompileError) {
+		return 1;
+	}
+
+	IRGenerator IRGen(Context);
+	IRGen.GenGlobalInitFuncBody();
+
+	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
+		StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
+		Context.DefaultConstrucorsNeedingCreated.pop();
+		IRGen.GenImplicitDefaultConstructorBody(Struct);
+	}
+
+	IRGen.GenGlobalDestroyFuncBody();
+
 	// Checking any code that was not generated.
 	while (!Context.UncheckedDecls.empty()) {
 		Decl* D = *Context.UncheckedDecls.begin();
@@ -188,21 +203,6 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		SemAnalyzer::CheckForDuplicateFuncDeclarations(Mod);
 	}
 
-	if (FoundCompileError) {
-		return;
-	}
-
-	IRGenerator IRGen(Context);
-	IRGen.GenGlobalInitFuncBody();
-
-	while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
-		StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
-		Context.DefaultConstrucorsNeedingCreated.pop();
-		IRGen.GenImplicitDefaultConstructorBody(Struct);
-	}
-
-	IRGen.GenGlobalDestroyFuncBody();
-
 	i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
 	i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
@@ -210,7 +210,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	// llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
 
 	if (FoundCompileError) {
-		return;
+		return 1;
 	}
 
 	if (DisplayLLVMIR) {
@@ -228,7 +228,7 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	std::string ObjFileName = OutputName + ".o";
 	if (!WriteObjFile(ObjFileName.c_str(), Context.LLArcoModule, LLMachineTarget)) {
 		FoundCompileError = true;
-		return;
+		return 1;
 	}
 
 	std::string ExecutableName = OutputName;
@@ -252,11 +252,12 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 
 	llvm::outs() << ClangCommand << "\n";
 
-	i32 ExitCode = system(ClangCommand.c_str());
+	std::string Ignored;
+	i32 ExitCode = ExeProcess(ClangCommand.c_str(), false);
 	if (ExitCode) {
 		// Failed to link
 		FoundCompileError = true;
-		return;
+		return 1;
 	}
 
 	i64 LinkedIn = GetTimeInMilliseconds() - LinkTimeBegin;
@@ -300,11 +301,10 @@ void arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		<< std::filesystem::absolute(std::filesystem::current_path()).generic_string().c_str()
 		<< '/' << ExecutableName << '\n';
 
-	if (RunProgram) {
-#ifdef _WIN32
-		system(ExecutableName.c_str());
-#endif
+	if (RunProgram || RunInSeperateWindow) {
+		return ExeProcess(ExecutableName.c_str(), RunInSeperateWindow);
 	}
+	return 0;
 }
 
 void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen) {

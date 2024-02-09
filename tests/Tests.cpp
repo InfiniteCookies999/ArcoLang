@@ -1,5 +1,5 @@
-#include "TestProcessUtil.h"
 
+#include <Process.h>
 #include <Logger.h>
 #include <TermColors.h>
 #include <Compiler.h>
@@ -22,13 +22,12 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 	arco::Compiler Compiler;
 	Compiler.StandAlone = true;
-	//Compiler.DisplayLLVMIR = true;
-	//Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);
 
 	if (!arco::FoundCompileError) {
-		auto [StdOutResult, NoErrors] = RunProcess("program");
-		if (!NoErrors) {
+		std::string StdOutResult;
+		int Errors = arco::ExeHiddenProcess("program", StdOutResult);
+		if (Errors) {
 			llvm::outs() << "Failed to run the compiled program\n";
 			FailedTests.push_back(TestSource);
 			++Failed;
@@ -165,7 +164,6 @@ int main() {
 	RunTest(SRC("destructors/destructors12.arco"), "Destroyed!Destroyed!Destroyed!");
 	RunTest(SRC("destructors/destructors13.arco"), "NoContinueDestroyed!NoContinueDestroyed!Destroyed!NoContinueDestroyed!NoContinueDestroyed!");
 	
-	//RunTest(SRC("workpad"), "");
 	//RunTest(SRC("lots_of_errors.arco"), "");
 
 	if (Succeeded + Failed > 0) {

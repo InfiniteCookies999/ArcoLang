@@ -14,6 +14,7 @@ Basic Options (for more options use -more-options):
 
     -run
         Executes the program after it is compiled and linked.
+        Or use -run-seperate to run in a seperate window.
 
     -more-options
         Show more options that can be ran with arco.
@@ -39,6 +40,10 @@ Possible options:
 
     -run
         Executes the program after it is compiled and linked.
+
+    -run-seperate
+        Executes the program after it is compiled and linked
+        within a seperate window.
 
     -display-times
         Display how long different stages took.
@@ -182,6 +187,7 @@ int main(int argc, char* argv[]) {
 	OptManager.AddOption("display-llvm"  , &Compiler.DisplayLLVMIR);
 	OptManager.AddOption("stand-alone"   , &Compiler.StandAlone);
 	OptManager.AddOption("run"           , &Compiler.RunProgram);
+	OptManager.AddOption("run-seperate"  , &Compiler.RunInSeperateWindow);
 	OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
 	OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
 	OptManager.AddOption("disable-colors", &arco::DisableTerminalColors);
@@ -261,7 +267,5 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
-	Compiler.Compile(Sources);
-
-	return 0;
+	return Compiler.Compile(Sources);
 }
