@@ -101,7 +101,7 @@ fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
  */
 fn lowercase(c char) char {
 	// TODO: ternary operator.
-	if c >= 65 && c <= 90 {
+	if c >= 'A' && c <= 'Z' {
 		return c + 32;
 	} else {
 		return c;
@@ -114,9 +114,52 @@ fn lowercase(c char) char {
  */
 fn uppercase(c char) char {
 	// TODO: ternary operator.
-	if c >= 97 && c <= 122 {
+	if c >= 'a' && c <= 'z' {
 		return c - 32;
 	} else {
 		return c;
 	}
 }
+
+/*
+ * Checks if the character is a digit.
+ */
+fn isdigit(c char) bool {
+	return c >= '0' && c <= '9';
+}
+
+/*
+ * Checks if the character is alphanumeric.
+ * This means the character is between a-z or A-Z.
+ */
+fn isalpha(c char) bool {
+	return (c >= 'a' && c <= 'z') ||
+	       (c >= 'A' && c <= 'Z');
+}
+
+/*
+ * Checks if the character is ascii.
+ */
+fn isascii(c char) bool {
+	return c <= 127;
+}
+
+// TODO: come back to this once explicit array index
+// initialization works.
+/*
+ * Checks if the character is a special character.
+ */
+//fn isspecial(c char) bool {
+//	
+//}
+
+/*
+ * Checks if the character is a ascii whitespace
+ * character.
+ */
+fn iswspace(c char) bool {
+	return c == ' '  || c == '\t' ||
+	       c == '\r' || c == '\n' ||
+		   c == '\v' || c == '\f';
+}
+
