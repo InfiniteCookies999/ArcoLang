@@ -10,37 +10,36 @@ import std.InStream;
 
 // TODO: file renaming.
 
-// TODO: Will eventually want to replace with an enum!
-//
+IOFlag enum : uint32 {
+	IN     :: 0x0001;
+	OUT    :: 0x0002;	
 
-FLAG_IN  :: 0x0001u;
-FLAG_OUT :: 0x0002u;
-
-/*
- * More than once open instance of the
- * file can be opened and accessed at
- * the same time.
- */
-FLAG_SHARE :: 0x0004u;
-
-/* Creates the file if it does not exist. */
-FLAG_CREATE :: 0x0008u;
+	/*
+	 * More than once open instance of the
+	 * file can be opened and accessed at
+	 * the same time.
+	 */
+	SHARE  :: 0x0004;
+	
+	/* Creates the file if it does not exist. */
+	CREATE :: 0x0008;
+}
 
 /*
  * Reads an entire file into a string.
  */
 fn read(path cstr) String {
 	
-	// TODO: hacky: relying on obtaining the underlying
-	// InStream from the BufferedStream. open should be
-	// able to specify which stream you want.
-
-	stream := open(path, FLAG_IN);
-	size   := stream.in.get_size();
+	stream := open(path, IOFlag.IN);
+	size   := stream.get_size();
 	buffer := new char[size + 1];
 	
-	stream.in.read(buffer, size);
-	
+	read_bytes := stream.read(buffer, size);
+	if read_bytes != size {
+		// TODO: proper error handling
+		panic("Failed to read file");
+	}
+
 	// Null terminating
 	buffer[size] = '\0';
 	return String{ buffer, size, false };
@@ -186,7 +185,7 @@ fn last_modified(path cstr) uint64 {
 	return write_time;
 }
 
-fn open(path cstr, flags uint) BufferedStream {
+fn open(path cstr, flags IOFlag) InStream {
 	access_flags uint32 = 0;
 	share_flags  uint32 = 0;
 	create_flags uint32 = 0;
@@ -195,19 +194,19 @@ fn open(path cstr, flags uint) BufferedStream {
 		access_flags = win32.GENERIC_ALL;
 	}
 
-	if (flags & FLAG_IN) != 0 {
+	if (flags & IOFlag.IN) != 0 {
 		access_flags |= win32.GENERIC_READ;
 	}
 
-	if (flags & FLAG_OUT) != 0 {
+	if (flags & IOFlag.OUT) != 0 {
 		access_flags |= win32.GENERIC_WRITE;
 	}
 
-	if (flags & FLAG_SHARE) != 0 {
+	if (flags & IOFlag.SHARE) != 0 {
 		share_flags |= win32.FILE_SHARE_READ;
 	}
 
-	if (flags & FLAG_CREATE) != 0 {
+	if (flags & IOFlag.CREATE) != 0 {
 		create_flags |= win32.CREATE_NEW;
 	} else {
 		create_flags |= win32.OPEN_EXISTING;
@@ -226,6 +225,5 @@ fn open(path cstr, flags uint) BufferedStream {
 		panic("Failed to open filestream!");
 	}
 	
-	// TODO: What if they want a stream to write?
-	return BufferedStream{ handle };
+	return InStream{ handle };
 }

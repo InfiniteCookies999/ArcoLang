@@ -23,6 +23,7 @@ namespace arco {
 		void CheckFuncDecl(FuncDecl* Func);
 		
 		void CheckStructDecl(StructDecl* Struct);
+		void CheckEnumDecl(EnumDecl* Enum);
 
 		void CheckVarDecl(VarDecl* Var);
 
@@ -92,7 +93,8 @@ namespace arco {
 			                               const llvm::SmallVector<NonNamedValue, 2>& Args);
 		bool CompareAsCanidate(FuncDecl* Canidate,
 			                   const llvm::SmallVector<NonNamedValue, 2>& Args,
-			                   ulen& NumConflicts);
+			                   ulen& NumConflicts,
+			                   ulen& EnumImplicitConflicts);
 		void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 			                                   FuncsList* Canidates,
 			                                   const llvm::SmallVector<NonNamedValue, 2>& Args);

@@ -15,6 +15,12 @@ namespace arco {
 	class ArcoContext;
 	struct Expr;
 	struct StructDecl;
+	struct EnumDecl;
+	class ContainerType;
+	class PointerType;
+	class ArrayType;
+	class StructType;
+	class FunctionType;
 
 	enum class TypeKind {
 		Int,
@@ -44,11 +50,16 @@ namespace arco {
 		// When an array is declared with no elements.
 		EmptyArrayElm,
 		Struct,
+		Enum,
 		// When an identifier is an import the type is set to this.
 		Import,
 		Function,
 		// When referencing an identifier that refers to one or more functions.
-		FuncRef
+		FuncRef,
+		// When referencing an identifier that refers to a struct.
+		StructRef,
+		// When referencing an identifier that refers to an enum.
+		EnumRef,
 
 	};
 
@@ -58,7 +69,8 @@ namespace arco {
 		Type(TypeKind Kind)
 			: Kind(Kind) {}
 
-		inline TypeKind GetKind() const {
+		TypeKind GetKind() const;
+		inline TypeKind GetRealKind() const {
 			return Kind;
 		}
 
@@ -70,6 +82,22 @@ namespace arco {
 		bool IsSigned() const;
 		bool IsSystemInt() const;
 		bool IsPointer() const;
+
+		ContainerType* AsContainerType();
+		PointerType* AsPointerTy();
+		ArrayType* AsArrayTy();
+		StructType* AsStructType();
+		FunctionType* AsFunctionType();
+		
+		Type* Unbox();
+
+		const ContainerType* AsContainerType() const;
+		const PointerType* AsPointerTy() const;
+		const ArrayType* AsArrayTy() const;
+		const StructType* AsStructType() const;
+		const FunctionType* AsFunctionType() const;
+		
+		const Type* Unbox() const;
 
 		bool TypeNeedsDestruction() const;
 
@@ -83,7 +111,7 @@ namespace arco {
 
 		std::string ToString() const;
 
-	private:
+	protected:
 		TypeKind Kind;
 	};
 
@@ -162,10 +190,16 @@ namespace arco {
 
 		static StructType* Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context);
 		static StructType* Create(StructDecl* Struct, ArcoContext& Context);
+		static StructType* Create(EnumDecl* Enum, ArcoContext& Context);
 
 		StructDecl* GetStruct() const { return Struct; }
+		EnumDecl*   GetEnum() const { return Enum; }
 		void AssignStruct(StructDecl* Struct) {
 			this->Struct = Struct;
+		}
+		void AssignEnum(EnumDecl* Enum) {
+			this->Enum = Enum;
+			Kind = TypeKind::Enum;
 		}
 
 		Identifier GetStructName() const { return StructName; }
@@ -173,12 +207,15 @@ namespace arco {
 		SourceLoc GetErrorLoc() const { return ErrorLoc; }
 
 	private:
-		StructType()
-			: Type(TypeKind::Struct) {}
+		StructType(TypeKind Kind)
+			: Type(Kind) {}
 		
 		SourceLoc   ErrorLoc;
 		Identifier  StructName;
-		StructDecl* Struct;
+		union {
+			StructDecl* Struct;
+			EnumDecl*   Enum;
+		};
 	};
 
 	class FunctionType : public Type {

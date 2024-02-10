@@ -16,8 +16,8 @@ int main() {
 
 	arco::Compiler Compiler;
 	//Compiler.StandAlone = true;
-	//Compiler.DisplayLLVMIR = true;
-	//Compiler.DisplayTimes = true;
+	Compiler.DisplayLLVMIR = true;
+	Compiler.DisplayTimes = true;
 	Compiler.Compile(Sources);
 
 	if (!arco::FoundCompileError) {

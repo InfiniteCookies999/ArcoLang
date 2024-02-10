@@ -11,7 +11,7 @@ namespace arco {
 
 	llvm::Type* GenType(ArcoContext& Context, Type* Ty);
 	llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
-
+	
 	class IRGenerator {
 	public:
 
@@ -164,6 +164,8 @@ namespace arco {
 			                      llvm::Value* LLArrStartPtr,
 			                      llvm::Value* LLTotalLinearLength,
 			                      const std::function<void(llvm::PHINode*, Type*)>& CodeGenCallback);
+
+		llvm::Value* GenGlobalEnumArray(EnumDecl* Enum);
 
 		/// Converts the llvm array type to its eqv. pointer type.
 		///

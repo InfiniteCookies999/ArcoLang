@@ -23,6 +23,47 @@ BufferedStream struct {
 		: in(InStream{handle, auto_close}) {
 	}
 
+	fn fill() {
+		if pos == read_length {
+			read_length = in.read(buffer, BUFFER_SIZE) - 2;
+			pos = 0;
+		}
+	}
+
+	/*
+	 * Read one character from the stream. Returns -1
+	 * if the end of stream is reached.
+	 *
+	 * TODO: would probably be cleaner to return a boolean
+	 * along with the character to indicate EOF.
+	 */
+	fn read() int {
+		fill();
+		if pos == read_length {
+			return -1;
+		}
+		return buffer[pos++];
+	}
+
+	//fn read(buffer char*, length int) int {
+	//	fill();
+	//	total_read := 0;
+	//	// Keep reading in as long as there is more
+	//	// to read and have not read as much as requested.
+	//	left := read_length - pos;
+	//	loop length > left {
+	//		length     -= left;
+	//		total_read += left;
+	//		pos = read_length;
+	//		fill();
+	//		left = read_length;
+	//	}
+	//	if length > 0  {
+	//		
+	//	}
+	//	return total_read;
+	//}
+
 	fn close() {
 		in.close();
 	}

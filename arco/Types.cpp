@@ -4,8 +4,16 @@
 
 #include "Context.h"
 
+arco::TypeKind arco::Type::GetKind() const {
+	if (Kind == TypeKind::Enum) {
+		Type* ValuesType = static_cast<const StructType*>(this)->GetEnum()->ValuesType;
+		return ValuesType->GetKind();
+	}
+	return Kind;
+}
+
 bool arco::Type::Equals(const Type* Ty) const {
-	switch (Ty->GetKind()) {
+	switch (Ty->GetRealKind()) {
 	case TypeKind::Error:
 		return false;
 	case TypeKind::Array: {
@@ -18,6 +26,16 @@ bool arco::Type::Equals(const Type* Ty) const {
 		
 		return ArrayTy->GetLength() == ThisArrayTy->GetLength() &&
 			   ArrayTy->GetElementType()->Equals(ThisArrayTy->GetElementType());
+	}
+	case TypeKind::Enum: {
+		if (this->GetRealKind() != TypeKind::Enum) {
+			return false;
+		}
+		
+		const StructType* StructTy     = static_cast<const StructType*>(Ty);
+		const StructType* ThisStructTy = static_cast<const StructType*>(Ty);
+
+		return StructTy->GetEnum() == ThisStructTy->GetEnum();
 	}
 	case TypeKind::Struct: {
 		if (this->GetKind() != TypeKind::Struct) {
@@ -140,6 +158,74 @@ bool arco::Type::IsPointer() const {
 		   Kind == TypeKind::Null    || Kind == TypeKind::Function;
 }
 
+arco::ContainerType* arco::Type::AsContainerType() {
+	assert((GetKind() == TypeKind::Pointer || GetKind() == TypeKind::Array) && "Not a container type");
+	return static_cast<ContainerType*>(Unbox());
+}
+
+arco::PointerType* arco::Type::AsPointerTy() {
+	assert(GetKind() == TypeKind::Pointer && "Not a pointer type");
+	return static_cast<PointerType*>(Unbox());
+}
+
+arco::ArrayType* arco::Type::AsArrayTy() {
+	assert(GetKind() == TypeKind::Array && "Not an array type");
+	return static_cast<ArrayType*>(Unbox());
+}
+
+arco::StructType* arco::Type::AsStructType() {
+	assert(GetKind() == TypeKind::Struct && "Not a struct type");
+	return static_cast<StructType*>(Unbox());
+}
+
+arco::FunctionType* arco::Type::AsFunctionType() {
+	assert(GetKind() == TypeKind::Function && "Not a function type");
+	return static_cast<FunctionType*>(Unbox());
+}
+
+arco::Type* arco::Type::Unbox() {
+	if (Kind == TypeKind::Enum) {
+		// Enums are alias for their value types.
+		StructType* StructTy = static_cast<StructType*>(this);
+		return StructTy->GetEnum()->ValuesType;
+	}
+	return this;
+}
+
+const arco::ContainerType* arco::Type::AsContainerType() const {
+	assert((GetKind() == TypeKind::Pointer || GetKind() == TypeKind::Array) && "Not a container type");
+	return static_cast<const ContainerType*>(Unbox());
+}
+
+const arco::PointerType* arco::Type::AsPointerTy() const {
+	assert(GetKind() == TypeKind::Pointer && "Not a pointer type");
+	return static_cast<const PointerType*>(Unbox());
+}
+
+const arco::ArrayType* arco::Type::AsArrayTy() const {
+	assert(GetKind() == TypeKind::Array && "Not an array type");
+	return static_cast<const ArrayType*>(Unbox());
+}
+
+const arco::StructType* arco::Type::AsStructType() const {
+	assert(GetRealKind() == TypeKind::Struct && "Not a struct type");
+	return static_cast<const StructType*>(Unbox());
+}
+
+const arco::FunctionType* arco::Type::AsFunctionType() const {
+	assert(GetKind() == TypeKind::Function && "Not a function type");
+	return static_cast<const FunctionType*>(Unbox());
+}
+
+const arco::Type* arco::Type::Unbox() const {
+	if (Kind == TypeKind::Enum) {
+		// Enums are alias for their value types.
+		const StructType* StructTy = static_cast<const StructType*>(this);
+		return StructTy->GetEnum()->ValuesType;
+	}
+	return this;
+}
+
 bool arco::Type::TypeNeedsDestruction() const {
 	if (GetKind() == TypeKind::Struct) {
 		const StructDecl* Struct = static_cast<const StructType*>(this)->GetStruct();
@@ -235,7 +321,7 @@ arco::Type* arco::Type::GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Cont
 }
 
 std::string arco::Type::ToString() const {
-	switch (GetKind()) {
+	switch (GetRealKind()) {
 	case TypeKind::Int8:		    return "int8";
 	case TypeKind::Int16:		    return "int16";
 	case TypeKind::Int32:		    return "int32";
@@ -257,6 +343,8 @@ std::string arco::Type::ToString() const {
 	case TypeKind::EmptyArrayElm:   return "";
 	case TypeKind::Error:           return "error";
 	case TypeKind::FuncRef:         return "fn reference";
+	case TypeKind::StructRef:       return "struct reference";
+	case TypeKind::EnumRef:         return "enum reference";
 	case TypeKind::Pointer: {
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->ToString() + "*";
@@ -267,7 +355,7 @@ std::string arco::Type::ToString() const {
 		while (true) {
 			Val += "[" + std::to_string(ArrayTy->GetLength()) + "]";
 			if (ArrayTy->GetElementType()->GetKind() == TypeKind::Array)
-				ArrayTy = static_cast<const ArrayType*>(ArrayTy->GetElementType());
+				ArrayTy = ArrayTy->GetElementType()->AsArrayTy();
 			else return Val;
 		}
 		return Val;
@@ -275,6 +363,10 @@ std::string arco::Type::ToString() const {
 	case TypeKind::Struct: {
 		const StructType* StructTy = static_cast<const StructType*>(this);
 		return StructTy->GetStruct()->Name.Text.str();
+	}
+	case TypeKind::Enum: {
+		const StructType* StructTy = static_cast<const StructType*>(this);
+		return StructTy->GetEnum()->Name.Text.str();
 	}
 	case TypeKind::Function: {
 		const FunctionType* FuncTy = static_cast<const FunctionType*>(this);
@@ -299,13 +391,13 @@ std::string arco::Type::ToString() const {
 
 arco::Type* arco::ContainerType::GetBaseType() const {
 	if (ElmTy->GetKind() == GetKind())
-		return static_cast<const ContainerType*>(ElmTy)->GetBaseType();
+		return ElmTy->AsContainerType()->GetBaseType();
 	return ElmTy;
 }
 
 ulen arco::ContainerType::GetDepthLevel() const {
 	if (ElmTy->GetKind() == GetKind())
-		return static_cast<ContainerType*>(ElmTy)->GetDepthLevel() + 1;
+		return ElmTy->AsContainerType()->GetDepthLevel() + 1;
 	return 1;
 }
 
@@ -350,15 +442,23 @@ ulen arco::ArrayType::GetTotalLinearLength() const {
 }
 
 arco::StructType* arco::StructType::Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context) {
-	StructType* Ty = new StructType;
+	StructType* Ty = new StructType(TypeKind::Struct); // TODO: Should this default to an indetermined type?
 	Ty->StructName = StructName;
 	Ty->ErrorLoc   = ErrorLoc;
 	return Ty;
 }
 
+arco::StructType* arco::StructType::Create(EnumDecl* Enum, ArcoContext& Context) {
+	// TODO: Caching?
+	StructType* Ty = new StructType(TypeKind::Enum);
+	Ty->StructName = Enum->Name;
+	Ty->Enum       = Enum;
+	return Ty;
+}
+
 arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Context) {
 	// TODO: Caching?
-	StructType* Ty = new StructType;
+	StructType* Ty = new StructType(TypeKind::Struct);
 	Ty->StructName = Struct->Name;
 	Ty->Struct     = Struct;
 	return Ty;

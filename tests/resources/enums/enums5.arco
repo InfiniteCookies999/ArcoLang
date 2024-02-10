@@ -1,0 +1,11 @@
+
+Message enum {
+	FIRST  :: "Programming is fun";
+	SECOND :: "cool message";
+}
+
+fn main() {
+	print(Message.FIRST, 18);
+	print(" ", 1);
+	print(Message.SECOND, 12);
+}

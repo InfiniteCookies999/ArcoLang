@@ -95,6 +95,7 @@ namespace arco {
 		VarDeclList* ParseVarDeclList(Modifiers Mods);
 		VarDecl* CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods);
 		StructDecl* ParseStructDecl(Modifiers Mods);
+		EnumDecl* ParseEnumDecl(Modifiers Mods);
 
 		void ParseScopeStmts(LexScope& Scope);
 

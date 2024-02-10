@@ -29,6 +29,7 @@ LineStream struct {
 	 */
 	fn fill_line() {
 		if pos == line_length {
+			// TODO: should probably verify that there is a line.
 			// -2 because of \r\n is read when calling Windows ReadFile.
 			line_length = in.read(buffer, BUFFER_SIZE) - 2;
 			pos = 0;

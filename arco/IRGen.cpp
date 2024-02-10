@@ -114,7 +114,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 	case TypeKind::Float64:
 		return llvm::Type::getDoubleTy(LLContext);
 	case TypeKind::Pointer: {
-		PointerType* PtrTy = static_cast<PointerType*>(Ty);
+		PointerType* PtrTy = Ty->AsPointerTy();
 		if (PtrTy->GetElementType() == Context.VoidType) {
 			return llvm::Type::getInt8PtrTy(LLContext);
 		} else {
@@ -122,11 +122,11 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		}
 	}
 	case TypeKind::Array: {
-		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
+		ArrayType* ArrayTy = Ty->AsArrayTy();
 		return llvm::ArrayType::get(GenType(Context, ArrayTy->GetElementType()), ArrayTy->GetLength());
 	}
 	case TypeKind::Function: {
-		FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
+		FunctionType* FuncTy = Ty->AsFunctionType();
 		llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
 		
 		llvm::Type* LLRetType = GenType(Context, FuncTy->RetTyInfo.Ty);
@@ -141,7 +141,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 			if (Ty->GetKind() == TypeKind::Array) {
 				// Arrays are decayed when passed.
 				LLParamTypes.push_back(
-					llvm::PointerType::get(GenType(Context, static_cast<ArrayType*>(Ty)->GetElementType()), 0)
+					llvm::PointerType::get(GenType(Context, Ty->AsArrayTy()->GetElementType()), 0)
 				);
 			} else {
 				LLParamTypes.push_back(GenType(Context, Ty));
@@ -151,7 +151,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 		return llvm::PointerType::get(llvm::FunctionType::get(LLRetType, LLParamTypes, false), 0);
 	}
 	case TypeKind::Struct:
-		return GenStructType(Context, static_cast<StructType*>(Ty)->GetStruct());
+		return GenStructType(Context, Ty->AsStructType()->GetStruct());
 	default:
 		assert(!"Failed to implement case for GenType()");
 		return nullptr;
@@ -159,6 +159,8 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 }
 
 llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) {
+	assert(!Struct->Is(AstKind::ENUM_DECL) && "Wrong gen type for enum");
+
 	if (Struct->LLStructTy) {
 		return Struct->LLStructTy;
 	}
@@ -179,7 +181,6 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
 
 	return LLStructTy;
 }
-
 
 
 #define PUSH_SCOPE()        \
@@ -266,10 +267,10 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
 			GenAssignment(Global->LLAddress, Global->Assignment, Global->HasConstAddress);
 		} else {
 			if (Global->Ty->GetKind() == TypeKind::Struct) {
-				CallDefaultConstructor(Global->LLAddress, static_cast<StructType*>(Global->Ty));
+				CallDefaultConstructor(Global->LLAddress, Global->Ty->AsStructType());
 			} else if (Global->Ty->GetKind() == TypeKind::Array &&
-				   static_cast<ArrayType*>(Global->Ty)->GetBaseType()->GetKind() == TypeKind::Struct) {
-				ArrayType* ArrayTy = static_cast<ArrayType*>(Global->Ty);
+				   Global->Ty->AsArrayTy()->GetBaseType()->GetKind() == TypeKind::Struct) {
+				ArrayType* ArrayTy = Global->Ty->AsArrayTy();
 				llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(Global->LLAddress, ArrayTy);
 				llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
 				StructArrayCallDefaultConstructors(ArrayTy->GetBaseType(), LLArrStartPtr, LLTotalLinearLength);
@@ -310,7 +311,7 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 
 	llvm::Type* LLRetTy;
 	if (Func->RetTy->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(Func->RetTy);
+		StructType* StructTy = Func->RetTy->AsStructType();
 		
 		ulen SizeInBytes = SizeOfTypeInBytes(GenStructType(StructTy));
 		if (!StructTy->GetStruct()->NeedsDestruction &&
@@ -352,6 +353,7 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		// Member functions recieve pointers to the struct they
 		// are contained inside of.
 
+		// TODO: !Enum
 		LLParamTypes.push_back(llvm::PointerType::get(GenStructType(Func->Struct), 0));
 		++ImplicitParams;
 	}
@@ -364,7 +366,7 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 		if (Ty->GetKind() == TypeKind::Array) {
 			// Arrays are decayed when passed.
 			LLParamTypes.push_back(
-				llvm::PointerType::get(GenType(static_cast<ArrayType*>(Ty)->GetElementType()), 0)
+				llvm::PointerType::get(GenType(Ty->AsArrayTy()->GetElementType()), 0)
 			);
 		} else {
 			LLParamTypes.push_back(GenType(Ty));
@@ -444,7 +446,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 		} else {
 			llvm::Type* LLTy;
 			if (Var->IsParam() && Var->Ty->GetKind() == TypeKind::Array) {
-				ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+				ArrayType* ArrayTy = Var->Ty->AsArrayTy();
 				LLTy = llvm::PointerType::get(GenType(ArrayTy->GetElementType()), 0);
 			} else {
 				LLTy = GenType(Var->Ty);
@@ -677,8 +679,9 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 		
 		if (E->Is(AstKind::FIELD_ACCESSOR)) {
 			FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(E);
-			if (FieldAcc->IsArrayLength) {
+			if (FieldAcc->IsArrayLength || FieldAcc->EnumValue) {
 				// Array lengths are not memory so no reason to load.
+				// Enums refer to constant indexes.
 				break;
 			}
 		}
@@ -771,7 +774,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 
 				// TODO: In the future if the object has a move constructor that would
 				// need to be called instead of copying.
-				CopyStructObject(LLToAddr, LLFromAddr, static_cast<StructType*>(CFunc->RetTy)->GetStruct());
+				CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
 
 			} else {
 				GenReturnByStoreToElisionRetSlot(Ret->Value);
@@ -816,7 +819,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 			llvm::Value* LLFromAddr = GenNode(Ret->Value);
 			// TODO: Move constructors if supported
 
-			CopyStructObject(LLToAddr, LLFromAddr, static_cast<StructType*>(CFunc->RetTy)->GetStruct());
+			CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
 
 		} else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
 			Builder.CreateStore(GetLLInt32(0, LLContext), LLRetAddr);
@@ -1635,10 +1638,17 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
 llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	if (FieldAcc->IsArrayLength) {
 		return GetSystemInt(
-			static_cast<ArrayType*>(FieldAcc->Site->Ty)->GetLength(),
+			FieldAcc->Site->Ty->AsArrayTy()->GetLength(),
 			LLContext,
 			LLModule
 		);
+	}
+	if (FieldAcc->EnumValue) {
+		// Use static cast because AsStructType strips away enum information.
+		EnumDecl* Enum = static_cast<StructType*>(FieldAcc->Ty)->GetEnum();
+		ulen EnumIndex = FieldAcc->EnumValue->Index;
+		Type* IndexType = Enum->IndexingInOrder ? Enum->ValuesType : Context.IntType;
+		return llvm::ConstantInt::get(GenType(IndexType), EnumIndex, false);
 	}
 
 	if (FieldAcc->RefKind == IdentRef::RK::Var && FieldAcc->Var->IsGlobal) {
@@ -1900,13 +1910,13 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 }
 
 arco::ArrayType* arco::IRGenerator::GetGenArrayDestType(Array* Arr) {
-	ArrayType* DestTy = static_cast<ArrayType*>(Arr->Ty);
+	ArrayType* DestTy = Arr->Ty->AsArrayTy();
 	if (Arr->CastTy) {
 		if (Arr->CastTy->GetKind() == TypeKind::Array) {
-			DestTy = static_cast<ArrayType*>(Arr->CastTy);
+			DestTy = Arr->CastTy->AsArrayTy();
 		} else if (Arr->CastTy->GetKind() == TypeKind::Pointer) {
 			DestTy = ArrayType::Create(
-				static_cast<PointerType*>(Arr->CastTy)->GetElementType(),
+				Arr->CastTy->AsPointerTy()->GetElementType(),
 				DestTy->GetLength(),
 				Context);
 		} else if (Arr->CastTy->GetKind() == TypeKind::CStr) {
@@ -1934,7 +1944,7 @@ llvm::Constant* arco::IRGenerator::GenConstArray(Array* Arr, ArrayType* DestTy) 
 			if (ElmsAreArrs) {
 				LLElmValue = GenConstArray(
 					static_cast<Array*>(Elm),
-					static_cast<ArrayType*>(DestTy->GetElementType())
+					DestTy->GetElementType()->AsArrayTy()
 				);
 			} else {
 				LLElmValue = GenRValue(Elm);
@@ -1982,7 +1992,7 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
 				FillArrayViaGEP(
 					static_cast<Array*>(Arr),
 					LLAddrAtIndex,
-					static_cast<ArrayType*>(DestTy->GetElementType())
+					DestTy->GetElementType()->AsArrayTy()
 				);
 			} else {
 				// TODO: HasConstAddress = false?
@@ -2022,7 +2032,7 @@ llvm::Value* arco::IRGenerator::GenTypeCast(TypeCast* Cast) {
 }
 
 llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr) {
-	StructType* StructTy = static_cast<StructType*>(StructInit->Ty);
+	StructType* StructTy = StructInit->Ty->AsStructType();
 	StructDecl* Struct = StructTy->GetStruct();
 
 	if (!LLAddr) {
@@ -2073,12 +2083,12 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 	Type* TypeToAlloc = Alloc->TypeToAlloc;
 	if (TypeToAlloc->GetKind() == TypeKind::Array) {
-		ArrayType* ArrayTy = static_cast<ArrayType*>(TypeToAlloc);
+		ArrayType* ArrayTy = TypeToAlloc->AsArrayTy();
 
 		// Calculating how much memory needs to be allocated for the array.
 		llvm::Value* LLTotalLinearLength = GenRValue(ArrayTy->GetLengthExpr());
 		while (ArrayTy->GetElementType()->GetKind() == TypeKind::Array) {
-			ArrayTy = static_cast<ArrayType*>(ArrayTy->GetElementType());
+			ArrayTy = ArrayTy->GetElementType()->AsArrayTy();
 			LLTotalLinearLength = 
 				Builder.CreateMul(LLTotalLinearLength, GenRValue(ArrayTy->GetLengthExpr()));
 		}
@@ -2097,7 +2107,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 	} else {
 		llvm::Value* LLMalloc = GenMalloc(GenType(TypeToAlloc), nullptr);
 		if (TypeToAlloc->GetKind() == TypeKind::Struct) {
-			StructType* StructTy = static_cast<StructType*>(TypeToAlloc);
+			StructType* StructTy = TypeToAlloc->AsStructType();
 			StructDecl* Struct = StructTy->GetStruct();
 			if (Alloc->CalledConstructor) {
 				GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc);
@@ -2106,7 +2116,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 					GenStructInitArgs(LLMalloc, Struct, Alloc->Values);
 				} else {
 					// Need to initialize fields so calling the default constructor.
-					CallDefaultConstructor(LLMalloc, static_cast<StructType*>(TypeToAlloc));
+					CallDefaultConstructor(LLMalloc, TypeToAlloc->AsStructType());
 				}
 			}
 		} else {
@@ -2183,7 +2193,19 @@ void arco::IRGenerator::GenBlock(llvm::BasicBlock* LLBB, ScopeStmts& Stmts) {
 }
 
 llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Value* LLValue) {
-	
+
+	if (FromType->GetRealKind() == TypeKind::Enum) {
+		// KEEP static cast here because AsStructTy will strip away enum information.
+		EnumDecl* Enum = static_cast<StructType*>(FromType)->GetEnum();
+		FromType = Enum->ValuesType;
+		if (!Enum->IndexingInOrder) {
+			// Not indexing in order so we have to get the values out of a global array.
+			llvm::Value* LLGlobalEnumArray = GenGlobalEnumArray(Enum);
+			llvm::Value* LLIndexAddress = GetArrayIndexAddress(LLGlobalEnumArray, LLValue);
+			LLValue = CreateLoad(LLIndexAddress);
+		}
+	}
+
 	llvm::Type* LLCastType = GenType(ToType);
 	switch (ToType->GetKind()) {
 	case TypeKind::Int8:
@@ -2362,7 +2384,7 @@ void arco::IRGenerator::StructArrayCallDefaultConstructors(Type* BaseTy,
 	                                                       llvm::Value* LLTotalLinearLength) {
 	GenInternalArrayLoop(BaseTy, LLArrStartPtr, LLTotalLinearLength,
 		[this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
-			CallDefaultConstructor(LLElmAddr, static_cast<StructType*>(BaseTy));
+			CallDefaultConstructor(LLElmAddr, BaseTy->AsStructType());
 		});
 }
 
@@ -2403,6 +2425,35 @@ void arco::IRGenerator::GenInternalArrayLoop(Type* BaseTy,
 	// End of loop
 	Builder.SetInsertPoint(LoopEndBB);
 
+}
+
+llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
+	if (Enum->LLGlobalArray) {
+		return Enum->LLGlobalArray;
+	}
+	
+	std::string LLEnumName = "__global.enum.array." + std::to_string(Context.NumGeneratedGlobalVars);
+	
+	llvm::ArrayType* LLArrType =
+		llvm::ArrayType::get(GenType(Enum->ValuesType), Enum->Values.size());
+	llvm::GlobalVariable* LLGlobalArray =
+		GenLLVMGlobalVariable(LLEnumName, LLArrType);
+	
+	//llvm::Value* LLArray;
+	llvm::SmallVector<llvm::Constant*, 4> LLElements;
+	LLElements.resize(Enum->Values.size());
+	for (const EnumDecl::EnumValue& Value : Enum->Values) {
+		LLElements[Value.Index] = llvm::cast<llvm::Constant>(GenRValue(Value.Assignment));
+	}
+
+	llvm::Constant* LLConstEnumArray = llvm::ConstantArray::get(LLArrType, LLElements);
+	LLGlobalArray->setInitializer(LLConstEnumArray);
+
+	// TODO: dso_local
+	// const memory..
+
+	Enum->LLGlobalArray = LLGlobalArray;
+	return LLGlobalArray;
 }
 
 llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
@@ -2594,7 +2645,7 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 
 		if (Ty->GetKind() == TypeKind::Struct ||
 			(Ty->GetKind() == TypeKind::Array &&
-			 static_cast<ArrayType*>(Ty)->GetBaseType()->GetKind() == TypeKind::Struct)) {
+			 Ty->AsArrayTy()->GetBaseType()->GetKind() == TypeKind::Struct)) {
 			// TODO: If foldable could get away with not calling the default constructor.
 			// Need to call the default constructor.
 			return { false, GenZeroedValue(Ty) };
@@ -2635,7 +2686,7 @@ void arco::IRGenerator::CallDestructors(llvm::SmallVector<std::pair<Type*, llvm:
 
 void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 	if (Ty->GetKind() == TypeKind::Struct) {
-		StructDecl* Struct = static_cast<StructType*>(Ty)->GetStruct();
+		StructDecl* Struct = Ty->AsStructType()->GetStruct();
 		if (Struct->Destructor) {
 			GenFuncDecl(Struct->Destructor);
 			Builder.CreateCall(Struct->Destructor->LLFunction, LLAddr);
@@ -2644,7 +2695,7 @@ void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
 			GenCompilerDestructorAndCall(Struct, LLAddr);
 		}
 	} else if (Ty->GetKind() == TypeKind::Array) {
-		ArrayType* ArrayTy = static_cast<ArrayType*>(Ty);
+		ArrayType* ArrayTy = Ty->AsArrayTy();
 
 		llvm::Value* LLArrStartPtr       = MultiDimensionalArrayToPointerOnly(LLAddr, ArrayTy);
 		llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
@@ -2662,6 +2713,7 @@ void arco::IRGenerator::GenCompilerDestructorAndCall(StructDecl* Struct, llvm::V
 		return;
 	}
 
+	// TODO: enum!
 	llvm::Type* LLStructPtrTy = llvm::PointerType::get(GenStructType(Struct), 0);
 
 	llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
@@ -2792,7 +2844,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool 
 			Builder.CreateStore(LLAssignment, LLAddress);
 		}
 	} else if (Value->Ty->GetKind() == TypeKind::Struct) {
-		CopyStructObject(LLAddress, GenNode(Value), static_cast<StructType*>(Value->Ty)->GetStruct());
+		CopyStructObject(LLAddress, GenNode(Value), Value->Ty->AsStructType()->GetStruct());
 	} else {
 		llvm::Value* LLAssignment = GenRValue(Value);
 		// -- DEBUG
@@ -2803,13 +2855,14 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool 
 
 void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 	if (Ty->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(Ty);
+		StructType* StructTy = Ty->AsStructType();
 		StructDecl* Struct = StructTy->GetStruct();
 
 		if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
 			CallDefaultConstructor(LLAddr, StructTy);
 		} else {
 			ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
+			// TODO: alignment
 			llvm::Align LLAlignment = llvm::Align();
 			Builder.CreateMemSet(
 				LLAddr,
@@ -2819,10 +2872,10 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 			);
 		}
 	} else if (Ty->GetKind() == TypeKind::Array) {
-		ArrayType* ArrTy = static_cast<ArrayType*>(Ty);
+		ArrayType* ArrTy = Ty->AsArrayTy();
 		Type* BaseTy = ArrTy->GetBaseType();
 		if (BaseTy->GetKind() == TypeKind::Struct) {
-			StructDecl* Struct = static_cast<StructType*>(BaseTy)->GetStruct();
+			StructDecl* Struct = BaseTy->AsStructType()->GetStruct();
 			if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
 				// Cannot simply memset the array to zero must call the default constructor.
 				llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(LLAddr, ArrTy);
@@ -2835,6 +2888,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 		// Memset to zero.
 		ulen TotalLinearLength = ArrTy->GetTotalLinearLength();
 		TotalLinearLength *= SizeOfTypeInBytes(GenType(BaseTy));
+		// TODO: alignment
 		llvm::Align LLAlignment = llvm::Align();
 		Builder.CreateMemSet(
 			LLAddr,
@@ -2903,8 +2957,8 @@ llvm::Value* arco::IRGenerator::GetElisionRetSlotAddr(FuncDecl* Func) {
 }
 
 void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr) {
-	StructDecl* Struct = static_cast<StructType*>(Call->Ty)->GetStruct();
-	llvm::StructType* LLStructTy = GenStructType(static_cast<StructType*>(Call->Ty));
+	StructDecl* Struct = Call->Ty->AsStructType()->GetStruct();
+	llvm::StructType* LLStructTy = GenStructType(Call->Ty->AsStructType());
 
 	ulen StructByteSize = SizeOfTypeInBytes(LLStructTy);
 	if (!Struct->NeedsDestruction && StructByteSize <= LLModule.getDataLayout().getPointerSize()) {

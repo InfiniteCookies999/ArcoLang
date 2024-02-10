@@ -40,7 +40,9 @@ arco::ArcoContext::ArcoContext()
 	ErrorType(new Type(TypeKind::Error)),
 	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
 	ImportType(new Type(TypeKind::Import)),
-	FuncRef(new Type(TypeKind::FuncRef)),
+	FuncRefType(new Type(TypeKind::FuncRef)),
+	StructRefType(new Type(TypeKind::StructRef)),
+	EnumRefType(new Type(TypeKind::EnumRef)),
 
 	LLVMIntrinsicsTable({
 		{ Identifier("memcpy"), llvm::Intrinsic::IndependentIntrinsics::memcpy },
@@ -104,7 +106,9 @@ arco::ArcoContext::~ArcoContext() {
 	delete ErrorType;
 	delete EmptyArrayElmType;
 	delete ImportType;
-	delete FuncRef;
+	delete FuncRefType;
+	delete StructRefType;
+	delete EnumRefType;
 	// TODO: Cleanup other types.
 
 }
@@ -141,6 +145,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });
 	TokenKeywordMap.insert({ "fn"       , TokenKind::KW_FN        });
 	TokenKeywordMap.insert({ "struct"   , TokenKind::KW_STRUCT    });
+	TokenKeywordMap.insert({ "enum"     , TokenKind::KW_ENUM      });
 	TokenKeywordMap.insert({ "cast"     , TokenKind::KW_CAST      });
 	TokenKeywordMap.insert({ "loop"     , TokenKind::KW_LOOP      });
 	TokenKeywordMap.insert({ "break"    , TokenKind::KW_BREAK     });

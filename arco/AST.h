@@ -24,6 +24,7 @@ namespace arco {
 	struct FuncDecl;
 	struct VarDecl;
 	struct Expr;
+	struct Decl;
 	using ScopeStmts = llvm::SmallVector<AstNode*>;
 	using FuncsList  = llvm::SmallVector<FuncDecl*>;
 
@@ -35,6 +36,7 @@ namespace arco {
 		VAR_DECL,
 		VAR_DECL_LIST,
 		STRUCT_DECL,
+		ENUM_DECL,
 
 		RETURN,
 		IF,
@@ -73,11 +75,9 @@ namespace arco {
 
 	struct Namespace {
 
-		llvm::DenseMap<Identifier, FuncsList>   Funcs;
+		llvm::DenseMap<Identifier, FuncsList> Funcs;
+		llvm::DenseMap<Identifier, Decl*>     Decls;
 
-		llvm::DenseMap<Identifier, StructDecl*> Structs;
-
-		llvm::DenseMap<Identifier, VarDecl*>    GlobalVars;
 	};
 
 	struct Module {
@@ -95,7 +95,7 @@ namespace arco {
 			Identifier  ModOrNamespace;
 			Identifier  StructOrNamespace;
 			Identifier  StructName;
-			StructDecl* Struct = nullptr;
+			Decl*       Decl   = nullptr;
 			Namespace*  NSpace = nullptr;
 		};
 
@@ -163,6 +163,54 @@ namespace arco {
 
 		Modifiers  Mods;
 		Identifier Name;
+
+		inline bool IsStructLike() {
+			return Kind == AstKind::STRUCT_DECL || Kind == AstKind::ENUM_DECL;
+		}
+	};
+
+	struct StructDecl : Decl {
+		StructDecl() : Decl(AstKind::STRUCT_DECL) {}
+
+		llvm::SmallVector<VarDecl*>           Fields;
+		FuncsList                             Constructors;
+		FuncDecl*                             DefaultConstructor = nullptr;
+		FuncDecl*                             CopyConstructor = nullptr;
+		FuncDecl*                             Destructor         = nullptr;
+		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
+
+		llvm::StructType* LLStructTy         = nullptr;
+		llvm::Function* LLDefaultConstructor = nullptr;
+
+		// At least one field has assignment.
+		bool FieldsHaveAssignment = false;
+		// This is true if either their is a user defined
+		// destructor or if the structure contains another
+		// structure which needs destruction.
+		bool NeedsDestruction = false;
+
+		VarDecl* FindField(Identifier Name);
+	};
+
+	struct EnumDecl : Decl {
+		EnumDecl() : Decl(AstKind::ENUM_DECL) {}
+
+		struct EnumValue {
+			SourceLoc  Loc;
+			ulen       Index;
+			Identifier Name;
+			Expr*      Assignment;
+		};
+		llvm::SmallVector<EnumValue> Values;
+		
+		Type* ValuesType = nullptr;
+		bool  IndexingInOrder = true;
+		// If IndexingInOrder is true then a global array
+		// is generated and the reordered indexes point into
+		// the array to get the values out.
+		llvm::Value* LLGlobalArray = nullptr;
+
+		const EnumValue* FindValue(Identifier Name) const;
 	};
 
 	struct FuncDecl : Decl {
@@ -265,37 +313,6 @@ namespace arco {
 
 		inline bool IsField() const {
 			return FieldIdx != -1;
-		}
-	};
-
-	struct StructDecl : Decl {
-		StructDecl() : Decl(AstKind::STRUCT_DECL) {}
-
-		llvm::SmallVector<VarDecl*>           Fields;
-		FuncsList                             Constructors;
-		FuncDecl*                             DefaultConstructor = nullptr;
-		FuncDecl*                             CopyConstructor = nullptr;
-		FuncDecl*                             Destructor         = nullptr;
-		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
-
-		llvm::StructType* LLStructTy         = nullptr;
-		llvm::Function* LLDefaultConstructor = nullptr;
-
-		// At least one field has assignment.
-		bool FieldsHaveAssignment = false;
-		// This is true if either their is a user defined
-		// destructor or if the structure contains another
-		// structure which needs destruction.
-		bool NeedsDestruction = false;
-
-		inline VarDecl* FindField(Identifier Name) {
-			auto Itr = std::find_if(Fields.begin(), Fields.end(), [=](VarDecl* Field) {
-				return Field->Name == Name;
-			});
-			if (Itr == Fields.end()) {
-				return nullptr;
-			}
-			return *Itr;
 		}
 	};
 
@@ -476,14 +493,17 @@ namespace arco {
 			Var,
 			Funcs, // Plural because of function overloading.
 			Struct,
+			Enum,
 			Import,
 			NotFound
 		} RefKind = RK::NotFound;
 
 		union {
-			FuncsList* Funcs;
-			VarDecl*   Var;
-			Namespace* NSpace;
+			FuncsList*  Funcs;
+			VarDecl*    Var;
+			StructDecl* Struct;
+			EnumDecl*   Enum;
+			Namespace*  NSpace;
 		};
 	};
 
@@ -493,6 +513,8 @@ namespace arco {
 
 		// Request for the length of an array.
 		bool IsArrayLength = false;
+		// Something like Day.MONDAY
+		const EnumDecl::EnumValue* EnumValue = nullptr;
 
 		Expr* Site;
 	};

@@ -77,16 +77,16 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 			// import namespace.struct;
 
 			if (ModExists) {
-				auto Itr = ImportMod->DefaultNamespace->Structs.find(StructOrNamespaceImport.StructOrNamespace);
-				if (Itr != ImportMod->DefaultNamespace->Structs.end()) {
-					StructOrNamespaceImport.Struct = Itr->second;
+				auto Itr = ImportMod->DefaultNamespace->Decls.find(StructOrNamespaceImport.StructOrNamespace);
+				if (Itr != ImportMod->DefaultNamespace->Decls.end() && Itr->second->IsStructLike()) {
+					StructOrNamespaceImport.Decl = Itr->second;
 				} else {
 					auto Itr2 = ImportMod->Namespaces.find(StructOrNamespaceImport.StructOrNamespace);
 					if (Itr2 != ImportMod->Namespaces.end()) {
 						StructOrNamespaceImport.NSpace = Itr2->second;
 					} else {
 						Logger Log(FScope->Path.c_str(), FScope->Buffer);
-						Log.BeginError(ErrorLoc, "Could not find struct or namespace '%s' in module '%s'",
+						Log.BeginError(ErrorLoc, "Could not find type or namespace '%s' in module '%s'",
 							StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
 						Log.EndError();
 					}
@@ -95,12 +95,12 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 				auto Itr = ImportMod->Namespaces.find(StructOrNamespaceImport.ModOrNamespace);
 				if (Itr != ImportMod->Namespaces.end()) {
 					Namespace* LookupNamespace = Itr->second;
-					auto Itr2 = LookupNamespace->Structs.find(StructOrNamespaceImport.StructOrNamespace);
-					if (Itr2 != LookupNamespace->Structs.end()) {
-						StructOrNamespaceImport.Struct = Itr2->second;
+					auto Itr2 = LookupNamespace->Decls.find(StructOrNamespaceImport.StructOrNamespace);
+					if (Itr2 != LookupNamespace->Decls.end() && Itr2->second->IsStructLike()) {
+						StructOrNamespaceImport.Decl = Itr2->second;
 					} else {
 						Logger Log(FScope->Path.c_str(), FScope->Buffer);
-						Log.BeginError(ErrorLoc, "Could not find struct '%s' in namespace '%s'",
+						Log.BeginError(ErrorLoc, "Could not find type '%s' in namespace '%s'",
 							StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
 						Log.EndError();
 					}
@@ -118,13 +118,13 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 				auto Itr = ImportMod->Namespaces.find(StructOrNamespaceImport.StructOrNamespace);
 				if (Itr != ImportMod->Namespaces.end()) {
 					Namespace* LookupNamespace = Itr->second;
-					auto Itr2 = LookupNamespace->Structs.find(StructOrNamespaceImport.StructOrNamespace);
-					if (Itr2 != LookupNamespace->Structs.end()) {
-						StructOrNamespaceImport.Struct = Itr2->second;
+					auto Itr2 = LookupNamespace->Decls.find(StructOrNamespaceImport.StructName);
+					if (Itr2 != LookupNamespace->Decls.end() && Itr2->second->IsStructLike()) {
+						StructOrNamespaceImport.Decl = Itr2->second;
 					} else {
 						Logger Log(FScope->Path.c_str(), FScope->Buffer);
-						Log.BeginError(ErrorLoc, "Could not find struct '%s' in namespace '%s'",
-							StructOrNamespaceImport.Struct, StructOrNamespaceImport.StructOrNamespace);
+						Log.BeginError(ErrorLoc, "Could not find type '%s' in namespace '%s'",
+							StructOrNamespaceImport.StructName, StructOrNamespaceImport.StructOrNamespace);
 						Log.EndError();
 					}
 				} else {
@@ -174,13 +174,14 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 		auto Itr = FScope->Imports.find(Context.StringIdentifier);
 		if (Itr == FScope->Imports.end()) {
 			FileScope::StructOrNamespaceImport Import;
-			Import.Struct = Context.StdStringStruct;
+			Import.Decl = Context.StdStringStruct;
 			FScope->Imports.insert({ Context.StringIdentifier, Import });
 		}
 	}
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {
+	CheckForDuplicateFuncDeclarations(Mod->DefaultNamespace);
 	for (auto [NamespaceName, NSpace] : Mod->Namespaces) {
 		CheckForDuplicateFuncDeclarations(NSpace);
 	}
@@ -190,10 +191,13 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
 	for (const auto& [Name, FuncList] : NSpace->Funcs) {
 		CheckForDuplicateFuncs(FuncList);
 	}
-	for (const auto& [Name, Struct] : NSpace->Structs) {
-		CheckForDuplicateFuncs(Struct->Constructors);
-		for (const auto& [Name, FuncList] : Struct->Funcs) {
-			CheckForDuplicateFuncs(FuncList);
+	for (const auto& [Name, Dec] : NSpace->Decls) {
+		if (Dec->Is(AstKind::STRUCT_DECL)) {
+			StructDecl* Struct = static_cast<StructDecl*>(Dec);
+			CheckForDuplicateFuncs(Struct->Constructors);
+			for (const auto& [Name, FuncList] : Struct->Funcs) {
+				CheckForDuplicateFuncs(FuncList);
+			}
 		}
 	}
 }
@@ -277,7 +281,7 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 			}
 			
 			if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
-				StructDecl* StructForTy = static_cast<StructType*>(Field->Ty)->GetStruct();
+				StructDecl* StructForTy = Field->Ty->AsStructType()->GetStruct();
 
 				if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
 					if (!InitValue) {
@@ -322,18 +326,18 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 
 		// TODO: Does the field need to be checked for a complete type here?
 		if (Field->Ty->GetKind() == TypeKind::Struct) {
-			StructType* StructTy = static_cast<StructType*>(Field->Ty);
+			StructType* StructTy = Field->Ty->AsStructType();
 			StructDecl* OStruct = StructTy->GetStruct();
 			if (Struct) {
 				Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
 				Struct->NeedsDestruction |= OStruct->NeedsDestruction;
 			}
 		} else if (Field->Ty->GetKind() == TypeKind::Array) {
-			ArrayType* ArrayTy = static_cast<ArrayType*>(Field->Ty);
+			ArrayType* ArrayTy = Field->Ty->AsArrayTy();
 
 			Type* BaseTy = ArrayTy->GetBaseType();
 			if (BaseTy->GetKind() == TypeKind::Struct) {
-				StructType* StructTy = static_cast<StructType*>(Field->Ty);
+				StructType* StructTy = Field->Ty->AsStructType();
 				StructDecl* OStruct = StructTy->GetStruct();
 				if (Struct) {
 					Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
@@ -464,6 +468,114 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	}
 }
 
+void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
+	if (Enum->HasBeenChecked) return;
+	Enum->HasBeenChecked = true;
+	Context.UncheckedDecls.erase(Enum);
+	if (Enum->ParsingError) return;
+
+	Enum->IsBeingChecked = true;
+	FScope  = Enum->FScope;
+	
+	
+	// TODO: check to make sure there is not duplicate values
+
+	Type* ValuesType = Enum->ValuesType;
+	if (ValuesType) {
+		FixupType(ValuesType);
+		if (ValuesType == Context.ErrorType) {
+			return;
+		}
+	}
+	
+	// TODO: could provide language optimization here by reordering the indexes
+	// if they are not in order. Or possibly consider it an error and tell the user
+	// to reorder their indexes.
+
+	ulen ValueIndex = 0;
+	IRGenerator IRGen(Context);
+	for (ulen i = 0; i < Enum->Values.size(); i++) {
+		EnumDecl::EnumValue& Value = Enum->Values[i];
+		for (ulen j = i + 1; j < Enum->Values.size(); j++) {
+			if (Value.Name == Enum->Values[j].Name) {
+				Error(Value.Loc, "Duplicate name in enum");
+			}
+		}
+
+		// TODO: should the error messages mark the location of the identifier instead?
+		if (!Value.Assignment) {
+			Value.Index = ValueIndex;
+			++ValueIndex;
+			continue;
+		}
+
+		CheckNode(Value.Assignment);
+		if (!Value.Assignment->IsFoldable) {
+			Error(Value.Loc, "Could not compute enum value at compile time");
+		}
+		if (Value.Assignment->Ty == Context.ErrorType) {
+			continue;
+		}
+		if (!ValuesType) {
+			// TODO: should we readjust to the best possible index type?
+			// similar to how arrays works.
+			ValuesType = Value.Assignment->Ty;
+		}
+			
+
+		if (Value.Assignment->Ty != Context.ErrorType) {
+			if (!IsAssignableTo(ValuesType, Value.Assignment)) {
+				Error(Value.Loc, "Cannot assign enum value of type '%s' to enum's value type '%s'",
+					Value.Assignment->Ty->ToString(), ValuesType->ToString());
+			} else {
+				CreateCast(Value.Assignment, ValuesType);
+				if (Value.Assignment->IsFoldable && Value.Assignment->Ty->IsInt()) {
+					// TODO: Check to make sure that the index is well.. indexable!
+
+					llvm::ConstantInt* LLValueIndex =
+						llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(Value.Assignment));
+					ulen NewValueIndex = LLValueIndex->getZExtValue();
+					if (NewValueIndex < ValueIndex) {
+						Enum->IndexingInOrder = false;
+					}
+					ValueIndex = NewValueIndex;	
+
+					// TODO: check to make sure that the value index fit's into the size of
+					// the enum's index type
+
+				} else {
+					Enum->IndexingInOrder = false;
+				}
+			}
+		}
+			
+		Value.Index = ValueIndex;
+		++ValueIndex;
+	}
+	Enum->ValuesType = ValuesType;
+
+	if (!ValuesType) {
+		// This can happen if there are no assignments.
+		Enum->ValuesType = Context.IntType;
+	}
+
+	if (Enum->ValuesType->GetRealKind() == TypeKind::Enum) {
+		Error(Enum, "Enums cannot have another enum as a value type");
+	}
+
+	if (!Enum->IndexingInOrder) {
+		// The user did not provide a valid ordering to the indexes so
+		// we must provide our own. Since we want to index into an array
+		// the index will simply be the values into that array.
+		ValueIndex = 0;
+		for (EnumDecl::EnumValue& Value : Enum->Values) {
+			Value.Index = ValueIndex++;
+		}
+	}
+
+	Enum->IsBeingChecked = false;
+}
+
 //===-------------------------------===//
 // Statements
 //===-------------------------------===//
@@ -528,6 +640,9 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 		case AstKind::STRUCT_DECL:
 			Error(Stmt, "No support for declaring structs within this scope at this time");
 			continue;
+		case AstKind::ENUM_DECL:
+			Error(Stmt, "No support for declaring enums within this scope at this time");
+			continue;
 		default:
 			Error(Stmt, "Incomplete statement");
 			continue;
@@ -551,6 +666,7 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 	Var->IsBeingChecked = true;
 
 	FScope = Var->FScope;
+	Mod    = Var->Mod;
 
 	if (Var->IsField()) {
 		CField = Var;
@@ -593,7 +709,7 @@ return;
 				VAR_YIELD(Error(Var, "Cannot infer pointer type from null"), true);
 				break;
 			case TypeKind::Array: {
-				ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+				ArrayType* ArrayTy = Var->Ty->AsArrayTy();
 				Type* BaseTy = ArrayTy->GetBaseType();
 				TypeKind Kind = BaseTy->GetKind();
 				if (Kind == TypeKind::EmptyArrayElm) {
@@ -611,14 +727,14 @@ return;
 				break;
 			}
 		} else if (Var->Ty->GetKind() == TypeKind::Array &&
-			!static_cast<ArrayType*>(Var->Ty)->GetLengthExpr()) {
+			!Var->Ty->AsArrayTy()->GetLengthExpr()) {
 
 			if (Var->Assignment->IsNot(AstKind::ARRAY)) {
 				VAR_YIELD(Error(Var, "Expected array declaration for implicit array type"), true);
 			}
 
-			ArrayType* ImplicitArrayType = static_cast<ArrayType*>(Var->Ty);
-			ArrayType* FromArrayType     = static_cast<ArrayType*>(Var->Assignment->Ty);
+			ArrayType* ImplicitArrayType = Var->Ty->AsArrayTy();
+			ArrayType* FromArrayType     = Var->Assignment->Ty->AsArrayTy();
 			if (ImplicitArrayType->GetDepthLevel() != FromArrayType->GetDepthLevel()) {
 				VAR_YIELD(Error(Var, "Incompatible depth with initializer array for implicit array type"), true);
 			}
@@ -639,8 +755,8 @@ return;
 				Type* ElmType = FromArrayType->GetElementType();
 				
 				if (ElmType->GetKind() == TypeKind::Array) {
-					FromArrayType     = static_cast<ArrayType*>(FromArrayType->GetElementType());
-					ImplicitArrayType = static_cast<ArrayType*>(ImplicitArrayType->GetElementType());
+					FromArrayType     = FromArrayType->GetElementType()->AsArrayTy();
+					ImplicitArrayType = ImplicitArrayType->GetElementType()->AsArrayTy();
 					ImplicitArrayType->AssignLength(FromArrayType->GetLength());
 				} else {
 					break;
@@ -668,12 +784,12 @@ return;
 
 		StructDecl* StructForTy = nullptr;
 		if (Var->Ty->GetKind() == TypeKind::Struct) {
-			StructForTy = static_cast<StructType*>(Var->Ty)->GetStruct();
+			StructForTy = Var->Ty->AsStructType()->GetStruct();
 		} else if (Var->Ty->GetKind() == TypeKind::Array) {
-			ArrayType* ArrayTy = static_cast<ArrayType*>(Var->Ty);
+			ArrayType* ArrayTy = Var->Ty->AsArrayTy();
 			Type* BaseTy = ArrayTy->GetBaseType();
 			if (BaseTy->GetKind() == TypeKind::Struct) {
-				StructForTy = static_cast<StructType*>(BaseTy)->GetStruct();
+				StructForTy = BaseTy->AsStructType()->GetStruct();
 			}
 		}
 
@@ -688,7 +804,7 @@ return;
 	}
 
 	if (Var->Ty->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(Var->Ty);
+		StructType* StructTy = Var->Ty->AsStructType();
 		if (StructTy->GetStruct()->IsBeingChecked) {
 			VAR_YIELD(
 				Log.BeginError(
@@ -1055,7 +1171,7 @@ YIELD_ERROR(BinOp)
 				if (LTy->IsPointer()) {
 					BinOp->Ty = LTy;
 				} else {
-					BinOp->Ty = PointerType::Create(static_cast<ArrayType*>(LTy)->GetElementType(), Context);
+					BinOp->Ty = PointerType::Create(LTy->AsArrayTy()->GetElementType(), Context);
 				}
 			} else {
 				// RHS has memory
@@ -1070,7 +1186,7 @@ YIELD_ERROR(BinOp)
 				if (RTy->IsPointer()) {
 					BinOp->Ty = RTy;
 				} else {
-					BinOp->Ty = PointerType::Create(static_cast<ArrayType*>(RTy)->GetElementType(), Context);
+					BinOp->Ty = PointerType::Create(RTy->AsArrayTy()->GetElementType(), Context);
 				}
 			}
 
@@ -1266,7 +1382,7 @@ YIELD_ERROR(UniOp);
 		break;
 	}
 	case '&': {
-		if (ValTy == Context.FuncRef) {
+		if (ValTy == Context.FuncRefType) {
 			// Retrieving the address of a function!
 			IdentRef* IRef = static_cast<IdentRef*>(UniOp->Value);
 			
@@ -1390,7 +1506,30 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 		}
 	};
 
-	auto SearchForVars = [=]() {
+	auto SearchNamespace = [=](Namespace* NSpace) {
+		auto Itr = NSpace->Decls.find(IRef->Ident);
+		if (Itr != NSpace->Decls.end()) {
+			Decl* Dec = Itr->second;
+			if (Dec->Is(AstKind::VAR_DECL)) {
+				IRef->Var     = static_cast<VarDecl*>(Dec);
+				IRef->RefKind = IdentRef::RK::Var;
+				return true;
+			} else if (Dec->Is(AstKind::STRUCT_DECL)) {
+				IRef->Struct  = static_cast<StructDecl*>(Dec);
+				IRef->RefKind = IdentRef::RK::Struct;
+				return true;
+			} else if (Dec->Is(AstKind::ENUM_DECL)) {
+				IRef->Enum    = static_cast<EnumDecl*>(Dec);
+				IRef->RefKind = IdentRef::RK::Enum;
+				return true;
+			} else {
+				return false;
+			}
+		}
+		return false;
+	};
+
+	auto SearchForOther = [=]() {
 		if (StructToLookup) {
 			VarDecl* Field = StructToLookup->FindField(IRef->Ident);
 			if (Field) {
@@ -1398,19 +1537,14 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 				IRef->RefKind = IdentRef::RK::Var;
 			}
 		} else {
-			auto Itr = NamespaceToLookup->GlobalVars.find(IRef->Ident);
-			if (Itr != NamespaceToLookup->GlobalVars.end()) {
-				IRef->Var     = Itr->second;
-				IRef->RefKind = IdentRef::RK::Var;
+			
+			if (SearchNamespace(NamespaceToLookup)) {
 				return;
 			}
 
 			if (LocalNamespace && FScope->UniqueNSpace) {
 				// File marked with a namespace need to search the namespace the file belongs to as well.
-				Itr = FScope->UniqueNSpace->GlobalVars.find(IRef->Ident);
-				if (Itr != FScope->UniqueNSpace->GlobalVars.end()) {
-					IRef->Var     = Itr->second;
-					IRef->RefKind = IdentRef::RK::Var;
+				if (SearchNamespace(FScope->UniqueNSpace)) {
 					return;
 				}
 			}
@@ -1418,11 +1552,26 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 			// Searching for global variables in static imports.
 			if (LocalNamespace) {
 				for (auto& Import : FScope->StaticImports) {
-					auto Itr = Import.NSpace->GlobalVars.find(IRef->Ident);
-					if (Itr != Import.NSpace->GlobalVars.end()) {
-						IRef->Var     = Itr->second;
-						IRef->RefKind = IdentRef::RK::Var;
+					if (SearchNamespace(Import.NSpace)) {
 						return;
+					}
+				}
+			}
+		
+			if (LocalNamespace) {
+				auto Itr = FScope->Imports.find(IRef->Ident);
+				if (Itr != FScope->Imports.end()) {
+					if (Itr->second.NSpace) {
+						IRef->NSpace  = Itr->second.NSpace;
+						IRef->RefKind = IdentRef::RK::Import;
+					} else if (Itr->second.Decl) {
+						if (Itr->second.Decl->Is(AstKind::STRUCT_DECL)) {
+							IRef->Struct  = static_cast<StructDecl*>(Itr->second.Decl);
+							IRef->RefKind = IdentRef::RK::Struct;
+						} else {
+							IRef->Enum    = static_cast<EnumDecl*>(Itr->second.Decl);
+							IRef->RefKind = IdentRef::RK::Enum;
+						}
 					}
 				}
 			}
@@ -1435,21 +1584,13 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 	if (!IRef->IsFound() && ExpectsFuncCall) {
 		SearchForFuncs();
 		if (!IRef->IsFound())
-			SearchForVars();
+			SearchForOther();
 	} else if (!IRef->IsFound()) {
-		SearchForVars();
+		SearchForOther();
 		if (!IRef->IsFound())
 			SearchForFuncs();
 	}
-
-	if (!IRef->IsFound() && LocalNamespace) {
-		auto Itr = FScope->Imports.find(IRef->Ident);
-		if (Itr != FScope->Imports.end() && Itr->second.NSpace) {
-			IRef->NSpace  = Itr->second.NSpace;
-			IRef->RefKind = IdentRef::RK::Import;
-		}
-	}
-
+	
 	switch (IRef->RefKind) {
 	case IdentRef::RK::Var: {
 		VarDecl* VarRef = IRef->Var;
@@ -1471,7 +1612,25 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 		break;
 	}
 	case IdentRef::RK::Funcs: {
-		IRef->Ty = Context.FuncRef;
+		IRef->Ty = Context.FuncRefType;
+		IRef->IsFoldable = false;
+		break;
+	}
+	case IdentRef::RK::Struct: {
+		if (!IRef->Struct->HasBeenChecked) {
+			SemAnalyzer A(Context, IRef->Struct);
+			A.CheckStructDecl(IRef->Struct);
+		}
+		IRef->Ty = Context.StructRefType;
+		IRef->IsFoldable = false;
+		break;
+	}
+	case IdentRef::RK::Enum: {
+		if (!IRef->Struct->HasBeenChecked) {
+			SemAnalyzer A(Context, IRef->Enum);
+			A.CheckEnumDecl(IRef->Enum);
+		}
+		IRef->Ty = Context.EnumRefType;
 		IRef->IsFoldable = false;
 		break;
 	}
@@ -1515,6 +1674,20 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 		}
 	}
 
+	if (Site->Ty == Context.EnumRefType) {
+		IdentRef* IRef = static_cast<IdentRef*>(Site);
+		FieldAcc->Ty = StructType::Create(IRef->Enum, Context);
+		FieldAcc->EnumValue = IRef->Enum->FindValue(FieldAcc->Ident);
+
+		// Ex. Day.MONDAY
+		if (!FieldAcc->EnumValue) {
+			Error(FieldAcc, "enum '%s' does not contain value '%s'",
+				IRef->Struct->Name, FieldAcc->Ident);
+		}
+
+		return;
+	}
+
 	if (Site->Ty == Context.ImportType) {
 		IdentRef* IRef = static_cast<IdentRef*>(Site);
 		CheckIdentRef(FieldAcc, ExpectsFuncCall, IRef->NSpace);
@@ -1523,7 +1696,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 
 	if (!(Site->Ty->GetKind() == TypeKind::Struct ||
 		  (Site->Ty->GetKind() == TypeKind::Pointer &&
-		  static_cast<PointerType*>(Site->Ty)->GetElementType()->GetKind() == TypeKind::Struct)
+		  Site->Ty->AsPointerTy()->GetElementType()->GetKind() == TypeKind::Struct)
 		 )) {
 		Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty->ToString());
 		YIELD_ERROR(FieldAcc);
@@ -1531,10 +1704,9 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 
 	StructType* StructTy;
 	if (Site->Ty->GetKind() == TypeKind::Struct) {
-		StructTy = static_cast<StructType*>(Site->Ty);
+		StructTy = Site->Ty->AsStructType();
 	} else {
-		StructTy = static_cast<StructType*>(
-			static_cast<PointerType*>(Site->Ty)->GetElementType());
+		StructTy = Site->Ty->AsPointerTy()->GetElementType()->AsStructType();
 	}
 
 	if (StructTy->GetStruct()->IsBeingChecked) {
@@ -1594,7 +1766,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 	Type* SiteTy = Call->Site->Ty;
 	if (SiteTy->GetKind() == TypeKind::Function) {
 		// Calling a variable!
-		FunctionType* FuncTy = static_cast<FunctionType*>(SiteTy);
+		FunctionType* FuncTy = SiteTy->AsFunctionType();
 
 		if (Call->Args.size() != FuncTy->ParamTypes.size()) {
 			DisplayErrorForSingleFuncForFuncCall("function",
@@ -1687,7 +1859,8 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 
 	// TODO: Should select canidates based on if signs match or not?
 
-	ulen LeastConflicts = std::numeric_limits<ulen>::max();
+	ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
+		 LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max();
 	for (ulen i = 0; i < Canidates->size(); i++) {
 		FuncDecl* Canidate = (*Canidates)[i];
 		if (!Canidate->ParamTypesChecked) {
@@ -1695,14 +1868,20 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 			Analyzer.CheckFuncParams(Canidate);
 		}
 
-		ulen NumConflicts = 0;
-		if (!CompareAsCanidate(Canidate, Args, NumConflicts)) {
+		ulen NumConflicts = 0, EnumImplicitConflicts = 0;
+		if (!CompareAsCanidate(Canidate, Args, NumConflicts, EnumImplicitConflicts)) {
 			continue;
 		}
 
 		if (NumConflicts < LeastConflicts) {
-			Selection = Canidate;
-			LeastConflicts = NumConflicts;
+			Selection                  = Canidate;
+			LeastConflicts             = NumConflicts;
+			LeastEnumImplicitConflicts = EnumImplicitConflicts;
+		} else if (NumConflicts == LeastConflicts &&
+			       EnumImplicitConflicts < LeastEnumImplicitConflicts) {
+			Selection                  = Canidate;
+			LeastConflicts             = NumConflicts;
+			LeastEnumImplicitConflicts = EnumImplicitConflicts;
 		}
 	}
 	return Selection;
@@ -1710,7 +1889,8 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 	                                      const llvm::SmallVector<NonNamedValue, 2>& Args,
-	                                      ulen& NumConflicts) {
+	                                      ulen& NumConflicts,
+	                                      ulen& EnumImplicitConflicts) {
 	if (Canidate->NumDefaultArgs) {
 		if (!(Args.size() >= Canidate->Params.size() - Canidate->NumDefaultArgs &&
 			  Args.size() <= Canidate->Params.size())) {
@@ -1733,6 +1913,13 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 		}
 		if (!Param->Ty->Equals(Arg->Ty)) {
 			++NumConflicts;
+			if (Arg->Ty->GetRealKind() == TypeKind::Enum) {
+				
+				EnumDecl* Enum = static_cast<StructType*>(Arg->Ty)->GetEnum();
+				if (!Enum->ValuesType->Equals(Param->Ty)) {
+					++EnumImplicitConflicts;
+				}
+			}
 		}
 	}
 
@@ -2020,7 +2207,7 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
 		Access->Ty = Context.CharType;
 		Access->HasConstAddress = true;
 	} else {
-		Access->Ty = static_cast<ContainerType*>(Access->Site->Ty)->GetElementType();
+		Access->Ty = Access->Site->Ty->AsContainerType()->GetElementType();
 	}
 }
 
@@ -2043,7 +2230,7 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
 }
 
 void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
-	StructType* StructTy = static_cast<StructType*>(StructInit->Ty);
+	StructType* StructTy = StructInit->Ty->AsStructType();
 	if (!FixupStructType(StructTy)) {
 		YIELD_ERROR(StructInit);
 	}
@@ -2098,7 +2285,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
 		VarDecl* Field = Struct->Fields[i];
 		Type* FieldTy = Field->Ty;
 		if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
-			StructDecl* StructForTy = static_cast<StructType*>(Field->Ty)->GetStruct();
+			StructDecl* StructForTy = Field->Ty->AsStructType()->GetStruct();
 
 			if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
 				Error(ErrorLoc, "No default constructor to initialize the '%s' field", Field->Name);
@@ -2129,7 +2316,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 
 
 	if (TypeToAlloc->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(TypeToAlloc);
+		StructType* StructTy = TypeToAlloc->AsStructType();
 		Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values);
 	} else if (!Alloc->Values.empty()) {
 		if (Alloc->Values.size() > 1) {
@@ -2152,10 +2339,10 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 			}
 		}
 	} else if (TypeToAlloc->GetKind() == TypeKind::Array) {
-		ArrayType* ArrayTy = static_cast<ArrayType*>(TypeToAlloc);
+		ArrayType* ArrayTy = TypeToAlloc->AsArrayTy();
 		Type* BaseTy = ArrayTy->GetBaseType();
 		if (BaseTy->GetKind() == TypeKind::Struct) {
-			StructType* StructTy = static_cast<StructType*>(BaseTy);
+			StructType* StructTy = BaseTy->AsStructType();
 			if (!StructTy->GetStruct()->Constructors.empty() && !StructTy->GetStruct()->DefaultConstructor) {
 				Error(Alloc, "Cannot allocate array of structs because there is no default constructor");
 			}
@@ -2163,7 +2350,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 	}
 
 	if (TypeToAlloc->GetKind() == TypeKind::Array) {
-		Alloc->Ty = PointerType::Create(static_cast<ArrayType*>(TypeToAlloc)->GetBaseType(), Context);
+		Alloc->Ty = PointerType::Create(TypeToAlloc->AsArrayTy()->GetBaseType(), Context);
 	} else {
 		Alloc->Ty = PointerType::Create(TypeToAlloc, Context);
 	}
@@ -2172,7 +2359,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
 	FixupType(SOf->TypeToGetSizeOf);
 	if (SOf->TypeToGetSizeOf->GetKind() == TypeKind::Struct) {
-		StructType* StructTy = static_cast<StructType*>(SOf->TypeToGetSizeOf);
+		StructType* StructTy = SOf->TypeToGetSizeOf->AsStructType();
 		if (StructTy->GetStruct()->IsBeingChecked) {
 			Error(SOf, "Cannot get sizeof struct '%s' because the type is incomplete",
 				StructTy->ToString());
@@ -2199,6 +2386,17 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Expr* FromExpr) {
 }
 
 bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr) {
+	if (FromTy->GetRealKind() == TypeKind::Enum || ToTy->GetRealKind() == TypeKind::Enum) {
+		if (ToTy->GetRealKind()== TypeKind::Enum) {
+			return ToTy->Equals(FromTy);
+		}
+
+		// Enums have special rules for assignments since they
+		// can assign to whatever their index type is.
+		EnumDecl* Enum = static_cast<StructType*>(FromTy)->GetEnum();
+		return IsAssignableTo(ToTy, Enum->ValuesType, nullptr);
+	}
+
 	switch (ToTy->GetKind()) {
 	case TypeKind::Int8:
 	case TypeKind::Int16:
@@ -2283,7 +2481,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 		if (FromTy == Context.NullType)
 			return true;
 		else if (FromTy->GetKind() == TypeKind::Array) {
-			ArrayType* FromArrayTy = static_cast<ArrayType*>(FromTy);
+			ArrayType* FromArrayTy = FromTy->AsArrayTy();
 			return FromArrayTy->GetElementType() == Context.CharType;
 		}
 		return FromTy == Context.CStrType || FromTy->Equals(Context.CharPtrType);
@@ -2292,8 +2490,8 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 		if (FromTy == Context.NullType)
 			return true;
 		else if (FromTy->GetKind() == TypeKind::Array) {
-			PointerType* ToPtrTy     = static_cast<PointerType*>(ToTy);
-			ArrayType*   FromArrayTy = static_cast<ArrayType*>(FromTy);
+			PointerType* ToPtrTy     = ToTy->AsPointerTy();
+			ArrayType*   FromArrayTy = FromTy->AsArrayTy();
 			if (FromArrayTy->GetDepthLevel() == 1) {
 				return ToPtrTy->GetElementType()->Equals(FromArrayTy->GetElementType()) ||
 					   ToPtrTy->Equals(Context.VoidPtrType);
@@ -2314,8 +2512,8 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 			return false;
 		}
 
-		ArrayType* ToArrayType   = static_cast<ArrayType*>(ToTy);
-		ArrayType* FromArrayType = static_cast<ArrayType*>(FromTy);
+		ArrayType* ToArrayType   = ToTy->AsArrayTy();
+		ArrayType* FromArrayType = FromTy->AsArrayTy();
 		ulen ToArrayDepth = ToArrayType->GetDepthLevel();
 		if (ToArrayDepth != FromArrayType->GetDepthLevel()) {
 			return false;
@@ -2332,8 +2530,8 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 				return false;
 			}
 			for (ulen i = 1; i < ToArrayDepth; i++) {
-				ToArrayType   = static_cast<ArrayType*>(ToTy);
-				FromArrayType = static_cast<ArrayType*>(FromTy);
+				ToArrayType   = ToTy->AsArrayTy();
+				FromArrayType = FromTy->AsArrayTy();
 				if (ToArrayType->GetLength() < FromArrayType->GetLength()) {
 					return false;
 				}
@@ -2405,13 +2603,13 @@ bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddr
 
 bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 	if (Ty->GetKind() == TypeKind::Array) {
-		return FixupArrayType(static_cast<ArrayType*>(Ty), AllowDynamicArrays);
+		return FixupArrayType(Ty->AsArrayTy(), AllowDynamicArrays);
 	} else if (Ty->GetKind() == TypeKind::Struct) {
-		return FixupStructType(static_cast<StructType*>(Ty));
+		return FixupStructType(Ty->AsStructType());
 	} else if (Ty->GetKind() == TypeKind::Pointer) {
-		return FixupType(static_cast<PointerType*>(Ty)->GetElementType(), AllowDynamicArrays);
+		return FixupType(Ty->AsPointerTy()->GetElementType(), AllowDynamicArrays);
 	} else if (Ty->GetKind() == TypeKind::Function) {
-		FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
+		FunctionType* FuncTy = Ty->AsFunctionType();
 		for (auto ParamTy : FuncTy->ParamTypes) {
 			if (!FixupType(ParamTy.Ty)) {
 				return false;
@@ -2472,37 +2670,45 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 
 bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	Identifier StructName = StructTy->GetStructName();
-	StructDecl* Struct;
-	
-	auto Itr = FScope->Imports.find(StructName);
-	if (Itr == FScope->Imports.end() || Itr->second.Struct == nullptr) {
-		auto Itr2 = Mod->DefaultNamespace->Structs.find(StructName);
-		if (Itr2 == Mod->DefaultNamespace->Structs.end()) {
-			bool Found = FScope->UniqueNSpace;
-			if (FScope->UniqueNSpace) {
-				Itr2 = FScope->UniqueNSpace->Structs.find(StructName);
-				if (Itr2 == FScope->UniqueNSpace->Structs.end()) {
-					Found = false;				
-				}
-			}
-			if (!Found) {
-				Error(StructTy->GetErrorLoc(), "Could not find struct by name '%s'", StructTy->GetStructName());
-				return false;
-			}
-		}
+	Decl* FoundDecl = nullptr;
 
-		Struct = Itr2->second;
-	} else {
-		Struct = Itr->second.Struct;
+	auto Itr = FScope->Imports.find(StructName);
+	if (Itr != FScope->Imports.end() && Itr->second.Decl) {
+		FoundDecl = Itr->second.Decl;
 	}
-	if (!Struct) {
-		// This happens due to their being a valid import for the struct
-		// but the import does not properly map to a struct.
+
+	if (!FoundDecl) {
+		auto Itr = Mod->DefaultNamespace->Decls.find(StructName);
+		if (Itr != Mod->DefaultNamespace->Decls.end() && Itr->second->IsStructLike()) {
+			FoundDecl = Itr->second;
+		}
+	}
+
+	if (!FoundDecl && FScope->UniqueNSpace) {
+		auto Itr = FScope->UniqueNSpace->Decls.find(StructName);
+		if (Itr != FScope->UniqueNSpace->Decls.end() && Itr->second->IsStructLike()) {
+			FoundDecl = Itr->second;
+		}
+	}
+
+	if (!FoundDecl) {
+		Error(StructTy->GetErrorLoc(), "Could not find struct, or enum by name '%s'", StructTy->GetStructName());
 		return false;
 	}
-	SemAnalyzer Analyzer(Context, Struct);
-	Analyzer.CheckStructDecl(Struct);
-	StructTy->AssignStruct(Struct);
+
+	SemAnalyzer Analyzer(Context, FoundDecl);
+	if (FoundDecl->Is(AstKind::STRUCT_DECL)) {
+		StructDecl* Struct = static_cast<StructDecl*>(FoundDecl);
+		StructTy->AssignStruct(Struct);
+		Analyzer.CheckStructDecl(Struct);
+	} else if (FoundDecl->Is(AstKind::ENUM_DECL)) {
+		EnumDecl* Enum = static_cast<EnumDecl*>(FoundDecl);
+		StructTy->AssignEnum(Enum);
+		Analyzer.CheckEnumDecl(Enum);
+	} else {
+		assert(!"Not handled");
+	}
+	
 	return true;
 }
 
@@ -2600,6 +2806,7 @@ void arco::SemAnalyzer::DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* Start
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
+	// TODO: can this use +1 offset for performance?
 	for (const FuncDecl* Func1 : FuncList) {
 		for (const FuncDecl* Func2 : FuncList) {
 			if (Func1 == Func2) continue;
@@ -2627,7 +2834,7 @@ bool arco::SemAnalyzer::IsComparable(Type* Ty) {
 }
 
 void arco::SemAnalyzer::DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToTy) {
-	if (FromExpr->Ty->Equals(Context.FuncRef) && ToTy->GetKind() == TypeKind::Function) {
+	if (FromExpr->Ty->Equals(Context.FuncRefType) && ToTy->GetKind() == TypeKind::Function) {
 		Log.AddNoteLine([=](llvm::raw_ostream& OS) {
 			IdentRef* Ref = static_cast<IdentRef*>(FromExpr);
 			OS << "If you wish to get the function type use: &" << Ref->Ident << ".";

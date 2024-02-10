@@ -127,12 +127,12 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 
 	if (!StandAlone) {
 		Module* StdModule = Context.ModNamesToMods.find("std")->second;
-		auto Itr = StdModule->DefaultNamespace->Structs.find(Context.StringIdentifier);
-		if (Itr == StdModule->DefaultNamespace->Structs.end()) {
+		auto Itr = StdModule->DefaultNamespace->Decls.find(Context.StringIdentifier);
+		if (Itr == StdModule->DefaultNamespace->Decls.end() || Itr->second->IsNot(AstKind::STRUCT_DECL)) {
 			Logger::GlobalError(llvm::errs(), "Standard library is missing 'String' struct");
 			return 1;
 		}
-		Context.StdStringStruct = Itr->second;
+		Context.StdStringStruct = static_cast<StructDecl*>(Itr->second);
 	}
 
 	// Must do this early so that LLVM can correctly determine information for types
@@ -206,6 +206,8 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 			Analyzer.CheckVarDecl(static_cast<VarDecl*>(D));
 		} else if (D->Is(AstKind::STRUCT_DECL)) {
 			Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
+		} else if (D->Is(AstKind::ENUM_DECL)) {
+			Analyzer.CheckEnumDecl(static_cast<EnumDecl*>(D));
 		}
 	}
 

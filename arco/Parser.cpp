@@ -125,18 +125,18 @@ arco::FileScope* arco::Parser::Parse() {
 		Context.UncheckedDecls.insert(Global);
 		
 		if (!Global->Name.IsNull()) {
-			auto Itr = NSpace->GlobalVars.find(Global->Name);
-			if (Itr != NSpace->GlobalVars.end()) {
-				VarDecl* FirstDecl = Itr->getSecond();
+			auto Itr = NSpace->Decls.find(Global->Name);
+			if (Itr != NSpace->Decls.end()) {
+				Decl* FirstDecl = Itr->second;
 				Error(Global->Loc,
-					"Redeclaration of global variable '%s'. First declared at: %s:%s",
+					"Duplicate declaration of identifier '%s'. First declared at: %s:%s",
 					Global->Name,
 					FirstDecl->FScope->Path,
 					FirstDecl->Loc.LineNumber
 					);
+			} else {
+				NSpace->Decls[Global->Name] = Global;
 			}
-				
-			NSpace->GlobalVars[Global->Name] = Global;
 		}
 	};
 
@@ -161,17 +161,18 @@ arco::FileScope* arco::Parser::Parse() {
 			}
 
 			NSpace->Funcs[Func->Name].push_back(Func);
-		} else if (Stmt->Is(AstKind::STRUCT_DECL)) {
-			StructDecl* Struct = static_cast<StructDecl*>(Stmt);
+		} else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL)) {
+			Decl* Dec = static_cast<Decl*>(Stmt);
 			
-			if (!Struct->Name.IsNull()) {
-				if (NSpace->Structs.find(Struct->Name) != NSpace->Structs.end()) {
-					Error(Struct->Loc,
-						"Duplicate declaration of struct '%s'",
-						Struct->Name);
+			if (!Dec->Name.IsNull()) {
+				auto Itr = NSpace->Decls.find(Dec->Name);
+				if (Itr != NSpace->Decls.end()) {
+					Decl* FirstDec = Itr->second;
+					Error(Dec->Loc, "Duplicate declaration of identifier '%s'. First declared at: %s:%s",
+						Dec->Name, FirstDec->FScope->Path, FirstDec->Loc.LineNumber);
+				} else {	
+					NSpace->Decls[Dec->Name] = Dec;
 				}
-
-				NSpace->Structs[Struct->Name] = Struct;
 			}
 		} else if (Stmt->Is(AstKind::VAR_DECL)) {
 			VarDecl* Global = static_cast<VarDecl*>(Stmt);
@@ -320,6 +321,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
 		}
 		case TokenKind::KW_STRUCT:
 			return ParseStructDecl(0);
+		case TokenKind::KW_ENUM:
+			return ParseEnumDecl(0);
 		case ',': {
 			Stmt = ParseVarDeclList(0);
 			Match(';');
@@ -637,8 +640,8 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 		}
 	};
 
-	PUSH_SCOPE()
 	Match('{');
+	PUSH_SCOPE()
 	while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
 		AstNode* Stmt;
 		ParseOptStmt(Stmt, '}');
@@ -691,14 +694,61 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 				});
 		}
 	}
-	Match('}');
 	POP_SCOPE()
+	Match('}');
 
 	if (NumErrs != TotalAccumulatedErrors) {
 		Struct->ParsingError = true;
 	}
 
 	return Struct;
+}
+
+arco::EnumDecl* arco::Parser::ParseEnumDecl(Modifiers Mods) {
+	
+	ulen NumErrs = TotalAccumulatedErrors;
+
+	EnumDecl* Enum = NewNode<EnumDecl>(CTok);
+	Enum->Mod    = Mod;
+	Enum->FScope = FScope;
+	Enum->Name   = ParseIdentifier("Expected identifier for enum declaration");
+	Enum->Mods   = Mods;
+	Match(TokenKind::KW_ENUM);
+
+	if (CTok.Is(':')) {
+		NextToken(); // Consuming ':' token.
+		Enum->ValuesType = ParseType(false);
+	}
+
+	Context.UncheckedDecls.insert(Enum);
+
+	Match('{');
+	bool MoreValues = false;
+	while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
+		Token NameTok = CTok;
+		Identifier ValueName = ParseIdentifier("Expected identifier for enum value");
+		Expr* Value = nullptr;
+		if (CTok.Is(TokenKind::COL_COL)) {
+			NextToken(); // Consuming '::' token.
+			Value = ParseExpr();
+		}
+
+		Enum->Values.push_back(
+			EnumDecl::EnumValue{
+				NameTok.Loc,
+				0,
+				ValueName,
+				Value
+			});
+		Match(';');
+	}
+	Match('}');
+	
+	if (NumErrs != TotalAccumulatedErrors) {
+		Enum->ParsingError = true;
+	}
+
+	return Enum;
 }
 
 void arco::Parser::ParseScopeStmts(LexScope& Scope) {
