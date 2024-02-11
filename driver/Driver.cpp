@@ -4,13 +4,15 @@
 
 #include "Options.h"
 
+#include <filesystem>
+
 const char* HELP_MESSAGE =
 R"(
 Usage: arco <options> <sources>
 Basic Options (for more options use -more-options):
 
-    -out-name=<name>
-        Sets the name of the executable.
+    -out=<name>
+        Sets the name of the executable. -out-dir for directories.
 
     -run
         Executes the program after it is compiled and linked.
@@ -35,8 +37,13 @@ R"(
 Usage: arco <options> <sources>
 Possible options:
 
-    -out-name=<name>
+    -out=<name>
         Sets the name of the executable.
+ 
+    -out-dir=<name>
+        The directory to put the output files such as
+        the executable. Will create the needed directories
+        if they do not exists.
 
     -run
         Executes the program after it is compiled and linked.
@@ -211,12 +218,24 @@ int main(int argc, char* argv[]) {
 
 		arco::TOTAL_ALLOWED_ERRORS = ErrorCount;
 	});
-	OptManager.AddOption("out-name", [&Compiler](int ArgNum, llvm::StringRef ValPart) {
-		ValPart = GetOptValue(ArgNum, ValPart, "out-name");
+	OptManager.AddOption("out", [&Compiler](int ArgNum, llvm::StringRef ValPart) {
+		ValPart = GetOptValue(ArgNum, ValPart, "out");
 		if (ValPart.empty()) return;
 
-		// TODO: Will want to validate the user provided a valid name for an executable!
+		if (ValPart.find_first_of('/')  != llvm::StringRef::npos ||
+			ValPart.find_first_of('\\') != llvm::StringRef::npos) {
+			DriverError(ArgNum, "The output name cannot contain directory paths. If you wish to set the output directory use: -out-dir=<dir>");
+			return;
+		}
+		// TODO: validate furher that the name is valid?
 		Compiler.SetOutputName(ValPart.str());
+	});
+	OptManager.AddOption("out-dir", [&Compiler](int ArgNum, llvm::StringRef ValPart) {
+		ValPart = GetOptValue(ArgNum, ValPart, "out-dir");
+		if (ValPart.empty()) return;
+
+		// TODO: Validate it is a valid path?
+		Compiler.SetOutputDirectory(ValPart.str());
 	});
 	OptManager.AddOption("l", [&Compiler](int ArgNum, llvm::StringRef LibName) {
 		if (LibName.empty()) {

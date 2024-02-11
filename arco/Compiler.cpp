@@ -55,6 +55,23 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	
 	i64 ParseTimeBegin = GetTimeInMilliseconds();
 
+	if (!OutputDirectory.empty()) {
+		std::error_code EC;
+		if (!std::filesystem::exists(OutputDirectory, EC)) {
+			if (!std::filesystem::create_directories(OutputDirectory, EC) || EC) {
+				Logger::GlobalError(llvm::errs(), "Failed to create the output directory: '%s'",
+					OutputDirectory);
+				return 1;
+			}
+		} else if (EC) {
+			Logger::GlobalError(llvm::errs(), "Failed to check if the output directory exists");
+			return 1;
+		}
+		if (OutputDirectory.ends_with('/')) {
+			OutputDirectory = OutputDirectory.substr(0, OutputDirectory.size() - 2);
+		}
+	}
+
 	Context.Initialize();
 	FD::InitializeCache();
 
@@ -268,6 +285,33 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 		return 1;
 	}
 
+	std::string AbsOutputDirectory, AbsoluteExePath, AbsoluteObjPath;
+	if (!OutputDirectory.empty()) {
+		AbsOutputDirectory = std::filesystem::absolute(std::filesystem::path(OutputDirectory)).generic_string();
+	} else {
+		AbsOutputDirectory = std::filesystem::absolute(std::filesystem::current_path()).generic_string();
+	}
+	if (!AbsOutputDirectory.ends_with("/")) {
+		AbsOutputDirectory += "/";
+	}
+	AbsoluteExePath = AbsOutputDirectory + ExecutableName;
+	AbsoluteObjPath = AbsOutputDirectory + ObjFileName;
+
+	// Moving the files.
+	if (!OutputDirectory.empty()) {
+		std::error_code EC;
+		std::filesystem::rename(ExecutableName, AbsoluteExePath, EC);
+		if (EC) {
+			Logger::GlobalError(llvm::errs(), "Failed to move the executable to the output directory");
+			return 1;
+		}
+		std::filesystem::rename(ObjFileName, AbsoluteObjPath, EC);
+		if (EC) {
+			Logger::GlobalError(llvm::errs(), "Failed to move the object file to the output directory");
+			return 1;
+		}
+	}
+
 	i64 LinkedIn = GetTimeInMilliseconds() - LinkTimeBegin;
 
 	if (DisplayTimes) {
@@ -302,15 +346,13 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	}
 
 	if (ShouldDeleteObjectFiles) {
-		std::remove(ObjFileName.c_str());
+		std::remove(AbsoluteObjPath.c_str());
 	}
 
-	llvm::outs() << "Wrote program to: "
-		<< std::filesystem::absolute(std::filesystem::current_path()).generic_string().c_str()
-		<< '/' << ExecutableName << '\n';
+	llvm::outs() << "Wrote program to: " << AbsoluteExePath << '\n';
 
 	if (RunProgram || RunInSeperateWindow) {
-		return ExeProcess(ExecutableName.c_str(), RunInSeperateWindow);
+		return ExeProcess(AbsoluteExePath.c_str(), RunInSeperateWindow);
 	}
 	return 0;
 }

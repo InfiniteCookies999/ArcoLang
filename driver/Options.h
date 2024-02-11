@@ -20,6 +20,7 @@ private:
 
 	struct Option {
 		const char* OptName;
+		size_t      OptNameLength;
 		bool*       State = nullptr;
 		OptCB       Callback;
 		bool        OnlyStartsWith = false;

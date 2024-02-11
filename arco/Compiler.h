@@ -65,6 +65,10 @@ namespace arco {
 			this->OutputName = OutputName;
 		}
 
+		void SetOutputDirectory(const std::string& OutputDirectory) {
+			this->OutputDirectory = OutputDirectory;
+		}
+
 	private:
 		ArcoContext& Context;
 		ulen TotalLinesParsed = 0;
@@ -75,7 +79,8 @@ namespace arco {
 		llvm::SmallVector<const char*, 8> Libraries;
 		llvm::SmallVector<const char*, 8> LibrarySearchPaths;
 
-		std::string OutputName = "program";
+		std::string OutputName      = "program";
+		std::string OutputDirectory = "";
 
 		void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 
