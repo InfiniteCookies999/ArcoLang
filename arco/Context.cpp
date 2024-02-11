@@ -14,35 +14,41 @@ arco::ArcoContext::ArcoContext()
 	CdeclIdentifier(Identifier("cdecl")),
 	FastcallIdentifier(Identifier("fastcall")),
 	StringIdentifier(Identifier("String")),
+	TypeIdentifier(Identifier("Type")),
+	PointerTypeIdentifier(Identifier("PointerType")),
+	ArrayTypeIdentifier(Identifier("ArrayType")),
+	StructTypeIdentifier(Identifier("Struct")),
+	FieldTypeIdentifier(Identifier("Field")),
+
 	CallConventions({
 		{ StdcallIdentifier,  llvm::CallingConv::X86_StdCall  },
 		{ CdeclIdentifier,	  llvm::CallingConv::C            },
 		{ FastcallIdentifier, llvm::CallingConv::X86_FastCall }
 		}),
 
-	IntType(new Type(TypeKind::Int)),
-	UIntType(new Type(TypeKind::UnsignedInt)),
-	Int8Type(new Type(TypeKind::Int8)),
-	Int16Type(new Type(TypeKind::Int16)),
-	Int32Type(new Type(TypeKind::Int32)),
-	Int64Type(new Type(TypeKind::Int64)),
-	UInt8Type(new Type(TypeKind::UnsignedInt8)),
-	UInt16Type(new Type(TypeKind::UnsignedInt16)),
-	UInt32Type(new Type(TypeKind::UnsignedInt32)),
-	UInt64Type(new Type(TypeKind::UnsignedInt64)),
-	Float32Type(new Type(TypeKind::Float32)),
-	Float64Type(new Type(TypeKind::Float64)),
-	CharType(new Type(TypeKind::Char)),
-	VoidType(new Type(TypeKind::Void)),
-	BoolType(new Type(TypeKind::Bool)),
-	CStrType(new Type(TypeKind::CStr)),
-	NullType(new Type(TypeKind::Null)),
-	ErrorType(new Type(TypeKind::Error)),
-	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm)),
-	ImportType(new Type(TypeKind::Import)),
-	FuncRefType(new Type(TypeKind::FuncRef)),
-	StructRefType(new Type(TypeKind::StructRef)),
-	EnumRefType(new Type(TypeKind::EnumRef)),
+	IntType(new Type(TypeKind::Int, UniqueTypeIdCounter++)),
+	UIntType(new Type(TypeKind::UnsignedInt, UniqueTypeIdCounter++)),
+	Int8Type(new Type(TypeKind::Int8, UniqueTypeIdCounter++)),
+	Int16Type(new Type(TypeKind::Int16, UniqueTypeIdCounter++)),
+	Int32Type(new Type(TypeKind::Int32, UniqueTypeIdCounter++)),
+	Int64Type(new Type(TypeKind::Int64, UniqueTypeIdCounter++)),
+	UInt8Type(new Type(TypeKind::UnsignedInt8, UniqueTypeIdCounter++)),
+	UInt16Type(new Type(TypeKind::UnsignedInt16, UniqueTypeIdCounter++)),
+	UInt32Type(new Type(TypeKind::UnsignedInt32, UniqueTypeIdCounter++)),
+	UInt64Type(new Type(TypeKind::UnsignedInt64, UniqueTypeIdCounter++)),
+	Float32Type(new Type(TypeKind::Float32, UniqueTypeIdCounter++)),
+	Float64Type(new Type(TypeKind::Float64, UniqueTypeIdCounter++)),
+	CharType(new Type(TypeKind::Char, UniqueTypeIdCounter++)),
+	VoidType(new Type(TypeKind::Void, UniqueTypeIdCounter++)),
+	BoolType(new Type(TypeKind::Bool, UniqueTypeIdCounter++)),
+	CStrType(new Type(TypeKind::CStr, UniqueTypeIdCounter++)),
+	NullType(new Type(TypeKind::Null, UniqueTypeIdCounter++)),
+	ErrorType(new Type(TypeKind::Error, UniqueTypeIdCounter++)),
+	EmptyArrayElmType(new Type(TypeKind::EmptyArrayElm, UniqueTypeIdCounter++)),
+	ImportType(new Type(TypeKind::Import, UniqueTypeIdCounter++)),
+	FuncRefType(new Type(TypeKind::FuncRef, UniqueTypeIdCounter++)),
+	StructRefType(new Type(TypeKind::StructRef, UniqueTypeIdCounter++)),
+	EnumRefType(new Type(TypeKind::EnumRef, UniqueTypeIdCounter++)),
 
 	LLVMIntrinsicsTable({
 		{ Identifier("memcpy"), llvm::Intrinsic::IndependentIntrinsics::memcpy },
@@ -140,6 +146,7 @@ void arco::ArcoContext::Initialize() {
 	TokenKeywordMap.insert({ "static"   , TokenKind::KW_STATIC    });
 	TokenKeywordMap.insert({ "delete"   , TokenKind::KW_DELETE    });
 	TokenKeywordMap.insert({ "sizeof"   , TokenKind::KW_SIZEOF    });
+	TokenKeywordMap.insert({ "typeof"   , TokenKind::KW_TYPEOF    });
 	TokenKeywordMap.insert({ "copyobj"  , TokenKind::KW_COPYOBJ   });
 	TokenKeywordMap.insert({ "moveobj"  , TokenKind::KW_MOVEOBJ   });
 	TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });

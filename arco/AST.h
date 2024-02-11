@@ -62,7 +62,8 @@ namespace arco {
 		TYPE_CAST,
 		STRUCT_INITIALIZER,
 		HEAP_ALLOC,
-		SIZEOF
+		SIZEOF,
+		TYPEOF
 
 	};
 
@@ -179,6 +180,8 @@ namespace arco {
 		FuncDecl*                             Destructor         = nullptr;
 		llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
+		u32 UniqueTypeId;
+
 		llvm::StructType* LLStructTy         = nullptr;
 		llvm::Function* LLDefaultConstructor = nullptr;
 
@@ -203,6 +206,8 @@ namespace arco {
 		};
 		llvm::SmallVector<EnumValue> Values;
 		
+		u32 UniqueTypeId;
+
 		Type* ValuesType = nullptr;
 		bool  IndexingInOrder = true;
 		// If IndexingInOrder is true then a global array
@@ -620,6 +625,13 @@ namespace arco {
 
 		Type* TypeToGetSizeOf;
 
+	};
+
+	// Ex.  'typeof(int)'
+	struct TypeOf : Expr {
+		TypeOf() : Expr(AstKind::TYPEOF) {}
+
+		Type* TypeToGetTypeOf;
 	};
 }
 

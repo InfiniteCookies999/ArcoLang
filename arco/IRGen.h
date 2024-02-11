@@ -136,6 +136,12 @@ namespace arco {
 			                   StructDecl* Struct,
 			                   llvm::SmallVector<NonNamedValue, 2>& Args);
 		llvm::Value* GenHeapAlloc(HeapAlloc* Alloc);
+		llvm::Value* GenTypeOf(TypeOf* TOf, llvm::Value* LLAddr);
+		llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
+		llvm::Constant* GenTypeOfType(Type* GetTy);
+		llvm::GlobalVariable* GenTypeOfPointerTypeGlobal(PointerType* PointerTy);
+		llvm::GlobalVariable* GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy);
+		llvm::GlobalVariable* GenTypeOfStructTypeGlobal(StructType* StructTy);
 
 		llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
 		llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);

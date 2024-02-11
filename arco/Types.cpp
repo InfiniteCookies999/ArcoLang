@@ -13,77 +13,7 @@ arco::TypeKind arco::Type::GetKind() const {
 }
 
 bool arco::Type::Equals(const Type* Ty) const {
-	switch (Ty->GetRealKind()) {
-	case TypeKind::Error:
-		return false;
-	case TypeKind::Array: {
-		if (this->GetKind() != TypeKind::Array) {
-			return false;
-		}
-		
-		const ArrayType* ArrayTy     = static_cast<const ArrayType*>(Ty);
-		const ArrayType* ThisArrayTy = static_cast<const ArrayType*>(this);
-		
-		return ArrayTy->GetLength() == ThisArrayTy->GetLength() &&
-			   ArrayTy->GetElementType()->Equals(ThisArrayTy->GetElementType());
-	}
-	case TypeKind::Enum: {
-		if (this->GetRealKind() != TypeKind::Enum) {
-			return false;
-		}
-		
-		const StructType* StructTy     = static_cast<const StructType*>(Ty);
-		const StructType* ThisStructTy = static_cast<const StructType*>(Ty);
-
-		return StructTy->GetEnum() == ThisStructTy->GetEnum();
-	}
-	case TypeKind::Struct: {
-		if (this->GetKind() != TypeKind::Struct) {
-			return false;
-		}
-		
-		const StructType* StructTy     = static_cast<const StructType*>(Ty);
-		const StructType* ThisStructTy = static_cast<const StructType*>(Ty);
-
-		return StructTy->GetStruct() == ThisStructTy->GetStruct();
-	}
-	case TypeKind::Pointer: {
-		if (this->GetKind() != TypeKind::Pointer) {
-			return false;
-		}
-		
-		const PointerType* PtrTy     = static_cast<const PointerType*>(Ty);
-		const PointerType* ThisPtrTy = static_cast<const PointerType*>(this);
-		return PtrTy->GetElementType()->Equals(ThisPtrTy->GetElementType());
-	}
-	case TypeKind::Function: {
-		if (this->GetKind() != TypeKind::Function) {
-			return false;
-		}
-
-		const FunctionType* FuncTy     = static_cast<const FunctionType*>(Ty);
-		const FunctionType* ThisFuncTy = static_cast<const FunctionType*>(this);
-		if (!FuncTy->RetTyInfo.Ty->Equals(ThisFuncTy->RetTyInfo.Ty)) {
-			return false;
-		}
-		if (FuncTy->RetTyInfo.ConstMemory != ThisFuncTy->RetTyInfo.ConstMemory) {
-			return false;
-		}
-		if (FuncTy->ParamTypes.size() != ThisFuncTy->ParamTypes.size()) {
-			return false;
-		}
-
-		return std::equal(FuncTy->ParamTypes.begin(),
-			              FuncTy->ParamTypes.end(),
-			              ThisFuncTy->ParamTypes.begin(),
-			[](const TypeInfo Ty1, const TypeInfo Ty2) {
-				return Ty1.ConstMemory == Ty2.ConstMemory &&
-					   Ty1.Ty->Equals(Ty2.Ty);
-			});
-	}
-	default:
-		return this == Ty;
-	}
+	return UniqueId == Ty->UniqueId;
 }
 
 bool arco::Type::IsNumber() const {
@@ -402,26 +332,41 @@ ulen arco::ContainerType::GetDepthLevel() const {
 }
 
 arco::PointerType* arco::PointerType::Create(Type* ElmTy, ArcoContext& Context) {
-	auto Itr = Context.PointerCache.find(ElmTy);
-	if (Itr != Context.PointerCache.end()) {
-		return Itr->second;
+	// If the element type does not have a unique id then the unique id
+	// is resolved in FixupType for pointers.
+	u32 UniqueId = ElmTy->GetUniqueId();
+	if (UniqueId != 0) {
+		// The element type has a unique key already so we can save memory
+		// and use the cache.
+		auto Itr = Context.PointerTyCache.find(UniqueId);
+		if (Itr != Context.PointerTyCache.end()) {
+			return Itr->second;
+		}
 	}
 	PointerType* Ty = new PointerType;
 	Ty->ElmTy = ElmTy;
-	Context.PointerCache.insert({ ElmTy, Ty });
+	if (UniqueId != 0) {
+		Ty->UniqueId = Context.UniqueTypeIdCounter++;
+		Context.PointerTyCache.insert({ UniqueId, Ty });
+	}
 	return Ty;
 }
 
 arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, ulen Length, ArcoContext& Context) {
-	auto Itr = Context.ArrayCache.find({ ElmTy, Length });
-	if (Itr != Context.ArrayCache.end()) {
+	// The element type has a unique ID at this pointer so we can rely on the cache.
+	std::pair<u32, ulen> UniqueKey = { ElmTy->GetUniqueId(), Length };
+	auto Itr = Context.ArrayTyCache.find(UniqueKey);
+	if (Itr != Context.ArrayTyCache.end()) {
+		// an exact version of this array type already exists.
 		return Itr->second;
+	} else {
+		ArrayType* Ty = new ArrayType;
+		Ty->UniqueId = Context.UniqueTypeIdCounter++;
+		Context.ArrayTyCache.insert({ UniqueKey, Ty });
+		Ty->ElmTy  = ElmTy;
+		Ty->Length = Length;
+		return Ty;
 	}
-	ArrayType* Ty = new ArrayType;
-	Ty->ElmTy  = ElmTy;
-	Ty->Length = Length;
-	Context.ArrayCache.insert({ { ElmTy, Length }, Ty });
-	return Ty;
 }
 
 arco::ArrayType* arco::ArrayType::Create(Type* ElmTy,
@@ -442,6 +387,7 @@ ulen arco::ArrayType::GetTotalLinearLength() const {
 }
 
 arco::StructType* arco::StructType::Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context) {
+	// TODO: Caching?
 	StructType* Ty = new StructType(TypeKind::Struct); // TODO: Should this default to an indetermined type?
 	Ty->StructName = StructName;
 	Ty->ErrorLoc   = ErrorLoc;
@@ -451,6 +397,7 @@ arco::StructType* arco::StructType::Create(Identifier StructName, SourceLoc Erro
 arco::StructType* arco::StructType::Create(EnumDecl* Enum, ArcoContext& Context) {
 	// TODO: Caching?
 	StructType* Ty = new StructType(TypeKind::Enum);
+	Ty->UniqueId   = Enum->UniqueTypeId;
 	Ty->StructName = Enum->Name;
 	Ty->Enum       = Enum;
 	return Ty;
@@ -459,15 +406,50 @@ arco::StructType* arco::StructType::Create(EnumDecl* Enum, ArcoContext& Context)
 arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Context) {
 	// TODO: Caching?
 	StructType* Ty = new StructType(TypeKind::Struct);
+	Ty->UniqueId   = Struct->UniqueTypeId;
 	Ty->StructName = Struct->Name;
 	Ty->Struct     = Struct;
 	return Ty;
 }
 
-arco::FunctionType* arco::FunctionType::Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes) {
-	// TODO: caching?
+arco::FunctionType* arco::FunctionType::Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes, ArcoContext& Context) {
+	bool AllUnique = true;
+	for (const TypeInfo& ParamType : ParamTypes) {
+		if (!ParamType.Ty->GetUniqueId()) {
+			AllUnique = false;
+		}
+	}
+	if (!RetTy.Ty->GetUniqueId()) {
+		AllUnique = false;
+	}
+	llvm::SmallVector<u32> UniqueKey = GetUniqueHashKey(RetTy, ParamTypes);
+	if (AllUnique) {
+		auto Itr = Context.FunctionTyCache.find(UniqueKey);
+		if (Itr != Context.FunctionTyCache.end()) {
+			return Itr->second;
+		}
+	}
+
 	FunctionType* FuncTy = new FunctionType;
-	FuncTy->RetTyInfo = RetTy;
+	if (AllUnique) {
+		FuncTy->UniqueId = Context.UniqueTypeIdCounter++;
+		Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
+	}
+	FuncTy->RetTyInfo  = RetTy;
 	FuncTy->ParamTypes = std::move(ParamTypes);
 	return FuncTy;
+}
+
+llvm::SmallVector<u32> arco::FunctionType::GetUniqueHashKey(TypeInfo RetTy, const llvm::SmallVector<TypeInfo>& ParamTypes) {
+	// We use the high bit of the u32 bit integer to indicate if the memory is const so that we may
+	// use a vector of u32s to hash.
+	llvm::SmallVector<u32> UniqueKey;
+	UniqueKey.reserve(ParamTypes.size() + 1);
+	u32 RetTyKey = RetTy.Ty->GetUniqueId() | (static_cast<u32>(RetTy.ConstMemory) << 31);
+	UniqueKey.push_back(RetTyKey);
+	for (const TypeInfo& ParamType : ParamTypes) {
+		u32 ParamTyKey = ParamType.Ty->GetUniqueId() | (static_cast<u32>(ParamType.ConstMemory) << 31);
+		UniqueKey.push_back(ParamTyKey);
+	}
+	return UniqueKey;
 }

@@ -2,6 +2,7 @@
 #define ARCO_TYPES_H
 
 #include <string>
+#include <llvm/ADT/SmallVector.h>
 
 #include "Source.h"
 #include "Identifier.h"
@@ -45,12 +46,13 @@ namespace arco {
 		CStr,
 		Pointer,
 		Array,
+		Struct,
+		Enum,
+
 		Null,
 		Error,
 		// When an array is declared with no elements.
 		EmptyArrayElm,
-		Struct,
-		Enum,
 		// When an identifier is an import the type is set to this.
 		Import,
 		Function,
@@ -68,6 +70,9 @@ namespace arco {
 
 		Type(TypeKind Kind)
 			: Kind(Kind) {}
+
+		Type(TypeKind Kind, u32 UniqueId)
+			: Kind(Kind), UniqueId(UniqueId) {}
 
 		TypeKind GetKind() const;
 		inline TypeKind GetRealKind() const {
@@ -111,8 +116,17 @@ namespace arco {
 
 		std::string ToString() const;
 
+		inline void SetUniqueId(u32 Id) {
+			UniqueId = Id;
+		}
+
+		inline u32 GetUniqueId() {
+			return UniqueId;
+		}
+
 	protected:
 		TypeKind Kind;
+		u32      UniqueId = 0;
 	};
 
 	struct TypeInfo {
@@ -224,7 +238,9 @@ namespace arco {
 		TypeInfo RetTyInfo;
 		llvm::SmallVector<TypeInfo> ParamTypes;
 
-		static FunctionType* Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes);
+		static FunctionType* Create(TypeInfo RetTy, llvm::SmallVector<TypeInfo> ParamTypes, ArcoContext& Context);
+
+		static llvm::SmallVector<u32> GetUniqueHashKey(TypeInfo RetTy, const llvm::SmallVector<TypeInfo>& ParamTypes);
 
 	private:
 		FunctionType()

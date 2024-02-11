@@ -457,6 +457,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::SIZEOF:
 		CheckSizeOf(static_cast<SizeOf*>(Node));
 		break;
+	case AstKind::TYPEOF:
+		CheckTypeOf(static_cast<TypeOf*>(Node));
+		break;
 	case AstKind::NUMBER_LITERAL:
 	case AstKind::STRING_LITERAL:
 	case AstKind::NULLPTR:
@@ -723,6 +726,8 @@ return;
 			}
 			case TypeKind::Import:
 			case TypeKind::FuncRef:
+			case TypeKind::StructRef:
+			case TypeKind::EnumRef:
 				VAR_YIELD(Error(Var, "Cannot infer type from an incomplete expression"), true);
 				break;
 			}
@@ -1391,6 +1396,8 @@ YIELD_ERROR(UniOp);
 				Error(UniOp, "Not supporting taking address of member functions yet!");
 			}
 
+			CheckFuncParams(Func);
+
 			// TODO: eventually take into account calling convention.
 			llvm::SmallVector<TypeInfo> ParamTypes;
 			ParamTypes.reserve(Func->Params.size());
@@ -1405,7 +1412,7 @@ YIELD_ERROR(UniOp);
 
 			UniOp->HasConstAddress = false;
 			UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
-				                             std::move(ParamTypes));
+				                             std::move(ParamTypes), Context);
 		} else {
 			if (!IsLValue(UniOp->Value) && UniOp->Value->Ty->GetKind() != TypeKind::Struct) {
 				Error(UniOp, "Operator '%s' requires the value to be modifiable",
@@ -2367,6 +2374,16 @@ void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
 	}
 }
 
+void arco::SemAnalyzer::CheckTypeOf(TypeOf* TOf) {
+	if (!Context.StdTypeStruct) {
+		Error(TOf, "Cannot use typeof operator when there is no standard library");
+		return;
+	}
+	FixupType(TOf->TypeToGetTypeOf);
+	TOf->Ty = StructType::Create(Context.StdTypeStruct, Context);
+	TOf->IsFoldable = false; // TODO: change?
+}
+
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
 	CheckNode(Cond);
 	if (Cond->Ty == Context.ErrorType) return;
@@ -2607,13 +2624,43 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 	} else if (Ty->GetKind() == TypeKind::Struct) {
 		return FixupStructType(Ty->AsStructType());
 	} else if (Ty->GetKind() == TypeKind::Pointer) {
-		return FixupType(Ty->AsPointerTy()->GetElementType(), AllowDynamicArrays);
+		PointerType* PointerTy = Ty->AsPointerTy();
+		Type* ElementType = PointerTy->GetElementType();
+		if (!FixupType(ElementType, AllowDynamicArrays)) {
+			return false;
+		}
+
+		if (!PointerTy->GetUniqueId()) {
+			// Could not resolve the unique id during parsing so we must
+			// create the unique id now.
+			
+			u32 UniqueKey = ElementType->GetUniqueId();
+			auto Itr = Context.PointerTyCache.find(UniqueKey);
+			if (Itr != Context.PointerTyCache.end()) {
+				PointerTy->SetUniqueId(Itr->second->GetUniqueId());
+			} else {
+				// First seen version of this type.
+				PointerTy->SetUniqueId(Context.UniqueTypeIdCounter++);
+				Context.PointerTyCache.insert({ UniqueKey, PointerTy });
+			}
+		}
+
+		return true;
 	} else if (Ty->GetKind() == TypeKind::Function) {
 		FunctionType* FuncTy = Ty->AsFunctionType();
 		for (auto ParamTy : FuncTy->ParamTypes) {
 			if (!FixupType(ParamTy.Ty)) {
 				return false;
 			}
+		}
+		llvm::SmallVector<u32> UniqueKey = FunctionType::GetUniqueHashKey(FuncTy->RetTyInfo, FuncTy->ParamTypes);
+		auto Itr = Context.FunctionTyCache.find(UniqueKey);
+		if (Itr != Context.FunctionTyCache.end()) {
+			FuncTy->SetUniqueId(Itr->second->GetUniqueId());
+		} else {
+			// First seen version of this type.
+			FuncTy->SetUniqueId(Context.UniqueTypeIdCounter++);
+			Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
 		}
 		return true;
 	}
@@ -2662,9 +2709,25 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 		ArrayTy->AssignLength(LLInt->getZExtValue());
 	}
 
-	if (!FixupType(ArrayTy->GetElementType(), AllowDynamic)) {
+	// NOTE: At this point the element type should have it's uniqueTypeId
+	// correctly set.
+	Type* ElementType = ArrayTy->GetElementType();
+	if (!FixupType(ElementType, AllowDynamic)) {
 		return false;
 	}
+
+	// TODO: we could pass the type by reference and delete the
+	// non-unique array.
+	std::pair<u32, ulen> UniqueKey = { ElementType->GetUniqueId(), ArrayTy->GetLength() };
+	auto Itr = Context.ArrayTyCache.find(UniqueKey);
+	if (Itr != Context.ArrayTyCache.end()) {
+		// an exact version of this array type already exists.
+		ArrayTy->SetUniqueId(Itr->second->GetUniqueId());
+	} else {
+		ArrayTy->SetUniqueId(Context.UniqueTypeIdCounter++);
+		Context.ArrayTyCache.insert({ UniqueKey, ArrayTy });
+	}
+
 	return true;
 }
 
@@ -2700,10 +2763,12 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
 	if (FoundDecl->Is(AstKind::STRUCT_DECL)) {
 		StructDecl* Struct = static_cast<StructDecl*>(FoundDecl);
 		StructTy->AssignStruct(Struct);
+		StructTy->SetUniqueId(Struct->UniqueTypeId);
 		Analyzer.CheckStructDecl(Struct);
 	} else if (FoundDecl->Is(AstKind::ENUM_DECL)) {
 		EnumDecl* Enum = static_cast<EnumDecl*>(FoundDecl);
 		StructTy->AssignEnum(Enum);
+		StructTy->SetUniqueId(Enum->UniqueTypeId);
 		Analyzer.CheckEnumDecl(Enum);
 	} else {
 		assert(!"Not handled");

@@ -625,6 +625,7 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 	ulen NumErrs = TotalAccumulatedErrors;
 
 	StructDecl* Struct = NewNode<StructDecl>(CTok);
+	Struct->UniqueTypeId = Context.UniqueTypeIdCounter++;
 	Struct->Mod    = Mod;
 	Struct->FScope = FScope;
 	Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
@@ -709,6 +710,7 @@ arco::EnumDecl* arco::Parser::ParseEnumDecl(Modifiers Mods) {
 	ulen NumErrs = TotalAccumulatedErrors;
 
 	EnumDecl* Enum = NewNode<EnumDecl>(CTok);
+	Enum->UniqueTypeId = Context.UniqueTypeIdCounter++;
 	Enum->Mod    = Mod;
 	Enum->FScope = FScope;
 	Enum->Name   = ParseIdentifier("Expected identifier for enum declaration");
@@ -1090,7 +1092,7 @@ arco::Type* arco::Parser::ParseFunctionType() {
 	// TODO: allow the return type to be optional and default to void?
 	Type* RetTy = ParseType(false);
 
-	return FunctionType::Create(TypeInfo{ RetTy, ReturnsConstAddress }, std::move(ParamTypes));
+	return FunctionType::Create(TypeInfo{ RetTy, ReturnsConstAddress }, std::move(ParamTypes), Context);
 }
 
 arco::Type* arco::Parser::ParseBasicType() {
@@ -1113,6 +1115,7 @@ arco::Type* arco::Parser::ParseBasicType() {
 	case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
 	case TokenKind::KW_BOOL:   Ty = Context.BoolType;    NextToken(); break;
 	case TokenKind::IDENT: {
+		
 		Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
 		NextToken();
 		break;
@@ -1373,6 +1376,14 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
 		SOf->Ty = Context.IntType;
 		Match(')');
 		return SOf;
+	}
+	case TokenKind::KW_TYPEOF: {
+		TypeOf* TOf = NewNode<TypeOf>(CTok);
+		NextToken(); // Consuming 'typeof' token.
+		Match('(');
+		TOf->TypeToGetTypeOf = ParseType(false);
+		Match(')');
+		return TOf;
 	}
 	case '[':
 		return ParseArray();

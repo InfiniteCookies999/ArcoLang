@@ -627,6 +627,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 			SizeOfTypeInBytes(GenType(static_cast<SizeOf*>(Node)->TypeToGetSizeOf)),
 			LLContext,
 			LLModule);
+	case AstKind::TYPEOF:
+		return GenTypeOf(static_cast<TypeOf*>(Node), nullptr);
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;
@@ -1893,7 +1895,6 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 			// a unseen alloca.
 			if (LLAddr && llvm::isa<llvm::GlobalValue>(LLAddr)) {
 				LLAddr = GenLLVMGlobalVariable(std::string("__global.array.") + std::to_string(Context.NumGeneratedGlobalVars), GenType(DestTy));
-				++Context.NumGeneratedGlobalVars;
 				llvm::GlobalVariable* LLGVar = llvm::cast<llvm::GlobalVariable>(LLAddr);
 				LLGVar->setInitializer(GenZeroedValue(DestTy));
 			} else {
@@ -2126,6 +2127,148 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 		}
 		return LLMalloc;
 	}
+}
+
+llvm::Value* arco::IRGenerator::GenTypeOf(TypeOf* TOf, llvm::Value* LLAddr) {
+	llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
+
+	if (!LLAddr) {
+		LLAddr = CreateUnseenAlloca(LLTypeType, "tmp.struct");
+	}
+
+	// TODO: this wont work because multiple some of our types map
+	// to the same type! D:<
+	llvm::GlobalVariable* LLGlobal = GenTypeOfGlobal(TOf->TypeToGetTypeOf);
+
+	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLTypeType);
+	llvm::Align LLAlignment =  LLStructLayout->getAlignment();
+	Builder.CreateMemCpy(
+		LLAddr, LLAlignment,
+		LLGlobal, LLAlignment,
+		SizeOfTypeInBytes(LLTypeType)
+	);
+
+	return LLAddr;
+}
+
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
+	llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
+	auto Itr = Context.LLTypeInfoMap.find(GetTy->GetUniqueId());
+	if (Itr != Context.LLTypeInfoMap.end()) {
+		return Itr->second;
+	} else {
+		std::string LLGlobalTypeInfoName = "__global.typeinfo." + std::to_string(Context.NumGeneratedGlobalVars++);
+		llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLTypeType);
+		LLGlobal->setInitializer(GenTypeOfType(GetTy));
+		return LLGlobal;
+	}
+}
+
+llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
+	
+	llvm::StructType* LLTypeType          = GenStructType(Context.StdTypeStruct);
+	llvm::StructType* LLPointerStructType = GenStructType(Context.StdPointerTypeStruct);
+	llvm::StructType* LLArrayStructType   = GenStructType(Context.StdArrayTypeStruct);
+	llvm::StructType* LLStructStructType  = GenStructType(Context.StdStructTypeStruct);
+
+	llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()), LLContext, LLModule);
+	llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo;
+	if (GetTy->GetKind() == TypeKind::Pointer) {
+		LLPointerInfo = GenTypeOfPointerTypeGlobal(GetTy->AsPointerTy());
+	} else {
+		LLPointerInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLPointerStructType, 0));
+	}
+	if (GetTy->GetKind() == TypeKind::Array) {
+		LLArrayInfo = GenTypeOfArrayTypeGlobal(GetTy->AsArrayTy());
+	} else {
+		LLArrayInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLArrayStructType, 0));
+	}
+	if (GetTy->GetKind() == TypeKind::Struct) {
+		LLStructInfo = GenTypeOfStructTypeGlobal(GetTy->AsStructType());
+	} else {
+		LLStructInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLStructStructType, 0));
+	}
+
+	llvm::SmallVector<llvm::Constant*, 4> LLElements = {
+		LLTypeId,
+		LLPointerInfo,
+		LLArrayInfo,
+		LLStructInfo
+	};
+
+	return llvm::ConstantStruct::get(LLTypeType, LLElements);
+}
+
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfPointerTypeGlobal(PointerType* PointerTy) {
+	llvm::SmallVector<llvm::Constant*, 1> LLElements = {
+		GenTypeOfGlobal(PointerTy->GetElementType())
+	};
+	llvm::StructType* LLPointerStructType = GenStructType(Context.StdPointerTypeStruct);
+	std::string LLGlobalTypeInfoName = "__global.typeinfo.ptr." + std::to_string(Context.NumGeneratedGlobalVars++);
+	llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLPointerStructType);
+	LLGlobal->setInitializer(llvm::ConstantStruct::get(LLPointerStructType, LLElements));
+	return LLGlobal;
+}
+
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy) {
+	llvm::SmallVector<llvm::Constant*, 2> LLElements = {
+		GenTypeOfGlobal(ArrayTy->GetElementType()),
+		GetSystemInt(ArrayTy->GetLength(), LLContext, LLModule)
+	};
+	llvm::StructType* LLArrayStructType = GenStructType(Context.StdArrayTypeStruct);
+	std::string LLGlobalTypeInfoName = "__global.typeinfo.arr." + std::to_string(Context.NumGeneratedGlobalVars++);
+	llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLArrayStructType);
+	LLGlobal->setInitializer(llvm::ConstantStruct::get(LLArrayStructType, LLElements));
+	return LLGlobal;
+}
+
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* StructTy) {
+	
+	StructDecl* Struct = StructTy->GetStruct();
+	
+	// Creating a field array.
+	llvm::SmallVector<llvm::Constant*> LLFields;
+	LLFields.resize(Struct->Fields.size());
+	llvm::StructType* LLFieldStructType = GenStructType(Context.StdFieldTypeStruct);
+	for (VarDecl* Field : Struct->Fields) {
+		// TODO: surely there is a more efficient way of doing this nonsense
+		// than having to generate an entire array just for a c-string.
+		llvm::SmallVector<llvm::Constant*> LLNameElements;
+		llvm::StringRef FieldName = Field->Name.Text;
+		LLNameElements.resize(FieldName.size() + 1);
+		for (ulen i = 0; i < FieldName.size(); i++) {
+			LLNameElements[i] = GetLLInt8(FieldName[i], LLContext);
+		}
+		LLNameElements[FieldName.size()] = GetLLInt8(0, LLContext); // Null terminate the name.
+
+		llvm::ArrayType* LLNameArrayTy =
+			llvm::ArrayType::get(llvm::Type::getInt8Ty(LLContext), FieldName.size() + 1);
+		llvm::Constant* LLNameArr = llvm::ConstantArray::get(LLNameArrayTy, LLNameElements);
+		std::string LLGlobalFieldNameName = "__global.typeinfo.field.name." + std::to_string(Context.NumGeneratedGlobalVars++);
+		llvm::GlobalVariable* LLGlobalFieldName = GenLLVMGlobalVariable(LLGlobalFieldNameName, LLNameArrayTy);
+		LLGlobalFieldName->setInitializer(LLNameArr);
+
+		llvm::SmallVector<llvm::Constant*, 2> LLFieldElements = {
+			llvm::cast<llvm::Constant>(DecayArray(LLGlobalFieldName)),
+			GenTypeOfGlobal(Field->Ty)
+		};
+
+		LLFields[Field->FieldIdx] = llvm::ConstantStruct::get(LLFieldStructType, LLFieldElements);
+	}
+	std::string LLGlobalFieldArrayName = "__global.typeinfo.field.arr." + std::to_string(Context.NumGeneratedGlobalVars++);
+	llvm::ArrayType* LLFieldArrayTy = llvm::ArrayType::get(LLFieldStructType, LLFields.size());
+	llvm::GlobalVariable* LLFieldsArrayGlobal = GenLLVMGlobalVariable(LLGlobalFieldArrayName, LLFieldArrayTy);
+	LLFieldsArrayGlobal->setInitializer(llvm::ConstantArray::get(LLFieldArrayTy, LLFields));
+
+	llvm::SmallVector<llvm::Constant*, 2> LLElements = {
+		GetSystemInt(Struct->Fields.size(), LLContext, LLModule),
+		llvm::cast<llvm::Constant>(DecayArray(LLFieldsArrayGlobal))
+	};
+	llvm::StructType* LLStructStructType = GenStructType(Context.StdStructTypeStruct);
+	std::string LLGlobalTypeInfoName = "__global.typeinfo.struct." + std::to_string(Context.NumGeneratedGlobalVars++);
+	llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLStructStructType);
+	LLGlobal->setInitializer(llvm::ConstantStruct::get(LLStructStructType, LLElements));
+	return LLGlobal;
 }
 
 llvm::Value* arco::IRGenerator::GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
@@ -2432,7 +2575,7 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
 		return Enum->LLGlobalArray;
 	}
 	
-	std::string LLEnumName = "__global.enum.array." + std::to_string(Context.NumGeneratedGlobalVars);
+	std::string LLEnumName = "__global.enum.array." + std::to_string(Context.NumGeneratedGlobalVars++);
 	
 	llvm::ArrayType* LLArrType =
 		llvm::ArrayType::get(GenType(Enum->ValuesType), Enum->Values.size());
@@ -2713,7 +2856,6 @@ void arco::IRGenerator::GenCompilerDestructorAndCall(StructDecl* Struct, llvm::V
 		return;
 	}
 
-	// TODO: enum!
 	llvm::Type* LLStructPtrTy = llvm::PointerType::get(GenStructType(Struct), 0);
 
 	llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
@@ -2843,6 +2985,8 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool 
 			llvm::Value* LLAssignment = GenRValue(Value);
 			Builder.CreateStore(LLAssignment, LLAddress);
 		}
+	} else if (Value->Is(AstKind::TYPEOF)) {
+		GenTypeOf(static_cast<TypeOf*>(Value), LLAddress);
 	} else if (Value->Ty->GetKind() == TypeKind::Struct) {
 		CopyStructObject(LLAddress, GenNode(Value), Value->Ty->AsStructType()->GetStruct());
 	} else {

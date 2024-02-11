@@ -126,13 +126,9 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
 
 	if (!StandAlone) {
-		Module* StdModule = Context.ModNamesToMods.find("std")->second;
-		auto Itr = StdModule->DefaultNamespace->Decls.find(Context.StringIdentifier);
-		if (Itr == StdModule->DefaultNamespace->Decls.end() || Itr->second->IsNot(AstKind::STRUCT_DECL)) {
-			Logger::GlobalError(llvm::errs(), "Standard library is missing 'String' struct");
+		if (!FindStdLibStructs()) {
 			return 1;
 		}
-		Context.StdStringStruct = static_cast<StructDecl*>(Itr->second);
 	}
 
 	// Must do this early so that LLVM can correctly determine information for types
@@ -352,6 +348,35 @@ void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, con
 	}
 
 	FileScopes.push_back(FScope);
+}
+
+bool arco::Compiler::FindStdLibStructs() {
+	Module* StdModule = Context.ModNamesToMods.find("std")->second;
+	auto NSpaceItr = StdModule->Namespaces.find(Identifier("reflect"));
+	if (NSpaceItr == StdModule->Namespaces.end()) {
+		Logger::GlobalError(llvm::errs(), "Standard library is missing the 'reflect' namespace");
+		return false;
+	}
+	Namespace* ReflectNamespace = NSpaceItr->second;
+	ulen NumErrs = TotalAccumulatedErrors;
+
+	Context.StdStringStruct      = FindStdLibStruct(StdModule->DefaultNamespace, Context.StringIdentifier);
+	Context.StdTypeStruct        = FindStdLibStruct(ReflectNamespace, Context.TypeIdentifier);
+	Context.StdPointerTypeStruct = FindStdLibStruct(ReflectNamespace, Context.PointerTypeIdentifier);
+	Context.StdArrayTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.ArrayTypeIdentifier);
+	Context.StdStructTypeStruct  = FindStdLibStruct(ReflectNamespace, Context.StructTypeIdentifier);
+	Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);
+
+	return NumErrs == TotalAccumulatedErrors;
+}
+
+arco::StructDecl* arco::Compiler::FindStdLibStruct(Namespace* Namespace, Identifier Name) {
+	auto Itr = Namespace->Decls.find(Name);
+	if (Itr == Namespace->Decls.end() || Itr->second->IsNot(AstKind::STRUCT_DECL)) {
+		Logger::GlobalError(llvm::errs(), "Standard library is missing '%s' struct", Name);
+		return nullptr;
+	}
+	return static_cast<StructDecl*>(Itr->second);
 }
 
 const char* arco::Compiler::GetStdLibPath() {

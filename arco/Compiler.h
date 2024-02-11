@@ -2,6 +2,7 @@
 #define ARCO_COMPILER_H
 
 #include "Prelude.h"
+#include "Identifier.h"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
@@ -16,7 +17,9 @@ namespace arco {
 
 	class ArcoContext;
 	class Module;
+	struct Namespace;
 	struct FileScope;
+	struct StructDecl;
 
 	struct Source {
 		bool            PartOfMainProject;
@@ -77,6 +80,9 @@ namespace arco {
 		void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 
 		void ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath);
+
+		bool FindStdLibStructs();
+		StructDecl* FindStdLibStruct(Namespace* Namespace, Identifier Name);
 
 		const char* GetStdLibPath();
 

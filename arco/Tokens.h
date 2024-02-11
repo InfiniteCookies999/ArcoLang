@@ -51,6 +51,7 @@ namespace arco {
 		KW_STATIC,
 		KW_DELETE,
 		KW_SIZEOF,
+		KW_TYPEOF,
 		KW_COPYOBJ,
 		KW_MOVEOBJ,
 		KW_NULL,

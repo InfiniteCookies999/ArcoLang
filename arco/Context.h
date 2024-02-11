@@ -11,9 +11,33 @@
 namespace llvm {
 	class LLVMContext;
 	class Module;
+	class Type;
+	class GlobalVariable;
 	namespace CallingConv {
 		using ID = unsigned;
 	}
+	
+	// The function pointer cache needs vector of u32s to be hashed.
+	template<> struct DenseMapInfo<llvm::SmallVector<u32>> {
+		static bool isEqual(const llvm::SmallVector<u32>& LHS, const llvm::SmallVector<u32>& RHS) {
+			return LHS == RHS;
+		}
+		static llvm::SmallVector<u32> getTombstoneKey() {
+			// Do not remove function types from maps.
+			return llvm::SmallVector<u32>{};
+		}
+		static llvm::SmallVector<u32> getEmptyKey() {
+			return llvm::SmallVector<u32>{};
+		}
+		static unsigned getHashValue(const llvm::SmallVector<u32>& Val) {
+			// We know index 0 exists because that is the return type.
+			unsigned Hash = DenseMapInfo<u32>::getHashValue(Val[0]);
+			for (ulen i = 0; i < Val.size(); i++) {
+				Hash = detail::combineHashValue(DenseMapInfo<u32>::getHashValue(Val[i]), Hash);
+			}
+			return Hash;
+		}
+	};
 }
 
 namespace arco {
@@ -54,8 +78,20 @@ namespace arco {
 		Identifier FastcallIdentifier;
 		llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
 
+		u32 UniqueTypeIdCounter = 1;
+
 		Identifier StringIdentifier;
-		StructDecl* StdStringStruct = nullptr;
+		Identifier TypeIdentifier;
+		Identifier PointerTypeIdentifier;
+		Identifier ArrayTypeIdentifier;
+		Identifier StructTypeIdentifier;
+		Identifier FieldTypeIdentifier;
+		StructDecl* StdStringStruct      = nullptr;
+		StructDecl* StdTypeStruct        = nullptr;
+		StructDecl* StdPointerTypeStruct = nullptr;
+		StructDecl* StdArrayTypeStruct   = nullptr;
+		StructDecl* StdStructTypeStruct  = nullptr;
+		StructDecl* StdFieldTypeStruct   = nullptr;
 
 		Type* IntType;
 		Type* UIntType;
@@ -109,10 +145,13 @@ namespace arco {
 		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
 		llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
 		llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
+		llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
 
-		llvm::DenseMap<Type*, PointerType*>                PointerCache;
-		llvm::DenseMap<std::pair<Type*, ulen>, ArrayType*> ArrayCache;
-		std::queue<StructDecl*>                            DefaultConstrucorsNeedingCreated;
+		llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
+		llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
+		llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;
+		// TODO: llvm::DenseMap<u32, StructType*>                   StructCache;
+		std::queue<StructDecl*>                          DefaultConstrucorsNeedingCreated;
 
 	private:
 		// TODO: This can be replaced with perfect hashing!

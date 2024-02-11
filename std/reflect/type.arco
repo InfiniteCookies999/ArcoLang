@@ -1,0 +1,62 @@
+namespace reflect;
+
+TypeId enum {
+
+	INT;
+	UINT;
+	
+	INT8;
+	INT16;
+	INT32;
+	INT64;
+	
+	UINT8;
+	UINT16;
+	UINT32;
+	UINT64;
+
+	F32;
+	F64;
+	
+	CHAR;
+	
+	VOID;
+	BOOL;
+	CSTR;
+	POINTER;
+	ARRAY;
+	STRUCT;
+	ENUM;
+	FUNCTION;
+	
+}
+
+PointerType struct {
+	element_type Type*;
+}
+
+ArrayType struct {
+	element_type Type*;
+	length      int;
+}
+
+Field struct {
+	name cstr;
+	type Type*;
+}
+
+Struct struct {
+	num_fields int;
+	fields     Field*;
+}
+
+// TODO: support enum and function information.
+Type struct {
+	// Unique ID to identifier which type catagory
+	// this type belongs to.
+	id           TypeId;
+	// TODO: this should be a union.
+	pointer_info PointerType*;
+	array_info   ArrayType*;
+	struct_info  Struct*;
+}

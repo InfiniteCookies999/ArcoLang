@@ -120,6 +120,7 @@ namespace arco {
 			                          llvm::SmallVector<NonNamedValue, 2>& Args);
 		void CheckHeapAlloc(HeapAlloc* Alloc);
 		void CheckSizeOf(SizeOf* SOf);
+		void CheckTypeOf(TypeOf* TOf);
 
 		void CheckCondition(Expr* Cond, const char* PreErrorText);
 
