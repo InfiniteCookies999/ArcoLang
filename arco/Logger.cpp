@@ -30,6 +30,16 @@ static std::string ReplaceTabsWithSpaces(const std::string& Tabs) {
 
 void arco::Logger::EndError() {
 
+	if (TotalAccumulatedErrors == TOTAL_ALLOWED_ERRORS) {
+		SetTerminalColor(TerminalColorBrightBlue);
+		OS << ">>";
+		SetTerminalColor(TerminalColorDefault);
+		OS << " Exceeded the maximum allowed error messages. Exiting.\n";
+		exit(1);
+	}
+
+	++TotalAccumulatedErrors;
+
 	if (ShortErrors) {
 		OS << '\n';
 		return;
@@ -97,21 +107,12 @@ void arco::Logger::EndError() {
 
 	OS << '\n';
 
-	++TotalAccumulatedErrors;
-
-	if (TotalAccumulatedErrors == TOTAL_ALLOWED_ERRORS) {
-		SetTerminalColor(TerminalColorBrightBlue);
-		OS << ">>";
-		SetTerminalColor(TerminalColorDefault);
-		OS << " Exceeded the maximum allowed error messages. Exiting.\n";
-		exit(1);
-	}
 }
 
 ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
 	ulen Total = strlen(FilePath);
 	Total += 1 + std::to_string(Loc.LineNumber).length() + 1;
-	Total += strlen(" Error: ");
+	Total += strlen(" error: ");
 	return Total;
 }
 
@@ -122,8 +123,16 @@ void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::functio
 
 	SetTerminalColor(TerminalColorWhite);
 	OS << ":" << Loc.LineNumber << ":";
+	ulen Column = 0;
+	const char* MemPtr = Loc.Text.begin();
+	while (MemPtr > Buffer.Memory && *MemPtr != '\n' && *MemPtr != '\r') {
+		++Column;
+		--MemPtr;
+	}
+	OS << Column << ":";
+
 	SetTerminalColor(TerminalColorRed);
-	OS << " Error: ";
+	OS << " error: ";
 
 	SetTerminalColor(TerminalColorWhite);
 	Printer();
@@ -240,7 +249,7 @@ std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
 void arco::Logger::GlobalError(llvm::raw_ostream& OS, const std::function<void()>& Printer) {
 	
 	SetTerminalColor(TerminalColorRed);
-	OS << "Error: ";
+	OS << "error: ";
 	SetTerminalColor(TerminalColorDefault);
 
 	// Printing the message
