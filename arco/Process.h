@@ -12,7 +12,7 @@ namespace arco {
 /// 
 bool ExeHiddenProcess(const char* Process, std::string& Result);
 
-int ExeProcess(const char* Process, bool SeperateWindow);
+int ExeProcess(const char* Process, const char* ProcessDir, bool SeperateWindow);
 
 }
 

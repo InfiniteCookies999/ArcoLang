@@ -469,6 +469,14 @@ namespace arco {
 	struct BinaryOp : Expr {
 		BinaryOp() : Expr(AstKind::BINARY_OP) {}
 
+		// For some comparisons the type the LHS and
+		// RHS are casted to is not the same as the
+		// BinaryOp. Such as 5 < 3. The BinaryOp will
+		// have type bool. The ResultType is the best
+		// chosen type that the LHS and RHS are cast
+		// to.
+		Type* ResultType;
+
 		u16   Op;
 		Expr* LHS;
 		Expr* RHS;

@@ -83,11 +83,11 @@ fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
 		*ptr = '0';
 		return ptr;
 	}
-
+	
 	loop value > 0 {
 		digit uint64 = value % base;
 		value /= cast(uint64) base;
-
+		
 		*ptr = DIGIT_TO_BASE64_TABLE[digit];
 		--ptr;
 	}

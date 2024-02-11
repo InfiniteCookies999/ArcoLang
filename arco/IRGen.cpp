@@ -1261,8 +1261,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-			if (BinOp->LHS->Ty->IsSigned() ||
-				BinOp->RHS->Ty->IsSigned()) {
+			if (BinOp->ResultType->IsSigned()) {
 				return Builder.CreateICmpSLT(LLLHS, LLRHS);
 			} else {
 				return Builder.CreateICmpULT(LLLHS, LLRHS);
@@ -1283,8 +1282,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-			if (BinOp->LHS->Ty->IsSigned() ||
-				BinOp->RHS->Ty->IsSigned()) {
+			if (BinOp->ResultType->IsSigned()) {
 				return Builder.CreateICmpSGT(LLLHS, LLRHS);
 			} else {
 				return Builder.CreateICmpUGT(LLLHS, LLRHS);
@@ -1305,8 +1303,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-			if (BinOp->LHS->Ty->IsSigned() ||
-				BinOp->RHS->Ty->IsSigned()) {
+			if (BinOp->ResultType->IsSigned()) {
 				return Builder.CreateICmpSLE(LLLHS, LLRHS);
 			} else {
 				return Builder.CreateICmpULE(LLLHS, LLRHS);
@@ -1327,8 +1324,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 			llvm::Value* LLLHS = GenRValue(BinOp->LHS);
 			llvm::Value* LLRHS = GenRValue(BinOp->RHS);
 
-			if (BinOp->LHS->Ty->IsSigned() ||
-				BinOp->RHS->Ty->IsSigned()) {
+			if (BinOp->ResultType->IsSigned()) {
 				return Builder.CreateICmpSGE(LLLHS, LLRHS);
 			} else {
 				return Builder.CreateICmpUGE(LLLHS, LLRHS);

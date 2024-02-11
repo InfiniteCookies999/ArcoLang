@@ -52,6 +52,8 @@ native fn DeleteFileA(lpFileName cstr) int32;
 
 native fn RemoveDirectoryA(lpPathName cstr) int32;
 
+native fn GetCurrentDirectoryA(nBufferLength uint32, lpBuffer char*) int32;
+
 // ------------------------------------------------
 // Win32: fileapi.h
 

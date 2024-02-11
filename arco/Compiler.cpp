@@ -278,7 +278,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	llvm::outs() << ClangCommand << "\n";
 
 	std::string Ignored;
-	i32 ExitCode = ExeProcess(ClangCommand.c_str(), false);
+	i32 ExitCode = ExeProcess(ClangCommand.c_str(), NULL, false);
 	if (ExitCode) {
 		// Failed to link
 		FoundCompileError = true;
@@ -352,7 +352,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 	llvm::outs() << "Wrote program to: " << AbsoluteExePath << '\n';
 
 	if (RunProgram || RunInSeperateWindow) {
-		return ExeProcess(AbsoluteExePath.c_str(), RunInSeperateWindow);
+		return ExeProcess(AbsoluteExePath.c_str(), AbsOutputDirectory.c_str(), RunInSeperateWindow);
 	}
 	return 0;
 }

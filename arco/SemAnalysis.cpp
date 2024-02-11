@@ -705,8 +705,13 @@ return;
 			// The type is infered.
 			
 			Var->Ty = Var->Assignment->Ty;
-			Var->HasConstAddress |= Var->Assignment->HasConstAddress;
-
+			if (Var->Assignment->HasConstAddress &&
+				(Var->Assignment->Ty->IsPointer() || Var->Assignment->Ty->GetKind() == TypeKind::Array)) {
+				// If the memory is protected from the infered assignment take on that
+				// constness.
+				Var->HasConstAddress = true;
+			}
+			
 			switch (Var->Ty->GetKind()) {
 			case TypeKind::Null:
 				VAR_YIELD(Error(Var, "Cannot infer pointer type from null"), true);
@@ -985,32 +990,28 @@ bool arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope) {
 
 namespace arco {
 
-static Type* DetermineTypeFromIntTypes(ArcoContext& Context, Type* LTy, Type* RTy) {
-	bool IsSigned = LTy->IsSigned() || RTy->IsSigned();
-	if (LTy->IsSystemInt() && RTy->IsSystemInt()) {
-		return IsSigned ? Context.IntType : Context.UIntType;
-	} else if (LTy->IsSystemInt()) {
-		// Want to take on the type of the explicit type.
-		return Type::GetIntTypeBasedOnByteSize(RTy->GetTrivialTypeSizeInBytes(), IsSigned, Context);
-	} else if (RTy->IsSystemInt()) {
-		// Want to take on the type of the explicit type.
-		return Type::GetIntTypeBasedOnByteSize(LTy->GetTrivialTypeSizeInBytes(), IsSigned, Context);
+static Type* DetermineTypeFromIntTypes(ArcoContext& Context, Expr* LHS, Expr* RHS) {
+	if (LHS->Is(AstKind::NUMBER_LITERAL)) {
+		return RHS->Ty;
+	} else if (RHS->Is(AstKind::NUMBER_LITERAL)) {
+		return LHS->Ty;
+	} else if (RHS->Ty->Equals(LHS->Ty)) {
+		return RHS->Ty;
 	} else {
-		ulen LargerMemSize = max(LTy->GetTrivialTypeSizeInBytes(), RTy->GetTrivialTypeSizeInBytes());
-		return Type::GetIntTypeBasedOnByteSize(LargerMemSize, IsSigned, Context);
+		return Context.ErrorType;
 	}
 }
 
-static Type* DetermineTypeFromNumberTypes(ArcoContext& Context, Type* LTy, Type* RTy) {
-	if (LTy->IsInt() && RTy->IsInt()) {
-		return DetermineTypeFromIntTypes(Context, LTy, RTy);
+static Type* DetermineTypeFromNumberTypes(ArcoContext& Context, Expr* LHS, Expr* RHS) {
+	if (LHS->Ty->IsInt() && RHS->Ty->IsInt()) {
+		return DetermineTypeFromIntTypes(Context, LHS, RHS);
 	} else {
-		if (LTy->IsSystemInt()) {
-			return RTy; // Take on the float size
-		} else if (RTy->IsSystemInt()) {
-			return LTy; // Take on the float size
+		if (LHS->Ty->IsSystemInt()) {
+			return RHS->Ty; // Take on the float size
+		} else if (RHS->Ty->IsSystemInt()) {
+			return LHS->Ty; // Take on the float size
 		} else {
-			ulen LargerMemSize = max(LTy->GetTrivialTypeSizeInBytes(), RTy->GetTrivialTypeSizeInBytes());
+			ulen LargerMemSize = max(LHS->Ty->GetTrivialTypeSizeInBytes(), RHS->Ty->GetTrivialTypeSizeInBytes());
 			return Type::GetFloatTypeBasedOnByteSize(LargerMemSize, Context);
 		}
 	}
@@ -1038,6 +1039,15 @@ void arco::SemAnalyzer::CheckBinaryOp(BinaryOp* BinOp) {
 Error(BinOp, "Operator '%s' cannot apply to type '%s'   ('%s' %s '%s')", \
     Token::TokenKindToString(BinOp->Op, Context),                        \
     T->ToString(),                                                       \
+	LTy->ToString(),                                                     \
+	Token::TokenKindToString(BinOp->Op, Context),		                 \
+	RTy->ToString()                                                      \
+	);                                                                   \
+YIELD_ERROR(BinOp)
+
+#define TYPE_MISMATCH()                                                  \
+Error(BinOp, "Operator '%s' had mismatched types   ('%s' '%s' '%s')",    \
+	Token::TokenKindToString(BinOp->Op, Context),                        \
 	LTy->ToString(),                                                     \
 	Token::TokenKindToString(BinOp->Op, Context),		                 \
 	RTy->ToString()                                                      \
@@ -1197,8 +1207,11 @@ YIELD_ERROR(BinOp)
 
 		} else {
 			// Not pointer arithmetic
-			Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
-			
+			Type* ToType = DetermineTypeFromNumberTypes(Context, BinOp->LHS, BinOp->RHS);
+			if (ToType == Context.ErrorType) {
+				TYPE_MISMATCH();
+			}
+
 			CreateCast(BinOp->LHS, ToType);
 			CreateCast(BinOp->RHS, ToType);
 			BinOp->Ty = ToType;
@@ -1214,14 +1227,17 @@ YIELD_ERROR(BinOp)
 			OPERATOR_CANNOT_APPLY(LTy);
 		}
 
-		Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
-
 		if (BinOp->Op == '/' && BinOp->RHS->IsFoldable) {
 			IRGenerator IRGen(Context);
 			llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
 			if (LLInt->isZeroValue()) {
 				Error(BinOp, "Division by zero");
 			}
+		}
+
+		Type* ToType = DetermineTypeFromNumberTypes(Context, BinOp->LHS, BinOp->RHS);
+		if (ToType == Context.ErrorType) {
+			TYPE_MISMATCH();
 		}
 
 		CreateCast(BinOp->LHS, ToType);
@@ -1256,7 +1272,6 @@ YIELD_ERROR(BinOp)
 		CreateCast(BinOp->LHS, ToType);
 		CreateCast(BinOp->RHS, ToType);
 		BinOp->Ty = ToType;
-
 		break;
 	}
 	case '|': case '&': case '^': {
@@ -1283,7 +1298,10 @@ YIELD_ERROR(BinOp)
 				OPERATOR_CANNOT_APPLY(RTy);
 			}
 
-			Type* ToType = DetermineTypeFromIntTypes(Context, LTy, RTy);
+			Type* ToType = DetermineTypeFromIntTypes(Context, BinOp->LHS, BinOp->RHS);
+			if (ToType == Context.ErrorType) {
+				TYPE_MISMATCH();
+			}
 
 			CreateCast(BinOp->LHS, ToType);
 			CreateCast(BinOp->RHS, ToType);
@@ -1330,11 +1348,15 @@ YIELD_ERROR(BinOp)
 				OPERATOR_CANNOT_APPLY(RTy);
 			}
 
-			Type* ToType = DetermineTypeFromNumberTypes(Context, LTy, RTy);
+			Type* ToType = DetermineTypeFromNumberTypes(Context, BinOp->LHS, BinOp->RHS);
+			if (ToType == Context.ErrorType) {
+				TYPE_MISMATCH();
+			}
 
 			CreateCast(BinOp->LHS, ToType);
 			CreateCast(BinOp->RHS, ToType);
 			BinOp->Ty = Context.BoolType;
+			BinOp->ResultType = ToType;
 		}
 		break;
 	}
@@ -1346,10 +1368,6 @@ YIELD_ERROR(BinOp)
 			OPERATOR_CANNOT_APPLY(RTy);
 		}
 
-		// These type of operators require
-		// branching so folding is not able
-		// to be performed.
-		
 		BinOp->Ty = Context.BoolType;
 		break;
 	}

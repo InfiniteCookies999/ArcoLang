@@ -235,6 +235,31 @@ fn last_modified(path cstr) uint64 {
 	return write_time;
 }
 
+/*
+ * Gets the current directory of the process. In most
+ * cases this is equal to the directory where the application
+ * was executed from. However, it is possible that if the
+ * process was spawned from another process it may take on the
+ * parent's directory or a different directory entirely.
+ */
+fn current_dir() String {
+	// TODO: proper error handling.
+
+	path_length := win32.GetCurrentDirectoryA(0, null);
+	if path_length == 0 {
+		panic("Failed to get the length of the current directory path");
+	}
+	buffer := new char[path_length];
+
+	// TODO: recheck if the length is not long enough?
+	if win32.GetCurrentDirectoryA(path_length, buffer) == 0 {
+		panic("Failed to read the current directory path");
+	}
+	
+	// -1 because path_length contains the null terminating character.
+	return String{ buffer, path_length - 1, false };
+}
+
 fn open(path cstr, flags IOFlag) FileHandle {
 	access_flags uint32 = 0;
 	share_flags  uint32 = 0;

@@ -82,7 +82,7 @@ bool arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 #endif
 }
 
-int arco::ExeProcess(const char* Process, bool SeperateWindow) {
+int arco::ExeProcess(const char* Process, const char* ProcessDir, bool SeperateWindow) {
 #ifdef _WIN32
 	// No need to use inherited handles since this does not capture
 	// the program's output.
@@ -93,7 +93,7 @@ int arco::ExeProcess(const char* Process, bool SeperateWindow) {
 	if (!CreateProcessA(NULL, (char*)Process, NULL, NULL, FALSE,
 		                SeperateWindow ? CREATE_NEW_CONSOLE : 0,
 		                NULL,
-		                NULL,
+		                ProcessDir,
 		                &StartupInfo,
 		                &ProcessInfo)) {
 		Logger::GlobalError(llvm::errs(), "Internal compiler error: Failed to create process");

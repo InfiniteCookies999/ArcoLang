@@ -123,7 +123,7 @@ String struct {
 	 */
 	fn parse_int32(base int) uint32 {
 		// TODO: Provide proper error handling once supported!
-		
+
 		if empty() {
 			panic("Parse errror: empty string");
 		}
@@ -159,6 +159,7 @@ String struct {
 			++i; // Move over the + or - character.
 		}
 
+		b int32 = cast(int32) base;
 		result, prev_value int32;
 		loop i < length {
 			ch := buffer[i++];
@@ -176,9 +177,9 @@ String struct {
 			}
 
 			prev_value = result;
-			result     = result * base + digit;
+			result     = result * b + digit;
 
-			if result / base < prev_value {
+			if result / b < prev_value {
 				panic("Parse error: Numeric overflow");
 			}
 		}
