@@ -1,3 +1,4 @@
+import files.FileHandle;
 
 /*
  * A stream that reads in lines at a time into a buffer.
@@ -5,6 +6,10 @@
  * All parsable strings are seperable by lines or whitespace.
  */
 LineStream struct {
+	
+	// TODO: This handle should eventually be more abstract
+	//       and be a any readable handle instead.
+	handle FileHandle;
 	
 	BUFFER_SIZE :: 1024;
 	buffer char[BUFFER_SIZE];
@@ -14,13 +19,11 @@ LineStream struct {
 	// Position offset into the buffer.
 	pos         := 0;
 
-	in InStream;
-
 	// TODO: Do not support move operators yet to implement this
 	// correctly. fn LineStream(in InStream) {}
 
 	fn LineStream(handle void*, auto_close := true)
-		: in(InStream{ handle, auto_close }) {
+		: handle(FileHandle{handle, auto_close}){
 	}
 
 	/*
@@ -31,7 +34,7 @@ LineStream struct {
 		if pos == line_length {
 			// TODO: should probably verify that there is a line.
 			// -2 because of \r\n is read when calling Windows ReadFile.
-			line_length = in.read(buffer, BUFFER_SIZE) - 2;
+			line_length = handle.read(buffer, BUFFER_SIZE) - 2;
 			pos = 0;
 		}
 	}
@@ -64,7 +67,7 @@ LineStream struct {
 	fn read_line() String {
 		// When reading line just ignore whatever was in the
 		// buffer prior.
-		amount_read int = in.read(buffer, BUFFER_SIZE);
+		amount_read int = handle.read(buffer, BUFFER_SIZE);
 		pos         = 0;
 		line_length = 0; // Because the entire line was read in.
 		// -2 because of \r\n is read when calling Windows ReadFile.
@@ -92,6 +95,6 @@ LineStream struct {
 	}
 
 	fn close() {
-		in.close();
+		handle.close();
 	}
 }

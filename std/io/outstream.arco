@@ -1,28 +1,25 @@
-import win32;
+import files.FileHandle;
 
 /**
- * An output stream for writing to files or other writable
- * objects.
+ * An output stream for writing to files, sockets, or
+ * any streamable handle that is writeable.
  */
 OutStream struct {
 	
-	handle     void*;
-	auto_close bool;
+	// TODO: This handle should eventually be more abstract
+	//       and be a any writable handle instead.
+	handle FileHandle;
 
-	fn ~OutStream() {
-		if auto_close {
-			close();
-		}
+	fn OutStream(handle void*, auto_close := true)
+		: handle(FileHandle{handle, auto_close}) {
 	}
 
-	fn OutStream(handle void*, auto_close bool = true) {
-		this.handle     = handle;
-		this.auto_close = auto_close;
-	}
-
+	// TODO: This stream should not write directly to the handle.
+	//       In the future the stream should be abstracted in such
+	//       a way that it writes to another stream such as a buffered
+	//       output stream, which then writes to the handle.
 	fn write(msg cstr, length int) {
-		bytes_written uint32;
-		win32.WriteFile(handle, msg, cast(uint32) length, &bytes_written, null);
+		handle.write(msg, length);
 	}
 
 	fn write(msg cstr) {
@@ -120,6 +117,6 @@ OutStream struct {
 	}
 
 	fn close() {
-		win32.CloseHandle(handle);
+		handle.close();
 	}
 }

@@ -1,5 +1,9 @@
 namespace reflect;
 
+/*
+ * A catagory to which a type belongs in arco
+ * belongs.
+ */
 TypeId enum {
 
 	INT;
@@ -50,6 +54,10 @@ Struct struct {
 	fields     Field*;
 }
 
+/*
+ * A compiler generated struct for determining
+ * information about a type. Example: typeof(int).
+ */
 // TODO: support enum and function information.
 Type struct {
 	// Unique ID to identifier which type catagory
