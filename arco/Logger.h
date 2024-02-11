@@ -16,6 +16,8 @@ namespace arco {
 	extern ulen TotalAccumulatedErrors;
 	extern ulen TOTAL_ALLOWED_ERRORS;
 
+	extern bool ShortErrors;
+
 	class Logger {
 	public:
 

@@ -8,6 +8,7 @@ namespace arco {
 	bool FoundCompileError      = false;
 	ulen TotalAccumulatedErrors = 0;
 	ulen TOTAL_ALLOWED_ERRORS   = 20;
+	bool ShortErrors            = false;
 }
 
 arco::Logger::Logger(const char* FilePath, SourceBuf Buffer)
@@ -28,6 +29,11 @@ static std::string ReplaceTabsWithSpaces(const std::string& Tabs) {
 }
 
 void arco::Logger::EndError() {
+
+	if (ShortErrors) {
+		OS << '\n';
+		return;
+	}
 
 	std::string Between = ReplaceTabsWithSpaces(PrimaryErrLoc.Text.str());
 	if (Between == "\n" || Between == "\r\n" || Between == "\r") {

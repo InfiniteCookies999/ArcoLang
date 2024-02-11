@@ -45,13 +45,13 @@ Possible options:
         Executes the program after it is compiled and linked
         within a seperate window.
 
-    -display-times
+    -show-times
         Display how long different stages took.
 
     -stand-alone
         Excludes compiling with the standard library.
 
-    -display-llvm
+    -show-llvm
         Displays the LLVM IR generated from source code.
         !! Warning !! This can generate a huge amount of
         output depending on what is compiled.
@@ -74,6 +74,9 @@ Possible options:
         Sets how many errors will be displayed to the user before
         giving up and exiting compilation.
 
+    -short-errors
+        If set to true it will not display a visual indication of
+        where the error occured but instead only show the message.
 
 )";
 
@@ -183,13 +186,14 @@ int main(int argc, char* argv[]) {
 	arco::Compiler Compiler;
 
 	OptionManager OptManager;
-	OptManager.AddOption("display-times" , &Compiler.DisplayTimes);
-	OptManager.AddOption("display-llvm"  , &Compiler.DisplayLLVMIR);
+	OptManager.AddOption("show-times"    , &Compiler.DisplayTimes);
+	OptManager.AddOption("show-llvm"     , &Compiler.DisplayLLVMIR);
 	OptManager.AddOption("stand-alone"   , &Compiler.StandAlone);
 	OptManager.AddOption("run"           , &Compiler.RunProgram);
 	OptManager.AddOption("run-seperate"  , &Compiler.RunInSeperateWindow);
 	OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
 	OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
+	OptManager.AddOption("short-errors"  , &arco::ShortErrors);
 	OptManager.AddOption("disable-colors", &arco::DisableTerminalColors);
 	OptManager.AddOption("max-errors", [](int ArgNum, llvm::StringRef ValPart) {
 		ValPart = GetOptValue(ArgNum, ValPart, "max-errors");
@@ -243,7 +247,7 @@ int main(int argc, char* argv[]) {
 			} else if (Opt.empty()) {
 				DriverError(i, "Empty option");
 			} else if (!OptManager.ProcessOption(i, Opt)) {
-				DriverError(i, "Unknown option");
+				DriverError(i, "Unknown option:  %s", argv[i]);
 			}
 		} else {
 			arco::Source Source = {

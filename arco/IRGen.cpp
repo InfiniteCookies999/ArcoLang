@@ -2136,8 +2136,6 @@ llvm::Value* arco::IRGenerator::GenTypeOf(TypeOf* TOf, llvm::Value* LLAddr) {
 		LLAddr = CreateUnseenAlloca(LLTypeType, "tmp.struct");
 	}
 
-	// TODO: this wont work because multiple some of our types map
-	// to the same type! D:<
 	llvm::GlobalVariable* LLGlobal = GenTypeOfGlobal(TOf->TypeToGetTypeOf);
 
 	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLTypeType);
