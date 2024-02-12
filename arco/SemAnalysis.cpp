@@ -1518,6 +1518,11 @@ YIELD_ERROR(UniOp);
 				Error(UniOp, "Operator '%s' requires the value to be modifiable",
 					Token::TokenKindToString(UniOp->Op, Context));
 			}
+			if (UniOp->Value->HasConstAddress) {
+				if (!ValTy->IsPointer() && ValTy->GetKind() != TypeKind::Array) {
+					Error(UniOp, "Cannot get address of value because it is folded and has no address");
+				}
+			}
 
 			UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
 			UniOp->Ty = PointerType::Create(ValTy, Context);
