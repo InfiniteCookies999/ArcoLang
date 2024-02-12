@@ -115,6 +115,7 @@ namespace arco {
 		llvm::Value* GenUnaryOp(UnaryOp* UniOp);
 		llvm::Value* GenNumberLiteral(NumberLiteral* Number);
 		llvm::Value* GenStringLiteral(StringLiteral* String);
+		llvm::Value* GenStringLiteral(const char* String, ulen Length);
 		llvm::Value* GenIdentRef(IdentRef* IRef);
 		llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
 		llvm::Constant* GenComptimeValue(VarDecl* Var);
@@ -138,10 +139,10 @@ namespace arco {
 			                   StructDecl* Struct,
 			                   llvm::SmallVector<NonNamedValue, 2>& Args);
 		llvm::Value* GenHeapAlloc(HeapAlloc* Alloc);
-		llvm::Value* GenTypeOf(TypeOf* TOf, llvm::Value* LLAddr);
+		llvm::Value* GenTypeOf(TypeOf* TOf);
 		llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
 		llvm::Constant* GenTypeOfType(Type* GetTy);
-		llvm::GlobalVariable* GenTypeOfPointerTypeGlobal(PointerType* PointerTy);
+		llvm::GlobalVariable* GenTypeOfPointerTypeGlobal(Type* PtrLikeTy);
 		llvm::GlobalVariable* GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy);
 		llvm::GlobalVariable* GenTypeOfStructTypeGlobal(StructType* StructTy);
 
@@ -161,6 +162,7 @@ namespace arco {
 		llvm::Value* CreateLoad(llvm::Value* LLAddr);
 
 		void GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArray, Type* SliceTy, Type* ArrayTy);
+		void GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type* ValueTy);
 
 		llvm::Constant* GenConstValue(Type* Ty);
 		llvm::Constant* GenZeroedValue(Type* Ty);
@@ -240,7 +242,7 @@ namespace arco {
 
 		void GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, llvm::BasicBlock* LLFalseBB);
 
-		void GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress);
+		void GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr* Value, bool IsConstAddress);
 		void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
 
 		void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);

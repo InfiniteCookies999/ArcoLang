@@ -58,11 +58,13 @@ ArrayType struct {
 }
 
 Field struct {
-	name cstr;
-	type Type*;
+	name            cstr;
+	type            Type*;
+	offset_in_bytes int;
 }
 
 Struct struct {
+	name       cstr;
 	num_fields int;
 	fields     Field*;
 }
@@ -75,7 +77,9 @@ Struct struct {
 Type struct {
 	// Unique ID to identifier which type catagory
 	// this type belongs to.
-	id           TypeId;
+	id            TypeId;
+	// The size this type is allocated as.
+	size_in_bytes int; 
 	// TODO: this should be a union.
 	pointer_info PointerType*;
 	array_info   ArrayType*;
@@ -105,6 +109,15 @@ Type struct {
 	}
 	
 	/*
+	 * Tells if this type is a cstr or a std.String
+	 * struct type.
+	 */
+	fn is_string() bool {
+		return id == TypeId.CSTR ||
+		      (id == TypeId.STRUCT && this == typeof(String));
+	}
+	
+	/*
 	 * Tells if the type is a pointer. TypeId.POINTER
 	 * does not include all possible types that are
 	 * internally pointers.
@@ -115,5 +128,12 @@ Type struct {
 	fn is_pointer() bool {
 		return id == TypeId.POINTER || id == TypeId.CSTR ||
 		       id == TypeId.NULL    || id == TypeId.FUNCTION;
+	}
+	
+	/*
+	 * Gets the allocation size of the types in bits.
+	 */
+	fn size_in_bits() int {
+		return size_in_bytes * 8;
 	}
 }

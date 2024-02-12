@@ -261,7 +261,7 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
 	for (VarDecl* Field : Struct->Fields) {
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
 		if (Field->Assignment) {
-			GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
+			GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);
 		}
@@ -282,7 +282,7 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
 	while (Itr != Context.GlobalPostponedAssignments.end()) {
 		VarDecl* Global = *Itr;
 		if (Global->Assignment) {
-			GenAssignment(Global->LLAddress, Global->Assignment, Global->HasConstAddress);
+			GenAssignment(Global->LLAddress, Global->Ty, Global->Assignment, Global->HasConstAddress);
 		} else {
 			if (Global->Ty->GetKind() == TypeKind::Struct) {
 				CallDefaultConstructor(Global->LLAddress, Global->Ty->AsStructType());
@@ -653,7 +653,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
 			LLContext,
 			LLModule);
 	case AstKind::TYPEOF:
-		return GenTypeOf(static_cast<TypeOf*>(Node), nullptr);
+		return GenTypeOf(static_cast<TypeOf*>(Node));
 	default:
 		assert(!"Unimplemented GenNode() case!");
 		return nullptr;
@@ -746,7 +746,8 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 	
 	if (E->CastTy) {
 		LLValue = GenCast(E->CastTy, E->Ty, LLValue);
-		if (E->CastTy->GetKind() == TypeKind::Slice) {
+		if (E->CastTy->GetKind() == TypeKind::Slice ||
+			E->CastTy->GetKind() == TypeKind::Struct /* cast to Any */) {
 			// We did not load because it was an array but now we need
 			// to load.
 			LLValue = CreateLoad(LLValue);
@@ -774,7 +775,7 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 	}
 
 	if (Var->Assignment) {
-		GenAssignment(Var->LLAddress, Var->Assignment, Var->HasConstAddress);
+		GenAssignment(Var->LLAddress, Var->Ty, Var->Assignment, Var->HasConstAddress);
 	} else {
 		GenDefaultValue(Var->Ty, Var->LLAddress);
 	}
@@ -1129,7 +1130,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 		llvm::Value* LLAddress = GenNode(BinOp->LHS);
 		CallDestructors(BinOp->LHS->Ty, LLAddress);
 		
-		GenAssignment(LLAddress, BinOp->RHS, BinOp->RHS->HasConstAddress);
+		GenAssignment(LLAddress, BinOp->LHS->Ty, BinOp->RHS, BinOp->RHS->HasConstAddress);
 		return LLAddress;
 	}
 	//
@@ -1727,10 +1728,16 @@ llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
 }
 
 llvm::Value* arco::IRGenerator::GenStringLiteral(StringLiteral* String) {
+	return GenStringLiteral(String->Characters.c_str(), String->Characters.size());
+}
+
+llvm::Value* arco::IRGenerator::GenStringLiteral(const char* String, ulen Length) {
+	// TODO: Should intern the strings.
+
 	llvm::SmallVector<llvm::Constant*, 4> LLElements;
-	LLElements.reserve(String->Characters.size() + 1);
-	for (char Char : String->Characters) {
-		LLElements.push_back(GetLLUInt8(Char, LLContext));
+	LLElements.reserve(Length + 1);
+	for (ulen i = 0; i < Length; i++) {
+		LLElements.push_back(GetLLUInt8(String[i], LLContext));
 	}
 	// Null termination
 	LLElements.push_back(GetLLUInt8('\0', LLContext));
@@ -1803,7 +1810,8 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	// Automatically dereference pointers!
 	if (Site->Ty->GetKind() == TypeKind::Pointer &&
 		Site->IsNot(AstKind::THIS_REF) && /* Reference is already loaded. */
-		Site->IsNot(AstKind::FUNC_CALL) /* no address to load */) {
+		Site->IsNot(AstKind::FUNC_CALL) && /* no address to load */
+		Site->IsNot(AstKind::TYPE_CAST) /* type cast calls GenRValue */) {
 		LLSite = CreateLoad(LLSite);
 		LLSite->setName("ptr.deref");
 	}
@@ -1945,10 +1953,15 @@ void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
 }
 
 llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
-	llvm::Value* LLArg = nullptr;
+	if (Arg->CastTy && Arg->CastTy->GetKind() == TypeKind::Struct) {
+		// Cast to any so nothing below applies.
+		return GenRValue(Arg);
+	}
+
 	// TODO: If the object is a struct but not from another call
 	// then the object will need copied.
 
+	llvm::Value* LLArg = nullptr;
 	if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
 		// The argument is a call that returns a struct.
 		// There is no reason to destroy the memory since
@@ -1958,20 +1971,20 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
 		LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
 		GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
 
-// TODO: If there ends up being further optimizations such that parameters
-// take into account similar constraints to return values where structs
-// get passed as integers/pointers depending on memory size then this will
-// not need to be loaded.
-LLArg = CreateLoad(LLArg);
+		// TODO: If there ends up being further optimizations such that parameters
+		// take into account similar constraints to return values where structs
+		// get passed as integers/pointers depending on memory size then this will
+		// not need to be loaded.
+		LLArg = CreateLoad(LLArg);
 
 	} else {
-	LLArg = GenRValue(Arg);
+		LLArg = GenRValue(Arg);
 
-	if (Arg->Ty->GetKind() == TypeKind::Array) {
-		// Arrays are passed as pointers. Cannot simply decay though
-		// because the argument might be an already decayed array.
-		LLArg = ArrayToPointer(LLArg);
-	}
+		if (Arg->Ty->GetKind() == TypeKind::Array) {
+			// Arrays are passed as pointers. Cannot simply decay though
+			// because the argument might be an already decayed array.
+			LLArg = ArrayToPointer(LLArg);
+		}
 	}
 	return LLArg;
 }
@@ -2045,19 +2058,21 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 arco::ArrayType* arco::IRGenerator::GetGenArrayDestType(Array* Arr) {
 	ArrayType* DestTy = Arr->Ty->AsArrayTy();
 	if (Arr->CastTy) {
-		if (Arr->CastTy->GetKind() == TypeKind::Array) {
+		TypeKind CastKind = Arr->CastTy->GetKind();
+		if (CastKind == TypeKind::Array) {
 			DestTy = Arr->CastTy->AsArrayTy();
-		} else if (Arr->CastTy->GetKind() == TypeKind::Pointer) {
+		} else if (CastKind == TypeKind::Pointer) {
 			DestTy = ArrayType::Create(
 				Arr->CastTy->AsPointerTy()->GetElementType(),
 				DestTy->GetLength(),
 				Context);
-		} else if (Arr->CastTy->GetKind() == TypeKind::CStr) {
+		} else if (CastKind == TypeKind::CStr) {
 			DestTy = ArrayType::Create(
 				Context.CharType,
 				DestTy->GetLength(),
 				Context);
-		} else if (Arr->CastTy->GetKind() == TypeKind::Slice) {
+		} else if (CastKind == TypeKind::Slice ||
+			       CastKind == TypeKind::Struct /* Cast to Any type */) {
 			return DestTy;
 		} else {
 			assert(!"Unreachable");
@@ -2103,8 +2118,8 @@ llvm::Constant* arco::IRGenerator::GenConstArray(Array* Arr, ArrayType* DestTy) 
 
 void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy) {
 	
-	bool ElmsAreArrs = DestTy->GetElementType()
-		                     ->GetKind() == TypeKind::Array;
+	Type* ElmTy = DestTy->GetElementType();
+	bool ElmsAreArrs = ElmTy->GetKind() == TypeKind::Array;
 
 	bool AddrIsPtr = LLAddr->getType()->isPointerTy() && !LLAddr->getType()->getPointerElementType()->isArrayTy();
 	
@@ -2127,14 +2142,14 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
 				FillArrayViaGEP(
 					static_cast<Array*>(Arr),
 					LLAddrAtIndex,
-					DestTy->GetElementType()->AsArrayTy()
+					ElmTy->AsArrayTy()
 				);
 			} else {
 				// TODO: HasConstAddress = false?
-				GenAssignment(LLAddrAtIndex, Elm, false);
+				GenAssignment(LLAddrAtIndex, ElmTy, Elm, false);
 			}
 		} else {
-			GenDefaultValue(DestTy->GetElementType(), LLAddrAtIndex);
+			GenDefaultValue(ElmTy, LLAddrAtIndex);
 		}
 	}
 }
@@ -2149,6 +2164,12 @@ llvm::Value* arco::IRGenerator::GenArrayAccess(ArrayAccess* Access) {
 		LLSite = CreateLoad(LLSite);
 		llvm::Value* LLAccess = CreateInBoundsGEP(LLSite, LLIndex);
 		LLAccess->setName("slice.access");
+		return LLAccess;
+	} else if (Access->Site->Is(AstKind::TYPE_CAST)) { // TODO: Wouldn't this also apply for foo()[4] cases?
+		// Deal with annoying fact that type casting call GenRValue for
+		// pointers meaning CreateLoad will fudge up the GenNode call.
+		llvm::Value* LLAccess = CreateInBoundsGEP(LLSite, LLIndex);
+		LLAccess->setName("ptr.access");
 		return LLAccess;
 	}
 
@@ -2207,7 +2228,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 		VarDecl* Field = Struct->Fields[i];
 
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
-		GenAssignment(LLFieldAddr, Value.E, Field->HasConstAddress);
+		GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
 		ConsumedFieldIdxs.insert(i);
 	}
 
@@ -2215,7 +2236,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 		if (ConsumedFieldIdxs.find(Field->FieldIdx) == ConsumedFieldIdxs.end()) {
 			llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
 			if (Field->Assignment) {
-				GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
+				GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
 			} else {
 				GenDefaultValue(Field->Ty, LLFieldAddr);
 			}
@@ -2240,7 +2261,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 		llvm::Value* LLArrStartPtr = GenMalloc(GenType(BaseTy), LLTotalLinearLength);
 		
 		if (!Alloc->Values.empty()) {
-			GenAssignment(LLArrStartPtr, Alloc->Values[0].E, false);
+			GenAssignment(LLArrStartPtr, BaseTy, Alloc->Values[0].E, false);
 		} else if (BaseTy->GetKind() == TypeKind::Struct) {
 			// Need to initialize fields so calling the default constructor.
 			StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
@@ -2264,42 +2285,27 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
 			}
 		} else {
 			if (!Alloc->Values.empty()) {
-				GenAssignment(LLMalloc, Alloc->Values[0].E, false);
+				GenAssignment(LLMalloc, TypeToAlloc, Alloc->Values[0].E, false);
 			}
 		}
 		return LLMalloc;
 	}
 }
 
-llvm::Value* arco::IRGenerator::GenTypeOf(TypeOf* TOf, llvm::Value* LLAddr) {
-	llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
-
-	if (!LLAddr) {
-		LLAddr = CreateUnseenAlloca(LLTypeType, "tmp.struct");
-	}
-
-	llvm::GlobalVariable* LLGlobal = GenTypeOfGlobal(TOf->TypeToGetTypeOf);
-
-	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLTypeType);
-	llvm::Align LLAlignment =  LLStructLayout->getAlignment();
-	Builder.CreateMemCpy(
-		LLAddr, LLAlignment,
-		LLGlobal, LLAlignment,
-		SizeOfTypeInBytes(LLTypeType)
-	);
-
-	return LLAddr;
+llvm::Value* arco::IRGenerator::GenTypeOf(TypeOf* TOf) {
+	return GenTypeOfGlobal(TOf->TypeToGetTypeOf);
 }
 
 llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
-	llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
 	auto Itr = Context.LLTypeInfoMap.find(GetTy->GetUniqueId());
 	if (Itr != Context.LLTypeInfoMap.end()) {
 		return Itr->second;
 	} else {
+		llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
 		std::string LLGlobalTypeInfoName = "__global.typeinfo." + std::to_string(Context.NumGeneratedGlobalVars++);
 		llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLTypeType);
 		LLGlobal->setInitializer(GenTypeOfType(GetTy));
+		Context.LLTypeInfoMap.insert({ GetTy->GetUniqueId(), LLGlobal });
 		return LLGlobal;
 	}
 }
@@ -2313,8 +2319,8 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 
 	llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()), LLContext, LLModule);
 	llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo;
-	if (GetTy->GetKind() == TypeKind::Pointer) {
-		LLPointerInfo = GenTypeOfPointerTypeGlobal(GetTy->AsPointerTy());
+	if (GetTy->GetKind() == TypeKind::Pointer || GetTy->GetKind() == TypeKind::CStr) {
+		LLPointerInfo = GenTypeOfPointerTypeGlobal(GetTy);
 	} else {
 		LLPointerInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLPointerStructType, 0));
 	}
@@ -2329,8 +2335,9 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 		LLStructInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLStructStructType, 0));
 	}
 
-	llvm::SmallVector<llvm::Constant*, 4> LLElements = {
+	llvm::SmallVector<llvm::Constant*, 5> LLElements = {
 		LLTypeId,
+		GetSystemInt(SizeOfTypeInBytes(GenType(GetTy)), LLContext, LLModule),
 		LLPointerInfo,
 		LLArrayInfo,
 		LLStructInfo
@@ -2339,9 +2346,9 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 	return llvm::ConstantStruct::get(LLTypeType, LLElements);
 }
 
-llvm::GlobalVariable* arco::IRGenerator::GenTypeOfPointerTypeGlobal(PointerType* PointerTy) {
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfPointerTypeGlobal(Type* PtrLikeTy) {
 	llvm::SmallVector<llvm::Constant*, 1> LLElements = {
-		GenTypeOfGlobal(PointerTy->GetElementType())
+		GenTypeOfGlobal(PtrLikeTy->GetPointerElementType(Context))
 	};
 	llvm::StructType* LLPointerStructType = GenStructType(Context.StdPointerTypeStruct);
 	std::string LLGlobalTypeInfoName = "__global.typeinfo.ptr." + std::to_string(Context.NumGeneratedGlobalVars++);
@@ -2365,32 +2372,22 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfArrayTypeGlobal(ArrayType* Arr
 llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* StructTy) {
 	
 	StructDecl* Struct = StructTy->GetStruct();
-	
+
 	// Creating a field array.
 	llvm::SmallVector<llvm::Constant*> LLFields;
 	LLFields.resize(Struct->Fields.size());
 	llvm::StructType* LLFieldStructType = GenStructType(Context.StdFieldTypeStruct);
+
+	llvm::StructType* LLStructType = GenStructType(StructTy);
+	const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
 	for (VarDecl* Field : Struct->Fields) {
-		// TODO: surely there is a more efficient way of doing this nonsense
-		// than having to generate an entire array just for a c-string.
-		llvm::SmallVector<llvm::Constant*> LLNameElements;
-		llvm::StringRef FieldName = Field->Name.Text;
-		LLNameElements.resize(FieldName.size() + 1);
-		for (ulen i = 0; i < FieldName.size(); i++) {
-			LLNameElements[i] = GetLLInt8(FieldName[i], LLContext);
-		}
-		LLNameElements[FieldName.size()] = GetLLInt8(0, LLContext); // Null terminate the name.
-
-		llvm::ArrayType* LLNameArrayTy =
-			llvm::ArrayType::get(llvm::Type::getInt8Ty(LLContext), FieldName.size() + 1);
-		llvm::Constant* LLNameArr = llvm::ConstantArray::get(LLNameArrayTy, LLNameElements);
-		std::string LLGlobalFieldNameName = "__global.typeinfo.field.name." + std::to_string(Context.NumGeneratedGlobalVars++);
-		llvm::GlobalVariable* LLGlobalFieldName = GenLLVMGlobalVariable(LLGlobalFieldNameName, LLNameArrayTy);
-		LLGlobalFieldName->setInitializer(LLNameArr);
-
+		
+		Identifier FieldName = Field->Name;
+		ulen FieldOffset = LLStructLayout->getElementOffset(Field->FieldIdx);
 		llvm::SmallVector<llvm::Constant*, 2> LLFieldElements = {
-			llvm::cast<llvm::Constant>(DecayArray(LLGlobalFieldName)),
-			GenTypeOfGlobal(Field->Ty)
+			llvm::cast<llvm::Constant>(GenStringLiteral(FieldName.Text.data(), FieldName.Text.size())),
+			GenTypeOfGlobal(Field->Ty),
+			GetSystemInt(FieldOffset, LLContext, LLModule)
 		};
 
 		LLFields[Field->FieldIdx] = llvm::ConstantStruct::get(LLFieldStructType, LLFieldElements);
@@ -2400,7 +2397,9 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
 	llvm::GlobalVariable* LLFieldsArrayGlobal = GenLLVMGlobalVariable(LLGlobalFieldArrayName, LLFieldArrayTy);
 	LLFieldsArrayGlobal->setInitializer(llvm::ConstantArray::get(LLFieldArrayTy, LLFields));
 
+	Identifier StructName = Struct->Name;
 	llvm::SmallVector<llvm::Constant*, 2> LLElements = {
+		llvm::cast<llvm::Constant>(GenStringLiteral(StructName.Text.data(), StructName.Text.size())),
 		GetSystemInt(Struct->Fields.size(), LLContext, LLModule),
 		llvm::cast<llvm::Constant>(DecayArray(LLFieldsArrayGlobal))
 	};
@@ -2487,6 +2486,11 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 			llvm::Value* LLIndexAddress = GetArrayIndexAddress(LLGlobalEnumArray, LLValue);
 			LLValue = CreateLoad(LLIndexAddress);
 		}
+	}
+
+	if (ToType->Equals(FromType)) {
+		// Pointless cast.
+		return LLValue;
 	}
 
 	llvm::Type* LLCastType = GenType(ToType);
@@ -2599,8 +2603,17 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 		} else if (FromType->IsPointer()) {
 			// Pointer to Pointer
 			return Builder.CreateBitCast(LLValue, LLCastType);
+		} else if (FromType->IsInt()) {
+			// Int to Ptr
+			return Builder.CreateIntToPtr(LLValue, LLCastType);
 		}
 		goto missingCaseLab;
+	}
+	case TypeKind::Struct: {
+		// This happens when casting to the Any struct.
+		llvm::Value* LLAny = CreateUnseenAlloca(GenStructType(Context.StdAnyStruct), "tmp.any");
+		GenToAny(LLAny, LLValue, FromType);
+		return LLAny;
 	}
 	default: {
 missingCaseLab:
@@ -2622,6 +2635,43 @@ void arco::IRGenerator::GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArr
 	Builder.CreateStore(GetSystemInt(Length, LLContext, LLModule), LLLengthFieldAddr);
 	llvm::Value* LLPtrFieldAddr = CreateStructGEP(LLSlice, 1);
 	Builder.CreateStore(ArrayToPointer(LLArray), LLPtrFieldAddr);
+
+}
+
+void arco::IRGenerator::GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type* ValueTy) {
+	
+	llvm::Value* LLTypeFieldAddr = CreateStructGEP(LLAny, 0);
+	// Just point directly to the global variable no need to copy since
+	// we cannot it is declared as constant.
+	Builder.CreateStore(GenTypeOfGlobal(ValueTy), LLTypeFieldAddr);
+	llvm::Value* LLValueFieldAddr = CreateStructGEP(LLAny, 1);
+	
+	if (LLValue->getType()->isArrayTy()) {
+		LLValue = ArrayToPointer(LLValue);
+	} else if (!LLValue->getType()->isPointerTy()) {
+		// Must have been a literal so need to generate an address to point to.
+		llvm::Value* LLValueAddr = CreateUnseenAlloca(LLValue->getType(), "tmp.any.val");
+		// TODO: need to check for destruction here?
+		
+		Builder.CreateStore(LLValue, LLValueAddr);
+		LLValue = LLValueAddr;
+	} else {
+		// Yes it's a pointer but is it the pointer type we want.
+		// a := "hello";
+		// b Any = a;   -- the pointer would refer to the address of a not the pointer of a.
+
+		// TODO: Is there a better way to do this? This seems rather hacky.
+		if (ValueTy->IsPointer()) {
+			if (LLValue->getType() != GenType(ValueTy)) {
+				LLValue = CreateLoad(LLValue);
+			}
+		}
+	}
+
+	// bitcast to void*.
+	LLValue = Builder.CreateBitCast(LLValue, llvm::PointerType::get(llvm::IntegerType::getInt8Ty(LLContext), 0));
+
+	Builder.CreateStore(LLValue, LLValueFieldAddr);
 
 }
 
@@ -2898,9 +2948,9 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
 	for (VarDecl* Field : Struct->Fields) {
 		llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
 		if (Expr* InitValue = Func->GetInitializerValue(Field)) {
-			GenAssignment(LLFieldAddr, InitValue, Field->HasConstAddress);
+			GenAssignment(LLFieldAddr, Field->Ty, InitValue, Field->HasConstAddress);
 		} else if (Field->Assignment) {
-			GenAssignment(LLFieldAddr, Field->Assignment, Field->HasConstAddress);
+			GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
 		} else {
 			GenDefaultValue(Field->Ty, LLFieldAddr);
 		}
@@ -2911,6 +2961,8 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
 	Type* Ty = Global->Ty;
 	Expr* Assignment = Global->Assignment;
 	if (Assignment) {
+		// TODO: Assigned a slice?
+
 		if (Assignment->Is(AstKind::ARRAY)) {
 			// Is Array
 			if (Assignment->IsFoldable) {
@@ -3124,7 +3176,17 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 	Builder.CreateCondBr(LLCond, LLTrueBB, LLFalseBB);
 }
 
-void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress) {
+void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr* Value, bool IsConstAddress) {
+	if (AddrTy->GetKind() == TypeKind::Struct) {
+		StructDecl* Struct = AddrTy->AsStructType()->GetStruct();
+		if (Struct == Context.StdAnyStruct) {
+			// Assigning to Any type.
+			llvm::Value* LLValue = GenNode(Value);
+			GenToAny(LLAddress, LLValue, Value->Ty);
+			return;
+		}
+	}
+
 	if (Value->Is(AstKind::ARRAY)) {
 		if (Value->CastTy && Value->CastTy->GetKind() == TypeKind::Slice) {
 			llvm::Value* LLValue = GenArray(static_cast<Array*>(Value), nullptr, IsConstAddress);
@@ -3146,8 +3208,6 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool 
 			llvm::Value* LLAssignment = GenRValue(Value);
 			Builder.CreateStore(LLAssignment, LLAddress);
 		}
-	} else if (Value->Is(AstKind::TYPEOF)) {
-		GenTypeOf(static_cast<TypeOf*>(Value), LLAddress);
 	} else if (Value->Ty->GetKind() == TypeKind::Struct) {
 		CopyStructObject(LLAddress, GenNode(Value), Value->Ty->AsStructType()->GetStruct());
 	} else {

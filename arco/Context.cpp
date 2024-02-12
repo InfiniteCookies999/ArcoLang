@@ -14,6 +14,7 @@ arco::ArcoContext::ArcoContext()
 	CdeclIdentifier(Identifier("cdecl")),
 	FastcallIdentifier(Identifier("fastcall")),
 	StringIdentifier(Identifier("String")),
+	AnyIdentifier(Identifier("Any")),
 	TypeIdentifier(Identifier("Type")),
 	PointerTypeIdentifier(Identifier("PointerType")),
 	ArrayTypeIdentifier(Identifier("ArrayType")),

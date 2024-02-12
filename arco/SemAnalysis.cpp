@@ -250,42 +250,47 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 			Analyzer.CheckStructDecl(Struct);
 		}
 
-		for (const FuncDecl::InitializerValue& InitValue : Func->InitializerValues) {
-			CheckNode(InitValue.Assignment);
-			if (!Struct->FindField(InitValue.FieldName)) {
-				Error(Func, "No field '%s' for initializer value", InitValue.FieldName);
-			}
-		}
-
-		for (VarDecl* Field : Struct->Fields) {
-			if (Field->IsBeingChecked) {
-				// TODO: may be good to provide a better error message but honestly this
-				// should very rarely occure.
-				Error(Field, "Field of constructor has circular dependency");
-				continue;
-			}
-
-			Expr* InitValue = Func->GetInitializerValue(Field);
-			if (InitValue) {
-				if (!IsAssignableTo(Field->Ty, InitValue)) {
-					DisplayErrorForTypeMismatch(
-						"Cannot assign value of type '%s' to field of type '%s'",
-						InitValue->Loc,
-						InitValue,
-						Field->Ty);
-				}
-
-				if (ViolatesConstAssignment(Field, InitValue)) {
-					Error(InitValue, "Cannot assign const memory to non-const field");
+		if (!Struct->ParsingError) {
+			for (const FuncDecl::InitializerValue& InitValue : Func->InitializerValues) {
+				CheckNode(InitValue.Assignment);
+				if (!Struct->FindField(InitValue.FieldName)) {
+					Error(Func, "No field '%s' for initializer value", InitValue.FieldName);
 				}
 			}
+
+			for (VarDecl* Field : Struct->Fields) {
+				if (Field->IsBeingChecked) {
+					// TODO: may be good to provide a better error message but honestly this
+					// should very rarely occure.
+					Error(Field, "Field of constructor has circular dependency");
+					continue;
+				}
+				if (Field->Ty == Context.ErrorType) {
+					continue;
+				}
+
+				Expr* InitValue = Func->GetInitializerValue(Field);
+				if (InitValue) {
+					if (!IsAssignableTo(Field->Ty, InitValue)) {
+						DisplayErrorForTypeMismatch(
+							"Cannot assign value of type '%s' to field of type '%s'",
+							InitValue->Loc,
+							InitValue,
+							Field->Ty);
+					}
+
+					if (ViolatesConstAssignment(Field, InitValue)) {
+						Error(InitValue, "Cannot assign const memory to non-const field");
+					}
+				}
 			
-			if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
-				StructDecl* StructForTy = Field->Ty->AsStructType()->GetStruct();
+				if (!Field->Assignment && Field->Ty->GetKind() == TypeKind::Struct) {
+					StructDecl* StructForTy = Field->Ty->AsStructType()->GetStruct();
 
-				if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
-					if (!InitValue) {
-						Error(Func, "No default constructor to initialize the '%s' field", Field->Name);
+					if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
+						if (!InitValue) {
+							Error(Func, "No default constructor to initialize the '%s' field", Field->Name);
+						}
 					}
 				}
 			}
@@ -1533,6 +1538,9 @@ YIELD_ERROR(UniOp);
 		if (!ValTy->IsPointer()) {
 			OPERATOR_CANNOT_APPLY(ValTy);
 		}
+		if (ValTy->Equals(Context.VoidPtrType)) {
+			Error(UniOp, "Cannot dereference void*");
+		}
 
 		UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
 		UniOp->Ty = ValTy->GetPointerElementType(Context);
@@ -1974,6 +1982,7 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 	FuncDecl* Selection = nullptr;
 
 	// TODO: Should select canidates based on if signs match or not?
+	// TODO: make calls to functions with Any absolute last to consider.
 
 	ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
 		 LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max();
@@ -2490,7 +2499,8 @@ void arco::SemAnalyzer::CheckTypeOf(TypeOf* TOf) {
 		return;
 	}
 	FixupType(TOf->TypeToGetTypeOf);
-	TOf->Ty = StructType::Create(Context.StdTypeStruct, Context);
+	TOf->Ty = PointerType::Create(StructType::Create(Context.StdTypeStruct, Context), Context);
+	TOf->HasConstAddress = true;
 	TOf->IsFoldable = false; // TODO: change?
 }
 
@@ -2687,6 +2697,42 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 			nullptr
 		);
 	}
+	case TypeKind::Struct: {
+		if (Context.StdAnyStruct) {
+			StructDecl* Struct = ToTy->AsStructType()->GetStruct();
+			if (Struct == Context.StdAnyStruct) {
+				// Still need to make sure the type is sensible.
+				switch (FromTy->GetKind()) {
+				case TypeKind::Null:
+					return false;
+				case TypeKind::Array: {
+					ArrayType* ArrayTy = FromTy->AsArrayTy();
+					Type* BaseTy = ArrayTy->GetBaseType();
+					TypeKind Kind = BaseTy->GetKind();
+					if (Kind == TypeKind::Null) {
+						return false;
+					} else if (Kind == TypeKind::Import || Kind == TypeKind::FuncRef ||
+						       Kind == TypeKind::StructRef || Kind == TypeKind::EnumRef ||
+						       Kind == TypeKind::EmptyArrayElm) {
+						return false;
+					}
+					break;
+				}
+				case TypeKind::Import:
+				case TypeKind::FuncRef:
+				case TypeKind::StructRef:
+				case TypeKind::EnumRef:
+				case TypeKind::Void:
+				case TypeKind::EmptyArrayElm:
+					return false;
+				}
+
+				return true;
+			}
+		}
+
+		return ToTy->Equals(FromTy);
+	}
 	default:
 		return ToTy->Equals(FromTy);
 	}
@@ -2714,11 +2760,15 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
 	case TypeKind::Float64:
 		return FromTy->IsNumber();
 	case TypeKind::Pointer:
+	case TypeKind::CStr:
 		if (FromTy->IsNumber() || FromTy->IsPointer()) {
 			// Allow numbers/pointers to cast to pointers.
 			return true;
 		}
 		return IsAssignableTo(ToTy, FromTy, nullptr);
+	case TypeKind::Struct:
+		// Prevent any craziness that might come with casting to Any
+		return false;
 	default:
 		return IsAssignableTo(ToTy, FromTy, nullptr);
 	}
@@ -2924,6 +2974,11 @@ void arco::SemAnalyzer::CheckModifibility(Expr* LValue) {
 	} else {
 		if (LValue->HasConstAddress) {
 			// We only want to prevent modification of underlying memory.
+			if (LValue->Is(AstKind::FIELD_ACCESSOR)) {
+				Error(LValue, "Cannot modify field of const memory");
+				return;
+			}
+
 			TypeKind K = LValue->Ty->GetKind();
 			if (K != TypeKind::Pointer &&
 				K != TypeKind::CStr &&

@@ -1,4 +1,5 @@
 import win32;
+import reflect.Any;
 
 out := OutStream{ win32.GetStdHandle(-11), false };
 err := OutStream{ win32.GetStdHandle(-12), false };
@@ -11,28 +12,24 @@ in  := LineStream{ win32.GetStdHandle(-10), false };
 // Functions for writing to std out.
 //----------------------------------------------
 
-fn print(i int64) {
-	out.write(i);
+fn print(i int64, base := 10) {
+	out.write(i, base);
 }
 
-fn print(i uint64) {
-	out.write(i);
+fn print(i uint64, base := 10) {
+	out.write(i, base);
 }
 
 fn print(msg cstr) {
 	out.write(msg);
 }
 
-fn print(i int) {
-	out.write(i);
+fn print(i int, base := 10) {
+	out.write(i, base);
 }
 
-fn print(i uint) {
-	out.write(i);
-}
-
-fn print(msg String*) {
-	out.write(msg);
+fn print(i uint, base := 10) {
+	out.write(i, base);
 }
 
 fn print(b bool) {
@@ -43,28 +40,28 @@ fn print(c char) {
 	out.write(c);
 }
 
+fn print(any Any) {
+	out.write(any);
+}
+
 fn println(msg cstr) {
 	out.writeln(msg);
 }
 
-fn println(i int64) {
+fn println(i int64, base := 10) {
+	out.writeln(i, base);
+}
+
+fn println(i uint64, base := 10) {
+	out.writeln(i, base);
+}
+
+fn println(i int, base := 10) {
 	out.writeln(i);
 }
 
-fn println(i uint64) {
+fn println(i uint, base := 10) {
 	out.writeln(i);
-}
-
-fn println(i int) {
-	out.writeln(i);
-}
-
-fn println(i uint) {
-	out.writeln(i);
-}
-
-fn println(msg String*) {
-	out.writeln(msg);
 }
 
 fn println(b bool) {
@@ -77,6 +74,10 @@ fn println(c char) {
 
 fn println() {
 	out.writeln();
+}
+
+fn println(any Any) {
+	out.writeln(any);
 }
 
 // Functions for writing to std err.
@@ -99,10 +100,6 @@ fn eprint(i uint) {
 }
 
 fn eprint(msg cstr) {
-	err.write(msg);
-}
-
-fn eprint(msg String*) {
 	err.write(msg);
 }
 
@@ -132,10 +129,6 @@ fn eprintln(i int64) {
 
 fn eprintln(i uint64) {
 	err.writeln(i);
-}
-
-fn eprintln(msg String*) {
-	err.writeln(msg);
 }
 
 fn eprintln(b bool) {

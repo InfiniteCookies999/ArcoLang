@@ -1,0 +1,9 @@
+namespace reflect;
+
+/*
+ * A type that any type in arco is convertable to.
+ */
+Any struct {
+	type  const Type*;
+	value void*;
+}

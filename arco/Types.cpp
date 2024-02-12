@@ -286,14 +286,26 @@ std::string arco::Type::ToString() const {
 	case TypeKind::StructRef:       return "struct reference";
 	case TypeKind::EnumRef:         return "enum reference";
 	case TypeKind::Pointer: {
+		if (!this->UniqueId) {
+			return "error";
+		}
+
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->ToString() + "*";
 	}
 	case TypeKind::Slice: {
+		if (!this->UniqueId) {
+			return "error";
+		}
+
 		const SliceType* SliceTy = static_cast<const SliceType*>(this);
 		return SliceTy->GetElementType()->ToString() + "[*]";
 	}
 	case TypeKind::Array: {
+		if (!this->UniqueId) {
+			return "error";
+		}
+
 		const ArrayType* ArrayTy = static_cast<const ArrayType*>(this);
 		std::string Val = ArrayTy->GetBaseType()->ToString();
 		while (true) {
@@ -304,15 +316,20 @@ std::string arco::Type::ToString() const {
 		}
 		return Val;
 	}
-	case TypeKind::Struct: {
-		const StructType* StructTy = static_cast<const StructType*>(this);
-		return StructTy->GetStruct()->Name.Text.str();
-	}
+	case TypeKind::Struct:
 	case TypeKind::Enum: {
+		if (!this->UniqueId) {
+			return "error";
+		}
+
 		const StructType* StructTy = static_cast<const StructType*>(this);
-		return StructTy->GetEnum()->Name.Text.str();
+		return StructTy->GetStructName().Text.str();
 	}
 	case TypeKind::Function: {
+		if (!this->UniqueId) {
+			return "error";
+		}
+
 		const FunctionType* FuncTy = static_cast<const FunctionType*>(this);
 		std::string Val = "fn(";
 		for (ulen i = 0; i < FuncTy->ParamTypes.size(); i++) {

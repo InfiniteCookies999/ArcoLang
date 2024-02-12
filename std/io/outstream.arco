@@ -1,4 +1,7 @@
 import files.FileHandle;
+import reflect.Any;
+import reflect.Type;
+import reflect.TypeId;
 
 /**
  * An output stream for writing to files, sockets, or
@@ -26,10 +29,6 @@ OutStream struct {
 		write(msg, strlen(msg));
 	}
 
-	fn write(msg String*) {
-		write(msg.buffer, msg.length);
-	}
-
 	fn write(b bool) {
 		if b {
 			write("true");
@@ -42,31 +41,132 @@ OutStream struct {
 		write(&c, 1);
 	}
 
-	fn write(i int64) {
+	fn write(i int64, base := 10) {
 		if i < 0 {
 			i = -i;
 			write("-");
 		}
 
-		write(cast(uint64) i);
+		write(cast(uint64) i, base);
 	}
 
-	fn write(i uint64) {
+	fn write(i uint64, base := 10) {
+		// TODO: validate the base.
+
 		BUFFER_SIZE :: 21;
 		buffer char[BUFFER_SIZE];
 
-		ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
+		ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 
 		length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
 		write(ptr, length);
 	}
 
-	fn write(i int) {
-		write(cast(int64) i);
+	fn write(i int, base := 10) {
+		write(cast(int64) i, base);
 	}
 
-	fn write(i uint) {
-		write(cast(uint64) i);
+	fn write(i uint, base := 10) {
+		write(cast(uint64) i, base);
+	}
+
+	fn write(any Any) {
+		write_any(any.value, any.type);
+	}
+
+	fn write_any(value void*, type const Type*) {
+		if type.id == TypeId.CSTR {
+			write(cast(cstr) value);
+		} else if type.is_int() {
+			if type.is_signed() {
+				write(*cast(int64*) value);
+			} else {
+				write(*cast(uint64*) value);
+			}
+		} else if type.is_pointer() {
+			// TODO: abstract pointer printing out?
+			// TODO: pad 0s.
+			write("0x");
+			write(cast(uint) cast(uint*) value, 16);
+		} else if type.id == TypeId.ARRAY {
+			write("[ ");
+			
+			arr_length    := type.array_info.length;
+			elm_type      := type.array_info.element_type;
+			elm_byte_size := elm_type.size_in_bytes;
+			
+			loop i := 0; i < arr_length; i++ {
+				offset_into_array void* = value + (i * elm_byte_size);
+				if elm_type.is_string() {
+					write("\"");
+				}
+				if elm_type.is_pointer() {
+					// The offset into the array gives us an address of the element
+					// which is typically what we want except for pointer types in
+					// which case we want the pointer itself.
+					ptr_addr := cast(void**) offset_into_array;
+					offset_into_array = *ptr_addr;
+				}
+				write_any(offset_into_array, elm_type);
+				if elm_type.is_string() {
+					write("\"");
+				}
+				
+				if i+1 != arr_length {
+					write(", ");
+				}
+			}
+			
+			write(" ]");
+		} else if type.id == TypeId.EMPTY_ARRAY_ELM {
+			write("[ ]");
+		} else if type.id == TypeId.F32 {
+			write("printing floats not supported yet");
+		} else if type.id == TypeId.F64 {
+			write("printing floats not supported yet");
+		} else if type.id == TypeId.SLICE {
+			write("printing slices not supported yet");
+		} else if type.id == TypeId.STRUCT {
+			//if type.struct_info == typeof(String).struct_info {
+			if type == typeof(String) {
+				string := cast(String*) value;
+				write(string.buffer, string.length);
+				return;
+			}
+			
+			write(type.struct_info.name);
+			write("{ ");
+			
+			num_fields := type.struct_info.num_fields;
+			loop i := 0; i < num_fields; i++ {
+				field := type.struct_info.fields[i];
+				
+				write(field.name);
+				write(":");
+				field_value void* = value + field.offset_in_bytes;
+				
+				if field.type.is_string() {
+					write("\"");
+				}
+				if field.type.is_pointer() {
+					// See comment above unrder elm_type.is_pointer() for arrays.
+					ptr_addr := cast(void**) field_value;
+					field_value = *ptr_addr;
+				}
+				write_any(field_value, field.type);
+				
+				if field.type.is_string() {
+					write("\"");
+				}
+				if i+1 != num_fields {
+					write(", ");
+				}
+			}
+			
+			write(" }");
+		} else {
+			write("do not know how to write type!");
+		}
 	}
 
 	// ----------------------------------------
@@ -82,23 +182,23 @@ OutStream struct {
 		write("\n", 1);
 	}
 
-	fn writeln(i int) {
-		write(cast(int64) i);
+	fn writeln(i int, base := 10) {
+		write(cast(int64) i, base);
 		write("\n", 1);
 	}
 
-	fn writeln(i uint) {
-		write(cast(uint64) i);
+	fn writeln(i uint, base := 10) {
+		write(cast(uint64) i, base);
 		write("\n", 1);
 	}
 
-	fn writeln(i int64) {
+	fn writeln(i int64, base := 10) {
 		write(i);
 		write("\n", 1);
 	}
 
-	fn writeln(i uint64) {
-		write(i);
+	fn writeln(i uint64, base := 10) {
+		write(i, base);
 		write("\n", 1);
 	}
 
@@ -109,6 +209,11 @@ OutStream struct {
 
 	fn writeln(c char) {
 		write(c);
+		write("\n", 1);
+	}
+
+	fn writeln(any Any) {
+		write(any);
 		write("\n", 1);
 	}
 
