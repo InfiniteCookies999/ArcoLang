@@ -168,7 +168,7 @@ String struct {
 			}
 
 			if uc {
-				ch = uppercase(ch);
+				ch = tolower(ch);
 			}
 
 			digit int32 = cast(int32) to_digit_for_base(ch, base);

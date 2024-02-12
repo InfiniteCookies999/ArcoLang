@@ -294,6 +294,48 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 
 
 	if (Func->Mods & ModKinds::NATIVE) {
+
+		if (Func->Struct) {
+			Error(Func, "native functions cannot be member functions");
+		}
+
+		Identifier Name = Func->Name;
+		if (!Func->NativeName.empty()) {
+			Name = Identifier(Func->NativeName);
+		}
+
+		auto Itr = Context.LLVMIntrinsicsTable.find(Name);
+		if (Itr != Context.LLVMIntrinsicsTable.end()) {
+			// Validating that the parameters are correct.
+
+			bool FoundIntrinsic = false;
+			for (const ArcoContext::LLIntrinsicDef& IntrinsicDef : Context.LLVMValidIntrinsicArgs) {
+				if (IntrinsicDef.Name != Name) continue;
+				if (IntrinsicDef.ParamTypes.size() != Func->Params.size()) {
+					continue;
+				}
+				if (!IntrinsicDef.RetType->Equals(Func->RetTy)) {
+					continue;
+				}
+				bool ParamsCorrect = true;
+				for (ulen i = 0; i < IntrinsicDef.ParamTypes.size(); i++) {
+					if (!IntrinsicDef.ParamTypes[i]->Equals(Func->Params[i]->Ty)) {
+						ParamsCorrect = false;
+						break;
+					}
+				}
+				if (!ParamsCorrect) {
+					continue;
+				}
+				FoundIntrinsic = true;
+				break;
+			}
+
+			if (!FoundIntrinsic) {
+				Error(Func, "Invalid parameter types/return type for intrinsic function declaration");
+			}
+		}
+
 		return;
 	}
 
@@ -1377,6 +1419,7 @@ YIELD_ERROR(BinOp)
 	}
 
 #undef OPERATOR_CANNOT_APPLY
+#undef TYPE_MISMATCH
 }
 
 void arco::SemAnalyzer::CheckUnaryOp(UnaryOp* UniOp) {

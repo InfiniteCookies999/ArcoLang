@@ -24,22 +24,23 @@ namespace arco {
 	class FunctionType;
 
 	enum class TypeKind {
-		Int,
-		UnsignedInt,
 
-		Int8,
-		Int16,
-		Int32,
-		Int64,
+		UnsignedInt,
 		UnsignedInt8,
 		UnsignedInt16,
 		UnsignedInt32,
 		UnsignedInt64,
-	
-		Float32,
-		Float64,
+
+		Int,
+		Int8,
+		Int16,
+		Int32,
+		Int64,
 
 		Char,
+
+		Float32,
+		Float64,
 
 		Void,
 		Bool,
@@ -48,6 +49,7 @@ namespace arco {
 		Array,
 		Struct,
 		Enum,
+		Function,
 
 		Null,
 		Error,
@@ -55,7 +57,6 @@ namespace arco {
 		EmptyArrayElm,
 		// When an identifier is an import the type is set to this.
 		Import,
-		Function,
 		// When referencing an identifier that refers to one or more functions.
 		FuncRef,
 		// When referencing an identifier that refers to a struct.

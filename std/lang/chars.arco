@@ -99,7 +99,7 @@ fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
  * Converts the character to lowercase if the
  * character is uppercase.
  */
-fn lowercase(c char) char {
+fn tolower(c char) char {
 	// TODO: ternary operator.
 	if c >= 'A' && c <= 'Z' {
 		return c + 32;
@@ -112,7 +112,7 @@ fn lowercase(c char) char {
  * Converts the character to uppercase if
  * the character is lowercase.
  */
-fn uppercase(c char) char {
+fn toupper(c char) char {
 	// TODO: ternary operator.
 	if c >= 'a' && c <= 'z' {
 		return c - 32;

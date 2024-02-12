@@ -143,6 +143,13 @@ namespace arco {
 		llvm::Function*    LLInitGlobalFunc;
 		llvm::Function*    LLDestroyGlobalsFunc;
 		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
+		struct LLIntrinsicDef {
+			Identifier               Name;
+			llvm::SmallVector<Type*> ParamTypes;
+			Type*                    RetType;
+		};
+		// TODO: should this be a map instead?
+		llvm::SmallVector<LLIntrinsicDef>               LLVMValidIntrinsicArgs;
 		llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
 		llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
 		llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;

@@ -1,5 +1,199 @@
 namespace math;
 
+/*
+ * The ratio between the circumference and diamter of a circle.
+ */
+PI :: 3.14159265358979323846;
+
+/*
+ * The ratio between the circumference and radius of a circle.
+ * 
+ * TAU = 2*PI
+ */
+TAU :: 6.28318530717958647692;
+
+/*
+ * The base of the natural logorithm.
+ */
+E   :: 2.7182818284590452354;
+
+/*
+ * Constant which when multiplied by converts a degree value
+ * to a radian value.
+ *
+ * Or use: math.to_radians() function.
+ */
+DEGREES_TO_RADIAS  :: 0.017453292519943295;
+
+/*
+ * Constant which when multiplied by converts a radian value
+ * to a degree value.
+ *
+ * Or use: math.to_degrees() function.
+ */
+RADIANS_TO_DEGREES :: 57.29577951308232;
+
+/*
+ * Converts the angle in degrees to radians.
+ */
+fn to_radians(angle f64) f64 {
+	return angle * DEGREES_TO_RADIAS;
+}
+
+/*
+ * Converts the angle in degrees to radians.
+ */
+fn to_radians(angle f32) f32 {
+	return cast(f32) (angle * DEGREES_TO_RADIAS);
+}
+
+/*
+ * Converts the angle in radians to degrees.
+ */
+fn to_degrees(angle f64) f64 {
+	return angle * RADIANS_TO_DEGREES;
+}
+
+/*
+ * Converts the angle in radians to degrees.
+ */
+fn to_degrees(angle f32) f32 {
+	return cast(f32) (angle * RADIANS_TO_DEGREES);
+}
+
+/*
+ * Calculates the smallest mathematical integer
+ * not less than x.
+ *
+ * Example: floor(4.3) == 4.0
+ */
+native fn floor(x f64) f64;
+
+/*
+ * Calculates the smallest mathematical integer
+ * not less than x.
+ *
+ * Example: floor(4.3) == 4.0
+ */
+native fn floor(x f32) f32;
+
+/*
+ * Calculates the largest mathematical integer
+ * not greater than x.
+ *
+ * Example: floor(4.3) == 5.0
+ */
+native fn ceil(x f64) f64;
+
+/*
+ * Calculates the largest mathematical integer
+ * not greater than x.
+ *
+ * Example: floor(4.3) == 5.0
+ */
+native fn ceil(x f32) f32;
+
+/*
+ * Calculates x raised to the power of exp.
+ */
+native fn pow(x f64, exp f64) f64;
+
+/*
+ * Calculates x raised to the power of exp.
+ */
+native fn pow(x f32, exp f32) f32;
+
+/*
+ * Calculates the natural logorithm of x.
+ *
+ * The natural logorithm is a logorithm with
+ * base e, Euler's number. This function is
+ * often denoted as just "log(x)" in maths.
+ */
+native("log") fn ln(x f64) f64;
+
+/*
+ * Calculates the natural logorithm of x.
+ *
+ * The natural logorithm is a logorithm with
+ * base e, Euler's number. This function is
+ * often denoted as just "log(x)" in maths.
+ */
+native("log") fn ln(x f32) f32;
+
+/*
+ * Calculates the natural logorithm of x
+ * with a base of 10.
+ */
+native fn log10(x f64) f64;
+
+/*
+ * Calculates the natural logorithm of x
+ * with a base of 10.
+ */
+native fn log10(x f32) f32;
+
+/*
+ * Returns the positive sqrt of x.
+ *
+ * If x is less than 0 then nan is returned.
+ */
+native fn sqrt(x f64) f64;
+
+/*
+ * Returns the positive sqrt of x.
+ *
+ * If x is less than 0 then nan is returned.
+ */
+native fn sqrt(x f32) f32;
+
+/*
+ * Returns the trigonometric sine of angle x.
+ *
+ * @param x an angle in radians.
+ */
+native fn sin(x f64) f64;
+
+/*
+ * Returns the trigonometric sine of angle x.
+ *
+ * @param x an angle in radians.
+ */
+native fn sin(x f32) f32;
+
+/*
+ * Returns the trigonometric cosine of angle x.
+ *
+ * @param x an angle in radians.
+ */
+native fn cos(x f64) f64;
+
+/*
+ * Returns the trigonometric cosine of angle x.
+ *
+ * @param x an angle in radians.
+ */
+native fn cos(x f32) f32;
+
+/*
+ * Returns the trigonometric tangent of angle x.
+ *
+ * @param x an angle in radians.
+ */
+fn tan(x f64) f64 {
+	return sin(x) / cos(x);
+}
+
+/*
+ * Returns the trigonometric tangent of angle x.
+ *
+ * @param x an angle in radians.
+ */
+fn tan(x f32) f32 {
+	return sin(x) / cos(x);
+}
+
+
 MIN_INT8   :: -128;
 MAX_INT8   :: +127;
 MIN_UINT8  :: 0;

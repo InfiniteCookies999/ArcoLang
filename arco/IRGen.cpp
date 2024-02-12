@@ -299,7 +299,12 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 	if (Func->LLFunction) return;
 
 	if (Func->Mods & ModKinds::NATIVE) {
-		auto Itr = Context.LLVMIntrinsicsTable.find(Func->Name);
+		Identifier Name = Func->Name;
+		if (!Func->NativeName.empty()) {
+			Name = Identifier(Func->NativeName);
+		}
+
+		auto Itr = Context.LLVMIntrinsicsTable.find(Name);
 		if (Itr != Context.LLVMIntrinsicsTable.end()) {
 			Func->LLVMIntrinsicID = Itr->second;
 			return;
@@ -3117,6 +3122,18 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 // https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
 llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
 			                                         const llvm::SmallVector<NonNamedValue, 2>& Args) {
+	// TODO: may want to verify the function definition is correct as to not cause an error.
+#define CALL_GET_DECL1(Name)                                          \
+llvm::Value* Arg0 = GenRValue(Args[0].E);                             \
+llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(			  \
+			&LLModule, llvm::Intrinsic::##Name, { Arg0->getType() }); \
+return Builder.CreateCall(LLFunc, Arg0);
+#define CALL_GET_DECL2(Name)                                                           \
+llvm::Value* Arg0 = GenRValue(Args[0].E);                                              \
+llvm::Value* Arg1 = GenRValue(Args[1].E);                                              \
+llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(                              \
+			&LLModule, llvm::Intrinsic::##Name, { Arg0->getType(), Arg1->getType() }); \
+return Builder.CreateCall(LLFunc, { Arg0, Arg1 });
 	
 	switch (CalledFunc->LLVMIntrinsicID) {
 	case llvm::Intrinsic::memcpy: {
@@ -3136,6 +3153,33 @@ llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
 			LLAlignment
 		);
 	}
+	case llvm::Intrinsic::floor: {
+		CALL_GET_DECL1(floor);
 	}
+	case llvm::Intrinsic::ceil: {
+		CALL_GET_DECL1(ceil);
+	}
+	case llvm::Intrinsic::pow: {
+		CALL_GET_DECL2(pow);
+	}
+	case llvm::Intrinsic::log: {
+		CALL_GET_DECL1(log);
+	}
+	case llvm::Intrinsic::log10: {
+		CALL_GET_DECL1(log10);
+	}
+	case llvm::Intrinsic::sqrt: {
+		CALL_GET_DECL1(sqrt);
+	}
+	case llvm::Intrinsic::sin: {
+		CALL_GET_DECL1(sin);
+	}
+	case llvm::Intrinsic::cos: {
+		CALL_GET_DECL1(cos);
+	}
+	}
+	assert(!"Failed to implement intrinsic");
+#undef CALL_GET_DECL1
+#undef CALL_GET_DECL2
 	return nullptr;
 }

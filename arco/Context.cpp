@@ -53,6 +53,14 @@ arco::ArcoContext::ArcoContext()
 	LLVMIntrinsicsTable({
 		{ Identifier("memcpy"), llvm::Intrinsic::IndependentIntrinsics::memcpy },
 		{ Identifier("memset"), llvm::Intrinsic::IndependentIntrinsics::memset },
+		{ Identifier("floor") , llvm::Intrinsic::IndependentIntrinsics::floor  },
+		{ Identifier("ceil")  , llvm::Intrinsic::IndependentIntrinsics::ceil   },
+		{ Identifier("pow")   , llvm::Intrinsic::IndependentIntrinsics::pow    },
+		{ Identifier("log")   , llvm::Intrinsic::IndependentIntrinsics::log    },
+		{ Identifier("log10") , llvm::Intrinsic::IndependentIntrinsics::log10  },
+		{ Identifier("sqrt")  , llvm::Intrinsic::IndependentIntrinsics::sqrt   },
+		{ Identifier("sin")   , llvm::Intrinsic::IndependentIntrinsics::sin    },
+		{ Identifier("cos")   , llvm::Intrinsic::IndependentIntrinsics::cos    },
 		}),
 
 	BinaryOpsPrecedence({
@@ -172,6 +180,26 @@ void arco::ArcoContext::Initialize() {
 	VoidPtrType = PointerType::Create(VoidType, *this);
 	CharPtrType = PointerType::Create(CharType, *this);
 
+	LLVMValidIntrinsicArgs = {
+		{ Identifier("memcpy"), { VoidPtrType, VoidPtrType, UIntType }, VoidType },
+		{ Identifier("memset"), { VoidPtrType, Int8Type, UIntType }, VoidPtrType },
+		{ Identifier("floor") ,  { Float64Type }, Float64Type },
+		{ Identifier("floor") ,  { Float32Type }, Float32Type },
+		{ Identifier("ceil")  ,  { Float64Type }, Float64Type },
+		{ Identifier("ceil")  ,  { Float32Type }, Float32Type },
+		{ Identifier("pow")   ,  { Float64Type, Float64Type }, Float64Type },
+		{ Identifier("pow")   ,  { Float32Type, Float32Type }, Float32Type },
+		{ Identifier("log")   ,  { Float64Type }, Float64Type },
+		{ Identifier("log")   ,  { Float32Type }, Float32Type },
+		{ Identifier("log10") ,  { Float64Type }, Float64Type },
+		{ Identifier("log10") ,  { Float32Type }, Float32Type },
+		{ Identifier("sqrt")  ,  { Float64Type }, Float64Type },
+		{ Identifier("sqrt")  ,  { Float32Type }, Float32Type },
+		{ Identifier("sin")   ,  { Float64Type }, Float64Type },
+		{ Identifier("sin")   ,  { Float32Type }, Float32Type },
+		{ Identifier("cos")   ,  { Float64Type }, Float64Type },
+		{ Identifier("cos")   ,  { Float32Type }, Float32Type },
+	};
 }
 
 arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {

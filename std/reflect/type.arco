@@ -6,23 +6,22 @@ namespace reflect;
  */
 TypeId enum {
 
-	INT;
 	UINT;
-	
-	INT8;
-	INT16;
-	INT32;
-	INT64;
-	
 	UINT8;
 	UINT16;
 	UINT32;
 	UINT64;
 
+	INT;
+	INT8;
+	INT16;
+	INT32;
+	INT64;
+
+	CHAR;
+
 	F32;
 	F64;
-	
-	CHAR;
 	
 	VOID;
 	BOOL;
@@ -32,6 +31,19 @@ TypeId enum {
 	STRUCT;
 	ENUM;
 	FUNCTION;
+	
+	NULL;
+	ERROR;
+	// When an array is declared with no elements.
+	EMPTY_ARRAY_ELM;
+	// When an identifier is an import the type is set to this.
+	IMPORT;
+	// When referencing an identifier that refers to one or more functions.
+	FUNC_REF;
+	// When referencing an identifier that refers to a struct.
+	STRUCT_REF;
+	// When referencing an identifier that refers to an enum.
+	ENUM_REF;
 	
 }
 
@@ -67,4 +79,40 @@ Type struct {
 	pointer_info PointerType*;
 	array_info   ArrayType*;
 	struct_info  Struct*;
+	
+	/*
+	 * Tells if the type is an integer. This includes
+	 * characters.
+	 */
+	fn is_int() bool {
+		return id <= TypeId.CHAR;
+	}
+	
+	/*
+	 * Tells if the type is a number.
+	 */
+	fn is_number() bool {
+		return id <= TypeId.F64;
+	}
+	
+	/*
+	 * Tells if the type is signed. This means the values of
+	 * this type may have negative values.
+	 */
+	fn is_signed() bool {
+		return id >= TypeId.INT && id <= TypeId.F64;
+	}
+	
+	/*
+	 * Tells if the type is a pointer. TypeId.POINTER
+	 * does not include all possible types that are
+	 * internally pointers.
+	 *
+	 * @return true if TypeId.POINTER, TypeId.CSTR,
+	 *                 TypeId.NULL, or TypeId.FUNCTION.
+	 */
+	fn is_pointer() bool {
+		return id == TypeId.POINTER || id == TypeId.CSTR ||
+		       id == TypeId.NULL    || id == TypeId.FUNCTION;
+	}
 }

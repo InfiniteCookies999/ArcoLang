@@ -350,9 +350,9 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 	
 	ulen NumErrs = TotalAccumulatedErrors;
 
-	FuncDecl* Func = NewNode<FuncDecl>(CTok);
-
 	NextToken(); // Consuming 'fn' keyword.
+
+	FuncDecl* Func = NewNode<FuncDecl>(CTok);
 	if (CTok.Is(TokenKind::KW_COPYOBJ)) {
 		NextToken(); // Consuming 'copy' keyword.
 		Func->IsCopyConstructor = true;
