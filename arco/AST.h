@@ -538,6 +538,7 @@ namespace arco {
 
 		// Request for the length of an array.
 		bool IsArrayLength = false;
+		bool IsSliceLength = false;
 		// Something like Day.MONDAY
 		const EnumDecl::EnumValue* EnumValue = nullptr;
 

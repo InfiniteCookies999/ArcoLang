@@ -1,0 +1,11 @@
+
+fn main() {
+	s int[*] = [ 134, 55, 22, 6 ];
+	print(s[0]);
+	print(" ", 1);
+	print(s[1]);
+	print(" ", 1);
+	print(s[2]);
+	print(" ", 1);
+	print(s[3]);
+}

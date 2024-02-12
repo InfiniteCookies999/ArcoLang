@@ -13,6 +13,7 @@ namespace llvm {
 	class Module;
 	class Type;
 	class GlobalVariable;
+	class StructType;
 	namespace CallingConv {
 		using ID = unsigned;
 	}
@@ -153,8 +154,10 @@ namespace arco {
 		llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
 		llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
 		llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
+		llvm::DenseMap<u32, llvm::StructType*>     LLSliceTypes;
 
 		llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
+		llvm::DenseMap<u32, SliceType*>                       SliceTyCache;
 		llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
 		llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;
 		// TODO: llvm::DenseMap<u32, StructType*>                   StructCache;

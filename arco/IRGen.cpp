@@ -152,6 +152,24 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 	}
 	case TypeKind::Struct:
 		return GenStructType(Context, Ty->AsStructType()->GetStruct());
+	case TypeKind::Slice: {
+		SliceType* SliceTy = Ty->AsSliceTy();
+		auto Itr = Context.LLSliceTypes.find(SliceTy->GetUniqueId());
+		if (Itr != Context.LLSliceTypes.end()) {
+			return Itr->second;
+		}
+		llvm::StructType* LLSliceType = llvm::StructType::create(Context.LLContext);
+		Context.LLSliceTypes.insert({ SliceTy->GetUniqueId(), LLSliceType });
+
+		llvm::SmallVector<llvm::Type*> LLStructFieldTypes = {
+			GetSystemIntType(LLContext, Context.LLArcoModule),
+			llvm::PointerType::get(GenType(Context, SliceTy->GetElementType()), 0)
+		};
+		LLSliceType->setBody(LLStructFieldTypes);
+		LLSliceType->setName("__slice");
+
+		return LLSliceType;
+	}
 	default:
 		assert(!"Failed to implement case for GenType()");
 		return nullptr;
@@ -167,7 +185,7 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
 	llvm::StructType* LLStructTy = llvm::StructType::create(Context.LLContext);
 	Struct->LLStructTy = LLStructTy; // Set early to prevent endless recursive
 
-	std::vector<llvm::Type*> LLStructFieldTypes;
+	llvm::SmallVector<llvm::Type*> LLStructFieldTypes;
 	LLStructFieldTypes.resize(Struct->Fields.size());
 	if (Struct->Fields.empty()) {
 		LLStructFieldTypes.push_back(llvm::Type::getInt8Ty(Context.LLContext));
@@ -728,6 +746,11 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
 	
 	if (E->CastTy) {
 		LLValue = GenCast(E->CastTy, E->Ty, LLValue);
+		if (E->CastTy->GetKind() == TypeKind::Slice) {
+			// We did not load because it was an array but now we need
+			// to load.
+			LLValue = CreateLoad(LLValue);
+		}
 	}
 	return LLValue;
 }
@@ -960,14 +983,23 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
 	LoopBreakStack.push_back(LLEndBB);
 	LoopContinueStack.push_back(LLIncBB);
 
-	ArrayType* ArrayTy = Loop->IterOnExpr->Ty->AsArrayTy();
+	ContainerType* ContainerTy = Loop->IterOnExpr->Ty->AsContainerType();
 
 	llvm::Value* LLArrItrPtrAddr = CreateUnseenAlloca(
-		llvm::PointerType::get(GenType(ArrayTy->GetElementType()), 0), "arr.itr.ptr");
+		llvm::PointerType::get(GenType(ContainerTy->GetElementType()), 0), "arr.itr.ptr");
 
-	llvm::Value* LLPtrToArrStart = ArrayToPointer(GenNode(Loop->IterOnExpr));
-	llvm::Value* LLPtrToArrEnd = CreateInBoundsGEP(LLPtrToArrStart,
-		                              { GetSystemUInt(ArrayTy->GetLength(), LLContext, LLModule) });
+	llvm::Value* LLIterOnExpr = GenNode(Loop->IterOnExpr);
+	llvm::Value* LLPtrToArrStart;
+	llvm::Value* LLLength;
+	if (ContainerTy->GetKind() == TypeKind::Array) {
+		LLLength = GetSystemUInt(ContainerTy->AsArrayTy()->GetLength(), LLContext, LLModule);
+		LLPtrToArrStart = ArrayToPointer(LLIterOnExpr);
+	} else {
+		LLLength = CreateLoad(CreateStructGEP(LLIterOnExpr, 0));
+		LLPtrToArrStart = CreateLoad(CreateStructGEP(LLIterOnExpr, 1));
+	}
+	
+	llvm::Value* LLPtrToArrEnd = CreateInBoundsGEP(LLPtrToArrStart, { LLLength });
 	LLPtrToArrEnd->setName("arr.itr.end");
 	Builder.CreateStore(LLPtrToArrStart, LLArrItrPtrAddr);
 
@@ -986,7 +1018,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
 	//       every iteration if iterating on arrays.
 	// Storing into the variable
 	llvm::Value* LLArrPtrValue = CreateLoad(LLArrItrPtrAddr);
-	LLArrPtrValue = LoadIteratorLoopValueIfNeeded(LLArrPtrValue, Loop->VarVal->Ty, ArrayTy->GetElementType());
+	LLArrPtrValue = LoadIteratorLoopValueIfNeeded(LLArrPtrValue, Loop->VarVal->Ty, ContainerTy->GetElementType());
 	Builder.CreateStore(LLArrPtrValue, Loop->VarVal->LLAddress);
 
 	PUSH_SCOPE();
@@ -1737,11 +1769,14 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
 llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 	if (FieldAcc->IsArrayLength) {
 		return GetSystemInt(
-			FieldAcc->Site->Ty->AsArrayTy()->GetLength(),
-			LLContext,
-			LLModule
-		);
+				FieldAcc->Site->Ty->AsArrayTy()->GetLength(),
+				LLContext,
+				LLModule
+			);
+	} else if (FieldAcc->IsSliceLength) {
+		return CreateStructGEP(GenNode(FieldAcc->Site), 0);
 	}
+
 	if (FieldAcc->EnumValue) {
 		// Use static cast because AsStructType strips away enum information.
 		EnumDecl* Enum = static_cast<StructType*>(FieldAcc->Ty)->GetEnum();
@@ -1923,20 +1958,20 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
 		LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
 		GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
 
-		// TODO: If there ends up being further optimizations such that parameters
-		// take into account similar constraints to return values where structs
-		// get passed as integers/pointers depending on memory size then this will
-		// not need to be loaded.
-		LLArg = CreateLoad(LLArg);
+// TODO: If there ends up being further optimizations such that parameters
+// take into account similar constraints to return values where structs
+// get passed as integers/pointers depending on memory size then this will
+// not need to be loaded.
+LLArg = CreateLoad(LLArg);
 
 	} else {
-		LLArg = GenRValue(Arg);
-			
-		if (Arg->Ty->GetKind() == TypeKind::Array) {
-			// Arrays are passed as pointers. Cannot simply decay though
-			// because the argument might be an already decayed array.
-			LLArg = ArrayToPointer(LLArg);
-		}
+	LLArg = GenRValue(Arg);
+
+	if (Arg->Ty->GetKind() == TypeKind::Array) {
+		// Arrays are passed as pointers. Cannot simply decay though
+		// because the argument might be an already decayed array.
+		LLArg = ArrayToPointer(LLArg);
+	}
 	}
 	return LLArg;
 }
@@ -1973,13 +2008,13 @@ llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool I
 		// into the destination.
 
 		llvm::Value* LLGArray = GenConstGlobalArray(GenConstArray(Arr, DestTy));
-	
+
 		ulen TotalLinearLength = DestTy->GetTotalLinearLength();
-	
+
 		llvm::Type* LLDestTy = GenType(DestTy->GetBaseType());
 		llvm::Align LLAlignment = GetAlignment(LLDestTy);
 		Builder.CreateMemCpy(
-			LLAddr  , LLAlignment,
+			LLAddr, LLAlignment,
 			LLGArray, LLAlignment,
 			TotalLinearLength * SizeOfTypeInBytes(LLDestTy)
 		);
@@ -2022,6 +2057,8 @@ arco::ArrayType* arco::IRGenerator::GetGenArrayDestType(Array* Arr) {
 				Context.CharType,
 				DestTy->GetLength(),
 				Context);
+		} else if (Arr->CastTy->GetKind() == TypeKind::Slice) {
+			return DestTy;
 		} else {
 			assert(!"Unreachable");
 		}
@@ -2106,6 +2143,14 @@ llvm::Value* arco::IRGenerator::GenArrayAccess(ArrayAccess* Access) {
 
 	llvm::Value* LLSite  = GenNode(Access->Site);
 	llvm::Value* LLIndex = GenRValue(Access->Index);
+
+	if (Access->Site->Ty->GetKind() == TypeKind::Slice) {
+		LLSite = CreateStructGEP(LLSite, 1);
+		LLSite = CreateLoad(LLSite);
+		llvm::Value* LLAccess = CreateInBoundsGEP(LLSite, LLIndex);
+		LLAccess->setName("slice.access");
+		return LLAccess;
+	}
 
 	llvm::Type* LLSiteType = LLSite->getType()->getPointerElementType();
 	llvm::Value* LLAccess;
@@ -2541,6 +2586,11 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
 		}
 		goto missingCaseLab;
 	}
+	case TypeKind::Slice: {
+ 		llvm::Value* LLSlice = CreateUnseenAlloca(GenType(ToType), "tmp.slice");
+		GenArrayToSlice(LLSlice, LLValue, ToType, FromType);
+		return LLSlice;
+	}
 	case TypeKind::CStr: {
 		if (FromType->GetKind() == TypeKind::Null) {
 			return LLValue; // Already handled during generation
@@ -2563,6 +2613,16 @@ missingCaseLab:
 
 llvm::Value* arco::IRGenerator::CreateLoad(llvm::Value* LLAddr) {
 	return Builder.CreateLoad(LLAddr->getType()->getPointerElementType(), LLAddr);
+}
+
+void arco::IRGenerator::GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArray, Type* SliceTy, Type* ArrayTy) {
+	ulen Length = ArrayTy->AsArrayTy()->GetLength();
+
+	llvm::Value* LLLengthFieldAddr = CreateStructGEP(LLSlice, 0);
+	Builder.CreateStore(GetSystemInt(Length, LLContext, LLModule), LLLengthFieldAddr);
+	llvm::Value* LLPtrFieldAddr = CreateStructGEP(LLSlice, 1);
+	Builder.CreateStore(ArrayToPointer(LLArray), LLPtrFieldAddr);
+
 }
 
 llvm::Constant* arco::IRGenerator::GenConstValue(Type* Ty) {
@@ -2594,6 +2654,7 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 		return llvm::Constant::getNullValue(GenType(Ty));
 	case TypeKind::Array:
 	case TypeKind::Struct:
+	case TypeKind::Slice:
 		return llvm::ConstantAggregateZero::get(GenType(Ty));
 	default:
 		assert(!"Failed to implement GenZeroedValue() case!");
@@ -3065,10 +3126,15 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 
 void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Expr* Value, bool IsConstAddress) {
 	if (Value->Is(AstKind::ARRAY)) {
-		llvm::Value* LLValue = GenArray(static_cast<Array*>(Value), LLAddress, IsConstAddress);
-		if (Value->CastTy && Value->CastTy->IsPointer()) {
-			llvm::Value* LLAssignment = GenCast(Value->CastTy, Value->Ty, LLValue);
-			Builder.CreateStore(LLAssignment, LLAddress);
+		if (Value->CastTy && Value->CastTy->GetKind() == TypeKind::Slice) {
+			llvm::Value* LLValue = GenArray(static_cast<Array*>(Value), nullptr, IsConstAddress);
+			GenArrayToSlice(LLAddress, LLValue, Value->CastTy, Value->Ty);
+		} else {
+			llvm::Value* LLValue = GenArray(static_cast<Array*>(Value), LLAddress, IsConstAddress);
+			if (Value->CastTy && Value->CastTy->IsPointer()) {
+				llvm::Value* LLAssignment = GenCast(Value->CastTy, Value->Ty, LLValue);
+				Builder.CreateStore(LLAssignment, LLAddress);
+			}
 		}
 	} else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
 		GenStructInitializer(static_cast<StructInitializer*>(Value), LLAddress);

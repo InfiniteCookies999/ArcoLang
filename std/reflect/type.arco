@@ -27,6 +27,7 @@ TypeId enum {
 	BOOL;
 	CSTR;
 	POINTER;
+	SLICE;
 	ARRAY;
 	STRUCT;
 	ENUM;

@@ -89,13 +89,18 @@ bool arco::Type::IsPointer() const {
 }
 
 arco::ContainerType* arco::Type::AsContainerType() {
-	assert((GetKind() == TypeKind::Pointer || GetKind() == TypeKind::Array) && "Not a container type");
+	assert((GetKind() == TypeKind::Pointer || GetKind() == TypeKind::Array || GetKind() == TypeKind::Slice) && "Not a container type");
 	return static_cast<ContainerType*>(Unbox());
 }
 
 arco::PointerType* arco::Type::AsPointerTy() {
 	assert(GetKind() == TypeKind::Pointer && "Not a pointer type");
 	return static_cast<PointerType*>(Unbox());
+}
+
+arco::SliceType* arco::Type::AsSliceTy() {
+	assert(GetKind() == TypeKind::Slice && "Not a slice type");
+	return static_cast<SliceType*>(Unbox());
 }
 
 arco::ArrayType* arco::Type::AsArrayTy() {
@@ -130,6 +135,11 @@ const arco::ContainerType* arco::Type::AsContainerType() const {
 const arco::PointerType* arco::Type::AsPointerTy() const {
 	assert(GetKind() == TypeKind::Pointer && "Not a pointer type");
 	return static_cast<const PointerType*>(Unbox());
+}
+
+const arco::SliceType* arco::Type::AsSliceTy() const {
+	assert(GetKind() == TypeKind::Slice && "Not a slice type");
+	return static_cast<const SliceType*>(Unbox());
 }
 
 const arco::ArrayType* arco::Type::AsArrayTy() const {
@@ -279,6 +289,10 @@ std::string arco::Type::ToString() const {
 		const PointerType* PtrTy = static_cast<const PointerType*>(this);
 		return PtrTy->GetElementType()->ToString() + "*";
 	}
+	case TypeKind::Slice: {
+		const SliceType* SliceTy = static_cast<const SliceType*>(this);
+		return SliceTy->GetElementType()->ToString() + "[*]";
+	}
 	case TypeKind::Array: {
 		const ArrayType* ArrayTy = static_cast<const ArrayType*>(this);
 		std::string Val = ArrayTy->GetBaseType()->ToString();
@@ -348,6 +362,27 @@ arco::PointerType* arco::PointerType::Create(Type* ElmTy, ArcoContext& Context) 
 	if (UniqueId != 0) {
 		Ty->UniqueId = Context.UniqueTypeIdCounter++;
 		Context.PointerTyCache.insert({ UniqueId, Ty });
+	}
+	return Ty;
+}
+
+arco::SliceType* arco::SliceType::Create(Type* ElmTy, ArcoContext& Context) {
+	// If the element type does not have a unique id then the unique id
+	// is resolved in FixupType for slices.
+	u32 UniqueId = ElmTy->GetUniqueId();
+	if (UniqueId != 0) {
+		// The element type has a unique key already so we can save memory
+		// and use the cache.
+		auto Itr = Context.SliceTyCache.find(UniqueId);
+		if (Itr != Context.SliceTyCache.end()) {
+			return Itr->second;
+		}
+	}
+	SliceType* Ty = new SliceType;
+	Ty->ElmTy = ElmTy;
+	if (UniqueId != 0) {
+		Ty->UniqueId = Context.UniqueTypeIdCounter++;
+		Context.SliceTyCache.insert({ UniqueId, Ty });
 	}
 	return Ty;
 }

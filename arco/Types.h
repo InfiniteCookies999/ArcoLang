@@ -19,6 +19,7 @@ namespace arco {
 	struct EnumDecl;
 	class ContainerType;
 	class PointerType;
+	class SliceType;
 	class ArrayType;
 	class StructType;
 	class FunctionType;
@@ -46,6 +47,7 @@ namespace arco {
 		Bool,
 		CStr,
 		Pointer,
+		Slice,
 		Array,
 		Struct,
 		Enum,
@@ -91,6 +93,7 @@ namespace arco {
 
 		ContainerType* AsContainerType();
 		PointerType* AsPointerTy();
+		SliceType* AsSliceTy();
 		ArrayType* AsArrayTy();
 		StructType* AsStructType();
 		FunctionType* AsFunctionType();
@@ -99,6 +102,7 @@ namespace arco {
 
 		const ContainerType* AsContainerType() const;
 		const PointerType* AsPointerTy() const;
+		const SliceType* AsSliceTy() const;
 		const ArrayType* AsArrayTy() const;
 		const StructType* AsStructType() const;
 		const FunctionType* AsFunctionType() const;
@@ -166,6 +170,16 @@ namespace arco {
 	private:
 		PointerType()
 			: ContainerType(TypeKind::Pointer) {}
+	};
+
+	class SliceType : public ContainerType {
+	public:
+
+		static SliceType* Create(Type* ElmTy, ArcoContext& Context);
+
+	private:
+		SliceType()
+			: ContainerType(TypeKind::Slice) {}
 	};
 
 	class ArrayType : public ContainerType {

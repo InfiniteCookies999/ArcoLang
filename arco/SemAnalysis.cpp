@@ -1001,8 +1001,8 @@ void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
 	YIELD_IF_ERROR(Loop->IterOnExpr);
 	Type* IterableType = Loop->IterOnExpr->Ty;
 	Type* IterOnType;
-	if (IterableType->GetKind() == TypeKind::Array) {
-		IterOnType = IterableType->AsArrayTy()->GetElementType();
+	if (IterableType->GetKind() == TypeKind::Array || IterableType->GetKind() == TypeKind::Slice) {
+		IterOnType = IterableType->AsContainerType()->GetElementType();
 	} else {
 		// TODO: expanded location?
 		Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType->ToString());
@@ -1778,9 +1778,13 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 	FieldAcc->IsFoldable      = Site->IsFoldable;
 
 	// Checking for .length operator
-	if (Site->Ty->GetKind() == TypeKind::Array) {
-		if (FieldAcc->Ident == Context.LengthIdentifier) {
+	if (FieldAcc->Ident == Context.LengthIdentifier) {
+		if (Site->Ty->GetKind() == TypeKind::Array) {
 			FieldAcc->IsArrayLength = true;
+			FieldAcc->Ty = Context.IntType;
+			return;
+		} else if (Site->Ty->GetKind() == TypeKind::Slice) {
+			FieldAcc->IsSliceLength = true;
 			FieldAcc->Ty = Context.IntType;
 			return;
 		}
@@ -2308,7 +2312,8 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
 	}
 
 	TypeKind Kind = Access->Site->Ty->GetKind();
-	if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer || Kind == TypeKind::CStr)) {
+	if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer || Kind == TypeKind::CStr ||
+		  Kind == TypeKind::Slice)) {
 		Error(Access, "Cannot index non-array or pointer type. Type was '%s'",
 			Access->Site->Ty->ToString());
 		YIELD_ERROR(Access);
@@ -2629,6 +2634,14 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 			return false;
 		}
 	}
+	case TypeKind::Slice: {
+		if (FromTy->GetKind() == TypeKind::Array) {
+			return ToTy->AsSliceTy()->GetElementType()->Equals(
+				FromTy->AsArrayTy()->GetElementType());
+		}
+
+		return ToTy->Equals(FromTy);
+	}
 	case TypeKind::Array: {
 		if (FromTy->GetKind() != TypeKind::Array) {
 			return false;
@@ -2747,6 +2760,29 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
 				// First seen version of this type.
 				PointerTy->SetUniqueId(Context.UniqueTypeIdCounter++);
 				Context.PointerTyCache.insert({ UniqueKey, PointerTy });
+			}
+		}
+
+		return true;
+	} else if (Ty->GetKind() == TypeKind::Slice) {
+		SliceType* SliceTy = Ty->AsSliceTy();
+		Type* ElementType = SliceTy->GetElementType();
+		if (!FixupType(ElementType, AllowDynamicArrays)) {
+			return false;
+		}
+
+		if (!SliceTy->GetUniqueId()) {
+			// Could not resolve the unique id during parsing so we must
+			// create the unique id now.
+		
+			u32 UniqueKey = ElementType->GetUniqueId();
+			auto Itr = Context.SliceTyCache.find(UniqueKey);
+			if (Itr != Context.SliceTyCache.end()) {
+				SliceTy->SetUniqueId(Itr->second->GetUniqueId());
+			} else {
+				// First seen version of this type.
+				SliceTy->SetUniqueId(Context.UniqueTypeIdCounter++);
+				Context.SliceTyCache.insert({ UniqueKey, SliceTy });
 			}
 		}
 

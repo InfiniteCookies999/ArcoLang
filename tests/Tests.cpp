@@ -98,7 +98,9 @@ int main() {
 	RunTest(SRC("loops/loops4.arco"), "1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43 45 47 49 ");
 	RunTest(SRC("loops/loops5.arco"), "124 346 22 15 77 ");
 	RunTest(SRC("loops/loops6.arco"), "124 346 22 15 77 ");
-
+	RunTest(SRC("loops/loops7.arco"), "124 346 22 15 77 ");
+	RunTest(SRC("loops/loops8.arco"), "124 346 22 15 77 ");
+	
 	RunTest(SRC("arrays/arrays1.arco"), "21 55 11 56 3 ");
 	RunTest(SRC("arrays/arrays2.arco"), "412 21 5 6 4 0 ");
 	RunTest(SRC("arrays/arrays3.arco"), "412 77 121 45 56 ");
@@ -166,12 +168,18 @@ int main() {
 	RunTest(SRC("destructors/destructors12.arco"), "Destroyed!Destroyed!Destroyed!");
 	RunTest(SRC("destructors/destructors13.arco"), "NoContinueDestroyed!NoContinueDestroyed!Destroyed!NoContinueDestroyed!NoContinueDestroyed!");
 	RunTest(SRC("destructors/destructors14.arco"), "Begin Destroyed!Destroyed!");
-
+	
 	RunTest(SRC("enums/enums1.arco"), "0 1 2 3 4 5 6");
 	RunTest(SRC("enums/enums2.arco"), "0 1 2 3 4 5 6");
 	RunTest(SRC("enums/enums3.arco"), "2 3 4 5 6 7 8");
 	RunTest(SRC("enums/enums4.arco"), "6 9 6 1 7 2 1");
 	RunTest(SRC("enums/enums5.arco"), "Programming is fun cool message");
+
+	RunTest(SRC("slices/slices1.arco"), "134 55 22 6");
+	RunTest(SRC("slices/slices2.arco"), "134 55 22 6");
+	RunTest(SRC("slices/slices3.arco"), "134 55 22 6");
+	RunTest(SRC("slices/slices4.arco"), "134 55 22 6 42 66 ");
+	RunTest(SRC("slices/slices5.arco"), "134 55 22 6");
 
 	//RunTest(SRC("lots_of_errors.arco"), "");
 

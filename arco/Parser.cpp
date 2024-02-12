@@ -1017,6 +1017,17 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
 
 	if (CTok.Is('[')) {
 
+		if (PeekToken(1).Is('*')) {
+			// Slice type. For now we only allow for a single dimensional
+			// slice type. In the future it may be nice to allow for multidimensional
+			// slice types.
+			NextToken(); // Consuming '[' token.
+			NextToken(); // Consuming ']' token.
+			Match(']');
+			Ty = SliceType::Create(Ty, Context);
+			return Ty;
+		}
+
 		llvm::SmallVector<Expr*, 2>     LengthExprs;
 		llvm::SmallVector<SourceLoc, 2> ExpandedErrorLocs;
 

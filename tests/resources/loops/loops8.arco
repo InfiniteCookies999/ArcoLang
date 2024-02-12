@@ -1,0 +1,12 @@
+// -- Test to make sure that iterator loops work
+//    with slices and that the values can be pointer
+//    referenced.
+
+fn main() {
+	
+	arr int[*] = [ 124, 346, 22, 15, 77 ];
+	loop v int* : arr {
+		print(*v);
+		print(" ", 1);
+	}
+}

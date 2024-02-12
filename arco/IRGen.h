@@ -160,6 +160,8 @@ namespace arco {
 		llvm::Value* GenCast(Type* ToType, Type* FromType, llvm::Value* LLValue);
 		llvm::Value* CreateLoad(llvm::Value* LLAddr);
 
+		void GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArray, Type* SliceTy, Type* ArrayTy);
+
 		llvm::Constant* GenConstValue(Type* Ty);
 		llvm::Constant* GenZeroedValue(Type* Ty);
 
