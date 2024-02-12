@@ -1001,6 +1001,8 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 	switch (BinOp->Op) {
 	case '=': {
 		llvm::Value* LLAddress = GenNode(BinOp->LHS);
+		CallDestructors(BinOp->LHS->Ty, LLAddress);
+		
 		GenAssignment(LLAddress, BinOp->RHS, BinOp->RHS->HasConstAddress);
 		return LLAddress;
 	}

@@ -163,7 +163,8 @@ int main() {
 	RunTest(SRC("destructors/destructors11.arco"), "Destroyed!Destroyed!Destroyed!Destroyed!Destroyed!");
 	RunTest(SRC("destructors/destructors12.arco"), "Destroyed!Destroyed!Destroyed!");
 	RunTest(SRC("destructors/destructors13.arco"), "NoContinueDestroyed!NoContinueDestroyed!Destroyed!NoContinueDestroyed!NoContinueDestroyed!");
-	
+	RunTest(SRC("destructors/destructors14.arco"), "Begin Destroyed!Destroyed!");
+
 	RunTest(SRC("enums/enums1.arco"), "0 1 2 3 4 5 6");
 	RunTest(SRC("enums/enums2.arco"), "0 1 2 3 4 5 6");
 	RunTest(SRC("enums/enums3.arco"), "2 3 4 5 6 7 8");
