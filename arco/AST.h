@@ -44,6 +44,7 @@ namespace arco {
 		CONTINUE,
 		PREDICATE_LOOP,
 		RANGE_LOOP,
+		ITERATOR_LOOP,
 		NESTED_SCOPE,
 		DELETE,
 
@@ -372,6 +373,17 @@ namespace arco {
 		llvm::SmallVector<Expr*>    Incs;
 
 		LexScope Scope;
+	};
+
+	// Ex.  'loop val : vals {}'
+	struct IteratorLoopStmt : AstNode {
+		IteratorLoopStmt() : AstNode(AstKind::ITERATOR_LOOP) {}
+
+		VarDecl* VarVal;
+		Expr*    IterOnExpr;
+
+		LexScope Scope;
+
 	};
 
 	// Ex.  '{ ... }'

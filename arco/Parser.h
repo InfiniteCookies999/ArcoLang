@@ -105,6 +105,7 @@ namespace arco {
 		LoopControlStmt* ParseLoopControl();
 		PredicateLoopStmt* ParsePredicateLoop(Token LoopTok);
 		RangeLoopStmt* ParseRangeLoop(Token LoopTok);
+		IteratorLoopStmt* ParseIteratorLoop(Token LoopTok);
 		NestedScopeStmt* ParseNestedScope();
 		DeleteStmt* ParseDelete();
 

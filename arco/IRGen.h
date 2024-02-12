@@ -101,6 +101,8 @@ namespace arco {
 		llvm::Value* GenLoopControl(LoopControlStmt* LoopControl);
 		llvm::Value* GenPredicateLoop(PredicateLoopStmt* Loop);
 		llvm::Value* GenRangeLoop(RangeLoopStmt* Loop);
+		llvm::Value* GenIteratorLoop(IteratorLoopStmt* Loop);
+		llvm::Value* LoadIteratorLoopValueIfNeeded(llvm::Value* LLValuePtr, Type* ToTy, Type* FromTy);
 		llvm::Value* GenDelete(DeleteStmt* Delete);
 		llvm::Value* GenIf(IfStmt* If);
 		llvm::Value* GenNestedScope(NestedScopeStmt* NestedScope);

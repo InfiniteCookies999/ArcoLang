@@ -96,7 +96,9 @@ int main() {
 	RunTest(SRC("loops/loops2.arco"), "10");
 	RunTest(SRC("loops/loops3.arco"), "10");
 	RunTest(SRC("loops/loops4.arco"), "1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31 33 35 37 39 41 43 45 47 49 ");
-	
+	RunTest(SRC("loops/loops5.arco"), "124 346 22 15 77 ");
+	RunTest(SRC("loops/loops6.arco"), "124 346 22 15 77 ");
+
 	RunTest(SRC("arrays/arrays1.arco"), "21 55 11 56 3 ");
 	RunTest(SRC("arrays/arrays2.arco"), "412 21 5 6 4 0 ");
 	RunTest(SRC("arrays/arrays3.arco"), "412 77 121 45 56 ");

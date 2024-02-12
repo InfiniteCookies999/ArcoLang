@@ -818,16 +818,33 @@ arco::AstNode* arco::Parser::ParseLoop() {
 	Token LoopTok = CTok;
 	NextToken(); // Consuming 'loop' token.
 
-	if (CTok.Is(';')) {
+	if (CTok.Is(';')) { // loop ; ... {}
+		PUSH_SCOPE();
 		return ParseRangeLoop(LoopTok);
-	} else if (CTok.Is(TokenKind::IDENT)) {
+	} else if (CTok.Is(TokenKind::IDENT)) { // loop i ... {}
 		switch (PeekToken(1).Kind) {
 		case TYPE_KW_START_CASES:
-		case TokenKind::KW_CONST:
+		case TokenKind::KW_CONST: {
+			PUSH_SCOPE();
+			ParseVarDeclList(0);
+			// TODO: what if the variable declarations have assignments?
+			if (CTok.Is(':')) {
+				return ParseIteratorLoop(LoopTok);
+			} else {
+				return ParseRangeLoop(LoopTok);
+			}
+			break;
+		}
 		case TokenKind::COL_EQ:
-		case TokenKind::COL_COL:
-		case '=':
+		case TokenKind::COL_COL: {
+			PUSH_SCOPE();
+			ParseVarDeclList(0);
 			return ParseRangeLoop(LoopTok);
+		}
+		case '=': {
+			PUSH_SCOPE();
+			return ParseRangeLoop(LoopTok);
+		}
 		default:
 			return ParsePredicateLoop(LoopTok);
 		}
@@ -868,23 +885,14 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
 arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 	RangeLoopStmt* Loop = NewNode<RangeLoopStmt>(LoopTok);
 	
-	PUSH_SCOPE();
-	switch (CTok.Kind) {
-	case TokenKind::IDENT:
-		if (PeekToken(1).Is('=')) {
-			Loop->InitNodes.push_back(ParseAssignmentAndExprs());
-			break;
-		}
-		[[fallthrough]];
-	default:
-		ParseVarDeclList(0);
+	// PUSH_SCOPE(); -- Called in ParseLoop
+	if (!SingleVarDeclList->List.empty()) {
 		for (VarDecl* Var : SingleVarDeclList->List) {
 			Loop->InitNodes.push_back(Var);
 		}
 		SingleVarDeclList->List.clear();
-		break;
-	case ';':
-		break;
+	} else if (CTok.IsNot(';')) {
+		Loop->InitNodes.push_back(ParseAssignmentAndExprs());
 	}
 	Match(';');
 
@@ -899,6 +907,25 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 		AllowStructInitializer = true;
 	}
 
+	ParseScopeStmts(Loop->Scope);
+	POP_SCOPE();
+
+	return Loop;
+}
+
+arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
+	IteratorLoopStmt* Loop = NewNode<IteratorLoopStmt>(LoopTok);
+
+	// TODO: Deal with multiple declarations.
+	Loop->VarVal = SingleVarDeclList->List[0];
+	SingleVarDeclList->List.clear();
+
+	Match(':', "for iteration loop");
+	AllowStructInitializer = false;
+	Loop->IterOnExpr = ParseExpr();
+	AllowStructInitializer = true;
+
+	// PUSH_SCOPE(); -- Called in ParseLoop
 	ParseScopeStmts(Loop->Scope);
 	POP_SCOPE();
 

@@ -69,6 +69,7 @@ namespace arco {
 		void CheckLoopControl(LoopControlStmt* LoopControl);
 		void CheckPredicateLoop(PredicateLoopStmt* Loop);
 		void CheckRangeLoop(RangeLoopStmt* Loop);
+		void CheckIteratorLoop(IteratorLoopStmt* Loop);
 		void CheckDeleteStmt(DeleteStmt* Delete);
 		bool CheckIf(IfStmt* If);
 		bool CheckNestedScope(NestedScopeStmt* NestedScope);

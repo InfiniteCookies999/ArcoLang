@@ -454,6 +454,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
 	case AstKind::RANGE_LOOP:
 		CheckRangeLoop(static_cast<RangeLoopStmt*>(Node));
 		break;
+	case AstKind::ITERATOR_LOOP:
+		CheckIteratorLoop(static_cast<IteratorLoopStmt*>(Node));
+		break;
 	case AstKind::DELETE:
 		CheckDeleteStmt(static_cast<DeleteStmt*>(Node));
 		break;
@@ -642,6 +645,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
 		case AstKind::IF:
 		case AstKind::PREDICATE_LOOP:
 		case AstKind::RANGE_LOOP:
+		case AstKind::ITERATOR_LOOP:
 		case AstKind::FUNC_CALL:
 		case AstKind::BREAK:
 		case AstKind::CONTINUE:
@@ -980,6 +984,41 @@ void arco::SemAnalyzer::CheckRangeLoop(RangeLoopStmt* Loop) {
 	}
 	for (Expr* Inc : Loop->Incs) {
 		CheckNode(Inc);
+	}
+
+	++LoopDepth;
+	Scope LoopScope;
+	CheckScopeStmts(Loop->Scope, LoopScope);
+	--LoopDepth;
+}
+
+void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
+	CheckNode(Loop->IterOnExpr);
+	if (!FixupType(Loop->VarVal->Ty, false)) {
+		return;
+	}
+
+	YIELD_IF_ERROR(Loop->IterOnExpr);
+	Type* IterableType = Loop->IterOnExpr->Ty;
+	Type* IterOnType;
+	if (IterableType->GetKind() == TypeKind::Array) {
+		IterOnType = IterableType->AsArrayTy()->GetElementType();
+	} else {
+		// TODO: expanded location?
+		Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType->ToString());
+		return;
+	}
+
+	if (!IsAssignableTo(Loop->VarVal->Ty, IterOnType, nullptr)) {
+		// Maybe the iteration may happen by pointers instead.
+
+		if (!(Loop->VarVal->Ty->GetKind() == TypeKind::Pointer &&
+			  IterOnType->Equals(Loop->VarVal->Ty->AsPointerTy()->GetElementType())
+			)) {
+			Error(Loop->VarVal->Loc, "Cannot assign type '%s' to variable of type '%s'",
+				IterOnType->ToString(), Loop->VarVal->Ty->ToString());
+			return;
+		}
 	}
 
 	++LoopDepth;
