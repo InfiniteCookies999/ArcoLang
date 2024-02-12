@@ -142,7 +142,6 @@ namespace arco {
 		llvm::Value* GenTypeOf(TypeOf* TOf);
 		llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
 		llvm::Constant* GenTypeOfType(Type* GetTy);
-		llvm::GlobalVariable* GenTypeOfPointerTypeGlobal(Type* PtrLikeTy);
 		llvm::GlobalVariable* GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy);
 		llvm::GlobalVariable* GenTypeOfStructTypeGlobal(StructType* StructTy);
 

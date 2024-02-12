@@ -48,10 +48,6 @@ TypeId enum {
 	
 }
 
-PointerType struct {
-	element_type Type*;
-}
-
 ArrayType struct {
 	element_type Type*;
 	length      int;
@@ -81,7 +77,10 @@ Type struct {
 	// The size this type is allocated as.
 	size_in_bytes int; 
 	// TODO: this should be a union.
-	pointer_info PointerType*;
+	
+	// If the type is a pointer or a slice type
+	// then this type is set.
+	element_type Type*;
 	array_info   ArrayType*;
 	struct_info  Struct*;
 	

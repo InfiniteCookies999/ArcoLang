@@ -405,7 +405,6 @@ bool arco::Compiler::FindStdLibStructs() {
 	Context.StdStringStruct      = FindStdLibStruct(StdModule->DefaultNamespace, Context.StringIdentifier);
 	Context.StdAnyStruct         = FindStdLibStruct(ReflectNamespace, Context.AnyIdentifier);
 	Context.StdTypeStruct        = FindStdLibStruct(ReflectNamespace, Context.TypeIdentifier);
-	Context.StdPointerTypeStruct = FindStdLibStruct(ReflectNamespace, Context.PointerTypeIdentifier);
 	Context.StdArrayTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.ArrayTypeIdentifier);
 	Context.StdStructTypeStruct  = FindStdLibStruct(ReflectNamespace, Context.StructTypeIdentifier);
 	Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);

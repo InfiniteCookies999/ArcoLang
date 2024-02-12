@@ -113,6 +113,13 @@ ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
 	ulen Total = strlen(FilePath);
 	Total += 1 + std::to_string(Loc.LineNumber).length() + 1;
 	Total += strlen(" error: ");
+	ulen Column = 0;
+	const char* MemPtr = Loc.Text.begin();
+	while (MemPtr > Buffer.Memory && *MemPtr != '\n' && *MemPtr != '\r') {
+		++Column;
+		--MemPtr;
+	}
+	Total += std::to_string(Column).size() + 1;
 	return Total;
 }
 

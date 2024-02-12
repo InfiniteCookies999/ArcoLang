@@ -2304,8 +2304,9 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
 		llvm::StructType* LLTypeType = GenStructType(Context.StdTypeStruct);
 		std::string LLGlobalTypeInfoName = "__global.typeinfo." + std::to_string(Context.NumGeneratedGlobalVars++);
 		llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLTypeType);
-		LLGlobal->setInitializer(GenTypeOfType(GetTy));
+		// Set before calling GenTypeOfType to not end up with duplicates.
 		Context.LLTypeInfoMap.insert({ GetTy->GetUniqueId(), LLGlobal });
+		LLGlobal->setInitializer(GenTypeOfType(GetTy));
 		return LLGlobal;
 	}
 }
@@ -2313,16 +2314,17 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
 llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 	
 	llvm::StructType* LLTypeType          = GenStructType(Context.StdTypeStruct);
-	llvm::StructType* LLPointerStructType = GenStructType(Context.StdPointerTypeStruct);
 	llvm::StructType* LLArrayStructType   = GenStructType(Context.StdArrayTypeStruct);
 	llvm::StructType* LLStructStructType  = GenStructType(Context.StdStructTypeStruct);
 
 	llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()), LLContext, LLModule);
 	llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo;
 	if (GetTy->GetKind() == TypeKind::Pointer || GetTy->GetKind() == TypeKind::CStr) {
-		LLPointerInfo = GenTypeOfPointerTypeGlobal(GetTy);
+		LLPointerInfo = GenTypeOfGlobal(GetTy->GetPointerElementType(Context));
+	} else if (GetTy->GetKind() == TypeKind::Slice) {
+		LLPointerInfo = GenTypeOfGlobal(GetTy->AsSliceTy()->GetElementType());
 	} else {
-		LLPointerInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLPointerStructType, 0));
+		LLPointerInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLTypeType, 0));
 	}
 	if (GetTy->GetKind() == TypeKind::Array) {
 		LLArrayInfo = GenTypeOfArrayTypeGlobal(GetTy->AsArrayTy());
@@ -2344,17 +2346,6 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 	};
 
 	return llvm::ConstantStruct::get(LLTypeType, LLElements);
-}
-
-llvm::GlobalVariable* arco::IRGenerator::GenTypeOfPointerTypeGlobal(Type* PtrLikeTy) {
-	llvm::SmallVector<llvm::Constant*, 1> LLElements = {
-		GenTypeOfGlobal(PtrLikeTy->GetPointerElementType(Context))
-	};
-	llvm::StructType* LLPointerStructType = GenStructType(Context.StdPointerTypeStruct);
-	std::string LLGlobalTypeInfoName = "__global.typeinfo.ptr." + std::to_string(Context.NumGeneratedGlobalVars++);
-	llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLPointerStructType);
-	LLGlobal->setInitializer(llvm::ConstantStruct::get(LLPointerStructType, LLElements));
-	return LLGlobal;
 }
 
 llvm::GlobalVariable* arco::IRGenerator::GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy) {
@@ -3210,6 +3201,10 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr
 		}
 	} else if (Value->Ty->GetKind() == TypeKind::Struct) {
 		CopyStructObject(LLAddress, GenNode(Value), Value->Ty->AsStructType()->GetStruct());
+	} else if (AddrTy->GetKind() == TypeKind::Slice) {
+		if (Value->Ty->GetKind() == TypeKind::Array) {
+			GenArrayToSlice(LLAddress, GenNode(Value), Value->CastTy, Value->Ty);
+		} // TODO: deal with case in which there is a slice is being assigned to another slice.
 	} else {
 		llvm::Value* LLAssignment = GenRValue(Value);
 		// -- DEBUG

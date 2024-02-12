@@ -16,7 +16,6 @@ arco::ArcoContext::ArcoContext()
 	StringIdentifier(Identifier("String")),
 	AnyIdentifier(Identifier("Any")),
 	TypeIdentifier(Identifier("Type")),
-	PointerTypeIdentifier(Identifier("PointerType")),
 	ArrayTypeIdentifier(Identifier("ArrayType")),
 	StructTypeIdentifier(Identifier("Struct")),
 	FieldTypeIdentifier(Identifier("Field")),
