@@ -1,74 +1,74 @@
 
 fn f1(a int[2]) {
-	b int* = a;
-	print(*b);
-	print(" ", 1);
-	b = b + 1;
-	print(*b);
-	print(" ", 1);
+    b int* = a;
+    print(*b);
+    print(" ", 1);
+    b = b + 1;
+    print(*b);
+    print(" ", 1);
 }
 
 fn f2(a int*[2]) {
-	print(*a[0]);
-	print(" ", 1);
+    print(*a[0]);
+    print(" ", 1);
 }
 
 fn f3(a int[2]) {
-	a[0] = 5;
-	print(a[0]);
-	print(" ", 1);
-	print(a[1]);
-	print(" ", 1);
+    a[0] = 5;
+    print(a[0]);
+    print(" ", 1);
+    print(a[1]);
+    print(" ", 1);
 }
 
 fn f4() {
 }
 
 fn f4(a int[2][2]) {
-	a[1][1] = 22;
-	print(a[1][1]);
-	print(" ", 1);
-	print(a[0][0]);
-	print(" ", 1);
+    a[1][1] = 22;
+    print(a[1][1]);
+    print(" ", 1);
+    print(a[0][0]);
+    print(" ", 1);
 }
 
 fn f5(a int*[2]) {
-	b int** = a;
-	print(**b);
-	print(" ", 1);
+    b int** = a;
+    print(**b);
+    print(" ", 1);
 }
 
 fn pass1(a int[2]) {
-	pass2(a);
+    pass2(a);
 }
 
 fn pass2(a int[2]) {
-	print(a[0]);
+    print(a[0]);
 }
 
 fn main() {
-	
-	a int[2] = [9, 35];
-	b int* = a;
-	print(*b);
-	print(" ", 1);
+    
+    a int[2] = [9, 35];
+    b int* = a;
+    print(*b);
+    print(" ", 1);
 
-	a2 int[2] = [14, 235];
-	f1(a2);
+    a2 int[2] = [14, 235];
+    f1(a2);
 
-	pv int = 11;
-	q int* = &pv;
-	a3 int*[2] = [ q ];
-	f2(a3);
+    pv int = 11;
+    q int* = &pv;
+    a3 int*[2] = [ q ];
+    f2(a3);
 
-	a4 int[2] = [4, 77];
-	f3(a4);
+    a4 int[2] = [4, 77];
+    f3(a4);
 
-	a5 int[2][2] = [ [76, 2], [4] ];
-	f4(a5);
+    a5 int[2][2] = [ [76, 2], [4] ];
+    f4(a5);
 
-	f5(a3);
+    f5(a3);
 
-	pass1(a);
+    pass1(a);
 
 }

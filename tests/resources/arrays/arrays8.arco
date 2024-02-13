@@ -2,6 +2,6 @@
 //    have no elements.
 
 fn main() {
-	a int[3] = [];
-	b int[3][2] = [ [], [] ];
+    a int[3] = [];
+    b int[3][2] = [ [], [] ];
 }

@@ -4,5 +4,5 @@
 a int = 44;
 
 fn main() {
-	print(a);
+    print(a);
 }

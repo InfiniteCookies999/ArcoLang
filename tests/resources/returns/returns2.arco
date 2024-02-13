@@ -4,32 +4,32 @@
 //    it.
 
 A struct {
-	val int32;
+    val int32;
 }
 
 B struct {
-	val1 int32;
-	val2 int32;
-	val3 int32;
-	val4 int32;
+    val1 int32;
+    val2 int32;
+    val3 int32;
+    val4 int32;
 }
 
 fn func1() A {
-	a A;
-	a.val = 55;
-	return a;
+    a A;
+    a.val = 55;
+    return a;
 }
 
 fn func2() B {
-	b B;
-	b.val1 = 55;
-	return b;
+    b B;
+    b.val1 = 55;
+    return b;
 }
 
 fn main() {
-	a A = func1();
-	print(a.val);
-	print(" ", 1);
-	b B = func2();
-	print(b.val1);
+    a A = func1();
+    print(a.val);
+    print(" ", 1);
+    b B = func2();
+    print(b.val1);
 }

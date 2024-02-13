@@ -2,42 +2,42 @@
 //    works when there is control flow.
 
 A struct {
-	val int32;
+    val int32;
 }
 
 B struct {
-	val1 int32;
-	val2 int32;
-	val3 int32;
-	val4 int32;
+    val1 int32;
+    val2 int32;
+    val3 int32;
+    val4 int32;
 }
 
 fn func1(cond int) A {
-	a1 A;
-	a2 A;
-	a1.val = 55;
-	if cond > 3 {
-		return a1;
-	} else {
-		return a2;
-	}
+    a1 A;
+    a2 A;
+    a1.val = 55;
+    if cond > 3 {
+        return a1;
+    } else {
+        return a2;
+    }
 }
 
 fn func2(cond int) B {
-	a1 B;
-	a2 B;
-	a1.val1 = 55;
-	if cond > 3 {
-		return a1;
-	} else {
-		return a2;
-	}
+    a1 B;
+    a2 B;
+    a1.val1 = 55;
+    if cond > 3 {
+        return a1;
+    } else {
+        return a2;
+    }
 }
 
 fn main() {
-	a A = func1(10000);
-	print(a.val);
-	print(" ", 1);
-	b B = func2(10000);
-	print(b.val1);
+    a A = func1(10000);
+    print(a.val);
+    print(" ", 1);
+    b B = func2(10000);
+    print(b.val1);
 }

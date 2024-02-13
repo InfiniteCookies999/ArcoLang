@@ -22,9 +22,9 @@ native fn memset(dest void*, c int8, n uint) void*;
  *          c-string.
  */
 fn strlen(s cstr) int {
-	length := 0;
-	loop ptr := s; *ptr != '\0'; ++ptr {
-		++length;
-	}
-	return length;
+    length := 0;
+    loop ptr := s; *ptr != '\0'; ++ptr {
+        ++length;
+    }
+    return length;
 }

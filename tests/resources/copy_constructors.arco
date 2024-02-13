@@ -1,13 +1,13 @@
 
 A struct {
-	fn copyobj A(a A*) {
-		print("Called!", 7);
-	}
+    fn copyobj A(a A*) {
+        print("Called!", 7);
+    }
 }
 
 fn main() {
-	print("Begin ", 6);
-	a A = A{};
-	print("a created ", 10);
-	b A = a;
+    print("Begin ", 6);
+    a A = A{};
+    print("a created ", 10);
+    b A = a;
 }

@@ -2,19 +2,19 @@
 //    works within member functions.
 
 A struct {
-	v int;
+    v int;
 
-	fn setv(v int) {
-		this.v = v;
-	}
+    fn setv(v int) {
+        this.v = v;
+    }
 
-	fn getv() int {
-		return this.v;
-	}
+    fn getv() int {
+        return this.v;
+    }
 }
 
 fn main() {
-	a A;
-	a.setv(1234);
-	print(a.getv());
+    a A;
+    a.setv(1234);
+    print(a.getv());
 }

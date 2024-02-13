@@ -1,4 +1,4 @@
 fn main() {
-	message cstr = "Hello World!";
-	print(message, 12);
+    message cstr = "Hello World!";
+    print(message, 12);
 }

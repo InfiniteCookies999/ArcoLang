@@ -1,11 +1,11 @@
 
 A struct {
-	fn ~A() {
-		print("Destroyed! ", 11);
-	}
+    fn ~A() {
+        print("Destroyed! ", 11);
+    }
 }
 
 fn main() {
-	print("Begin ", 6);
-	arr A[5];
+    print("Begin ", 6);
+    arr A[5];
 }

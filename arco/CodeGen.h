@@ -4,20 +4,20 @@
 #include "Prelude.h"
 
 namespace llvm {
-	class TargetMachine;
-	class Module;
-	class TargetMachine;
+    class TargetMachine;
+    class Module;
+    class TargetMachine;
 }
 
 namespace arco {
 
-	bool InitLLVMNativeTarget();
+    bool InitLLVMNativeTarget();
 
-	llvm::TargetMachine* CreateLLVMTargetMache();
+    llvm::TargetMachine* CreateLLVMTargetMache();
 
-	void SetTargetToModule(llvm::Module& LLModule, llvm::TargetMachine* LLTargetMachine);
+    void SetTargetToModule(llvm::Module& LLModule, llvm::TargetMachine* LLTargetMachine);
 
-	bool WriteObjFile(const char* FilePath, llvm::Module& LLModule, llvm::TargetMachine* LLTargetMachine);
+    bool WriteObjFile(const char* FilePath, llvm::Module& LLModule, llvm::TargetMachine* LLTargetMachine);
 
 }
 

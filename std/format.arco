@@ -13,159 +13,159 @@ in  := LineStream{ win32.GetStdHandle(-10), false };
 //----------------------------------------------
 
 fn print(i int64, base := 10) {
-	out.write(i, base);
+    out.write(i, base);
 }
 
 fn print(i uint64, base := 10) {
-	out.write(i, base);
+    out.write(i, base);
 }
 
 fn print(msg cstr) {
-	out.write(msg);
+    out.write(msg);
 }
 
 fn print(i int, base := 10) {
-	out.write(i, base);
+    out.write(i, base);
 }
 
 fn print(i uint, base := 10) {
-	out.write(i, base);
+    out.write(i, base);
 }
 
 fn print(b bool) {
-	out.write(b);
+    out.write(b);
 }
 
 fn print(c char) {
-	out.write(c);
+    out.write(c);
 }
 
 fn print(any Any) {
-	out.write(any);
+    out.write(any);
 }
 
 fn println(msg cstr) {
-	out.writeln(msg);
+    out.writeln(msg);
 }
 
 fn println(i int64, base := 10) {
-	out.writeln(i, base);
+    out.writeln(i, base);
 }
 
 fn println(i uint64, base := 10) {
-	out.writeln(i, base);
+    out.writeln(i, base);
 }
 
 fn println(i int, base := 10) {
-	out.writeln(i);
+    out.writeln(i);
 }
 
 fn println(i uint, base := 10) {
-	out.writeln(i);
+    out.writeln(i);
 }
 
 fn println(b bool) {
-	out.writeln(b);
+    out.writeln(b);
 }
 
 fn println(c char) {
-	out.writeln(c);
+    out.writeln(c);
 }
 
 fn println() {
-	out.writeln();
+    out.writeln();
 }
 
 fn println(any Any) {
-	out.writeln(any);
+    out.writeln(any);
 }
 
 // Functions for writing to std err.
 //----------------------------------------------
 
 fn eprint(i int64) {
-	err.write(i);
+    err.write(i);
 }
 
 fn eprint(i uint64) {
-	err.write(i);
+    err.write(i);
 }
 
 fn eprint(i int) {
-	err.write(i);
+    err.write(i);
 }
 
 fn eprint(i uint) {
-	err.write(i);
+    err.write(i);
 }
 
 fn eprint(msg cstr) {
-	err.write(msg);
+    err.write(msg);
 }
 
 fn eprint(b bool) {
-	err.write(b);
+    err.write(b);
 }
 
 fn eprint(c char) {
-	err.write(c);
+    err.write(c);
 }
 
 fn eprintln(msg cstr) {
-	err.writeln(msg);
+    err.writeln(msg);
 }
 
 fn eprintln(i int) {
-	err.writeln(i);
+    err.writeln(i);
 }
 
 fn eprintln(i uint) {
-	err.writeln(i);
+    err.writeln(i);
 }
 
 fn eprintln(i int64) {
-	err.writeln(i);
+    err.writeln(i);
 }
 
 fn eprintln(i uint64) {
-	err.writeln(i);
+    err.writeln(i);
 }
 
 fn eprintln(b bool) {
-	err.writeln(b);
+    err.writeln(b);
 }
 
 fn eprintln(c char) {
-	err.writeln(c);
+    err.writeln(c);
 }
 
 fn eprintln() {
-	err.writeln();
+    err.writeln();
 }
 
 // Reading from terminal
 //----------------------------------------------
 
 fn read_line() String {
-	return in.read_line();
+    return in.read_line();
 }
 
 fn read_string() String {
-	return in.read_string();
+    return in.read_string();
 }
 
 fn read_int() int {
-	return in.read_int();
+    return in.read_int();
 }
 
 fn read_int(base int) int {
-	return in.read_int32(base);
+    return in.read_int32(base);
 }
 
 fn read_bool() bool {
-	return in.read_bool();
+    return in.read_bool();
 }
 
 fn read_char() char {
-	return in.read_char();
+    return in.read_char();
 }

@@ -3,9 +3,9 @@
 //    type.
 
 fn main() {
-	a int16[5] = [int16][ 24, 1, 523 ];
-	loop i int = 0; i < 5; i = i + 1 {
-		print(cast(int) a[i]);
-		print(" ", 1);
-	}
+    a int16[5] = [int16][ 24, 1, 523 ];
+    loop i int = 0; i < 5; i = i + 1 {
+        print(cast(int) a[i]);
+        print(" ", 1);
+    }
 }

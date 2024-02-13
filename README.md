@@ -8,7 +8,7 @@ All source code is compiled into machine code using LLVM compiler framework.
 import std;
 
 fn main() {
-	std.println("Hello from arco!");
+    std.println("Hello from arco!");
 }
 ```
 

@@ -2,27 +2,27 @@
 //    works.
 
 A struct {
-	f1 int;
-	f2 int;
+    f1 int;
+    f2 int;
 }
 
 Data struct {
-	a A;
-	b int;
+    a A;
+    b int;
 }
 
 fn main() {
-	data Data = Data{
-		A{
-			124,
-			66
-		},
-		25
-	};
-	
-	print(data.a.f1);
-	print(" ", 1);
-	print(data.a.f2);
-	print(" ", 1);
-	print(data.b);
+    data Data = Data{
+        A{
+            124,
+            66
+        },
+        25
+    };
+    
+    print(data.a.f1);
+    print(" ", 1);
+    print(data.a.f2);
+    print(" ", 1);
+    print(data.b);
 }

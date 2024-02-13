@@ -6,95 +6,95 @@ import files.FileHandle;
  * All parsable strings are seperable by lines or whitespace.
  */
 LineStream struct {
-	
-	// TODO: This handle should eventually be more abstract
-	//       and be a any readable handle instead.
-	handle FileHandle;
-	
-	BUFFER_SIZE :: 1024;
-	buffer char[BUFFER_SIZE];
-	
-	// How long the currently read in line is.
-	line_length := 0;
-	// Position offset into the buffer.
-	pos         := 0;
+    
+    // TODO: This handle should eventually be more abstract
+    //       and be a any readable handle instead.
+    handle FileHandle;
+    
+    BUFFER_SIZE :: 1024;
+    buffer char[BUFFER_SIZE];
+    
+    // How long the currently read in line is.
+    line_length := 0;
+    // Position offset into the buffer.
+    pos         := 0;
 
-	// TODO: Do not support move operators yet to implement this
-	// correctly. fn LineStream(in InStream) {}
+    // TODO: Do not support move operators yet to implement this
+    // correctly. fn LineStream(in InStream) {}
 
-	fn LineStream(handle void*, auto_close := true)
-		: handle(FileHandle{handle, auto_close}){
-	}
+    fn LineStream(handle void*, auto_close := true)
+        : handle(FileHandle{handle, auto_close}){
+    }
 
-	/*
-	 * When at the end of the current line read the next line into
-	 * the buffer.
-	 */
-	fn fill_line() {
-		if pos == line_length {
-			// TODO: should probably verify that there is a line.
-			// -2 because of \r\n is read when calling Windows ReadFile.
-			line_length = handle.read(buffer, BUFFER_SIZE) - 2;
-			pos = 0;
-		}
-	}
+    /*
+     * When at the end of the current line read the next line into
+     * the buffer.
+     */
+    fn fill_line() {
+        if pos == line_length {
+            // TODO: should probably verify that there is a line.
+            // -2 because of \r\n is read when calling Windows ReadFile.
+            line_length = handle.read(buffer, BUFFER_SIZE) - 2;
+            pos = 0;
+        }
+    }
 
-	fn next_token() String {
-		fill_line();
-		
-		// TODO: Would be nice to support custom delimiters.
+    fn next_token() String {
+        fill_line();
+        
+        // TODO: Would be nice to support custom delimiters.
 
-		// skipping over whitespace.
-		loop ; pos < line_length; pos++ {
-			if buffer[pos] != ' ' && buffer[pos] != '\t' {
-				break;
-			}
-		}
+        // skipping over whitespace.
+        loop ; pos < line_length; pos++ {
+            if buffer[pos] != ' ' && buffer[pos] != '\t' {
+                break;
+            }
+        }
 
-		// Start token after skipping delimiters.
-		start_pos := pos;
+        // Start token after skipping delimiters.
+        start_pos := pos;
 
-		loop ; pos < line_length; pos++ {
-			// keep moving over characters until we hit next whitespace.
-			if buffer[pos] == ' ' || buffer[pos] == '\t' {
-				break;
-			}
-		}
+        loop ; pos < line_length; pos++ {
+            // keep moving over characters until we hit next whitespace.
+            if buffer[pos] == ' ' || buffer[pos] == '\t' {
+                break;
+            }
+        }
 
-		return String{ buffer + start_pos, pos - start_pos };
-	}
+        return String{ buffer + start_pos, pos - start_pos };
+    }
 
-	fn read_line() String {
-		// When reading line just ignore whatever was in the
-		// buffer prior.
-		amount_read int = handle.read(buffer, BUFFER_SIZE);
-		pos         = 0;
-		line_length = 0; // Because the entire line was read in.
-		// -2 because of \r\n is read when calling Windows ReadFile.
-		return String{ buffer, amount_read - 2 };
-	}
+    fn read_line() String {
+        // When reading line just ignore whatever was in the
+        // buffer prior.
+        amount_read int = handle.read(buffer, BUFFER_SIZE);
+        pos         = 0;
+        line_length = 0; // Because the entire line was read in.
+        // -2 because of \r\n is read when calling Windows ReadFile.
+        return String{ buffer, amount_read - 2 };
+    }
 
-	fn read_string() String {
-		return next_token();
-	}
+    fn read_string() String {
+        return next_token();
+    }
 
-	fn read_int() int {
-		return next_token().parse_int();
-	}
+    fn read_int() int {
+        return next_token().parse_int();
+    }
 
-	fn read_int32(base int) int32 {
-		return next_token().parse_int32(base);
-	}
+    fn read_int32(base int) int32 {
+        return next_token().parse_int32(base);
+    }
 
-	fn read_bool() bool {
-		return next_token().parse_bool();
-	}
+    fn read_bool() bool {
+        return next_token().parse_bool();
+    }
 
-	fn read_char() char {
-		return next_token().parse_char();
-	}
+    fn read_char() char {
+        return next_token().parse_char();
+    }
 
-	fn close() {
-		handle.close();
-	}
+    fn close() {
+        handle.close();
+    }
 }

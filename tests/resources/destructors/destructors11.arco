@@ -1,12 +1,12 @@
 
 A struct {
-	fn ~A() {
-		print("Destroyed!", 10);
-	}
+    fn ~A() {
+        print("Destroyed!", 10);
+    }
 }
 
 fn main() {
-	loop i int = 0; i < 5; i = i + 1 {
-		a A;
-	}
+    loop i int = 0; i < 5; i = i + 1 {
+        a A;
+    }
 }

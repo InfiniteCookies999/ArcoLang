@@ -6,63 +6,63 @@ namespace reflect;
  */
 TypeId enum {
 
-	UINT;
-	UINT8;
-	UINT16;
-	UINT32;
-	UINT64;
+    UINT;
+    UINT8;
+    UINT16;
+    UINT32;
+    UINT64;
 
-	INT;
-	INT8;
-	INT16;
-	INT32;
-	INT64;
+    INT;
+    INT8;
+    INT16;
+    INT32;
+    INT64;
 
-	CHAR;
+    CHAR;
 
-	F32;
-	F64;
-	
-	VOID;
-	BOOL;
-	CSTR;
-	POINTER;
-	SLICE;
-	ARRAY;
-	STRUCT;
-	ENUM;
-	FUNCTION;
-	
-	NULL;
-	ERROR;
-	// When an array is declared with no elements.
-	EMPTY_ARRAY_ELM;
-	// When an identifier is an import the type is set to this.
-	IMPORT;
-	// When referencing an identifier that refers to one or more functions.
-	FUNC_REF;
-	// When referencing an identifier that refers to a struct.
-	STRUCT_REF;
-	// When referencing an identifier that refers to an enum.
-	ENUM_REF;
-	
+    F32;
+    F64;
+    
+    VOID;
+    BOOL;
+    CSTR;
+    POINTER;
+    SLICE;
+    ARRAY;
+    STRUCT;
+    ENUM;
+    FUNCTION;
+    
+    NULL;
+    ERROR;
+    // When an array is declared with no elements.
+    EMPTY_ARRAY_ELM;
+    // When an identifier is an import the type is set to this.
+    IMPORT;
+    // When referencing an identifier that refers to one or more functions.
+    FUNC_REF;
+    // When referencing an identifier that refers to a struct.
+    STRUCT_REF;
+    // When referencing an identifier that refers to an enum.
+    ENUM_REF;
+    
 }
 
 ArrayType struct {
-	element_type Type*;
-	length      int;
+    element_type Type*;
+    length      int;
 }
 
 Field struct {
-	name            cstr;
-	type            Type*;
-	offset_in_bytes int;
+    name            cstr;
+    type            Type*;
+    offset_in_bytes int;
 }
 
 Struct struct {
-	name       cstr;
-	num_fields int;
-	fields     Field*;
+    name       cstr;
+    num_fields int;
+    fields     Field*;
 }
 
 /*
@@ -71,68 +71,68 @@ Struct struct {
  */
 // TODO: support enum and function information.
 Type struct {
-	// Unique ID to identifier which type catagory
-	// this type belongs to.
-	id            TypeId;
-	// The size this type is allocated as.
-	size_in_bytes int; 
-	// TODO: this should be a union.
-	
-	// If the type is a pointer or a slice type
-	// then this type is set.
-	element_type Type*;
-	array_info   ArrayType*;
-	struct_info  Struct*;
-	
-	/*
-	 * Tells if the type is an integer. This includes
-	 * characters.
-	 */
-	fn is_int() bool {
-		return id <= TypeId.CHAR;
-	}
-	
-	/*
-	 * Tells if the type is a number.
-	 */
-	fn is_number() bool {
-		return id <= TypeId.F64;
-	}
-	
-	/*
-	 * Tells if the type is signed. This means the values of
-	 * this type may have negative values.
-	 */
-	fn is_signed() bool {
-		return id >= TypeId.INT && id <= TypeId.F64;
-	}
-	
-	/*
-	 * Tells if this type is a cstr or a std.String
-	 * struct type.
-	 */
-	fn is_string() bool {
-		return id == TypeId.CSTR ||
-		      (id == TypeId.STRUCT && this == typeof(String));
-	}
-	
-	/*
-	 * Tells if the type is a pointer. TypeId.POINTER
-	 * does not include all possible types that are
-	 * internally pointers.
-	 *
-	 * @return true if TypeId.POINTER, TypeId.CSTR,
-	 *                 TypeId.NULL, or TypeId.FUNCTION.
-	 */
-	fn is_pointer() bool {
-		return id == TypeId.POINTER || id == TypeId.CSTR ||
-		       id == TypeId.NULL    || id == TypeId.FUNCTION;
-	}
-	
-	/*
-	 * Gets the allocation size of the types in bits.
-	 */
-	fn size_in_bits() int {
-		return size_in_bytes * 8;
-	}
+    // Unique ID to identifier which type catagory
+    // this type belongs to.
+    id            TypeId;
+    // The size this type is allocated as.
+    size_in_bytes int; 
+    // TODO: this should be a union.
+    
+    // If the type is a pointer or a slice type
+    // then this type is set.
+    element_type Type*;
+    array_info   ArrayType*;
+    struct_info  Struct*;
+    
+    /*
+     * Tells if the type is an integer. This includes
+     * characters.
+     */
+    fn is_int() bool {
+        return id <= TypeId.CHAR;
+    }
+    
+    /*
+     * Tells if the type is a number.
+     */
+    fn is_number() bool {
+        return id <= TypeId.F64;
+    }
+    
+    /*
+     * Tells if the type is signed. This means the values of
+     * this type may have negative values.
+     */
+    fn is_signed() bool {
+        return id >= TypeId.INT && id <= TypeId.F64;
+    }
+    
+    /*
+     * Tells if this type is a cstr or a std.String
+     * struct type.
+     */
+    fn is_string() bool {
+        return id == TypeId.CSTR ||
+              (id == TypeId.STRUCT && this == typeof(String));
+    }
+    
+    /*
+     * Tells if the type is a pointer. TypeId.POINTER
+     * does not include all possible types that are
+     * internally pointers.
+     *
+     * @return true if TypeId.POINTER, TypeId.CSTR,
+     *                 TypeId.NULL, or TypeId.FUNCTION.
+     */
+    fn is_pointer() bool {
+        return id == TypeId.POINTER || id == TypeId.CSTR ||
+               id == TypeId.NULL    || id == TypeId.FUNCTION;
+    }
+    
+    /*
+     * Gets the allocation size of the types in bits.
+     */
+    fn size_in_bits() int {
+        return size_in_bytes * 8;
+    }
 }

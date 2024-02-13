@@ -2,19 +2,19 @@
 //    works.
 
 A struct {
-	a int;
+    a int;
 
-	fn setv(v int) {
-		a = v;
-	}
+    fn setv(v int) {
+        a = v;
+    }
 
-	fn getv() int {
-		return a;
-	}
+    fn getv() int {
+        return a;
+    }
 }
 
 fn main() {
-	a A;
-	a.setv(1234);
-	print(a.getv());
+    a A;
+    a.setv(1234);
+    print(a.getv());
 }

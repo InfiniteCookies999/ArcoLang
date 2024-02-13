@@ -13,18 +13,18 @@ import win32;
  * reading and writing.
  */
 IOFlag enum : uint32 {
-	IN     :: 0x0001;
-	OUT    :: 0x0002;	
+    IN     :: 0x0001;
+    OUT    :: 0x0002;	
 
-	/*
-	 * More than once open instance of the
-	 * file can be opened and accessed at
-	 * the same time.
-	 */
-	SHARE  :: 0x0004;
-	
-	/* Creates the file if it does not exist. */
-	CREATE :: 0x0008;
+    /*
+     * More than once open instance of the
+     * file can be opened and accessed at
+     * the same time.
+     */
+    SHARE  :: 0x0004;
+    
+    /* Creates the file if it does not exist. */
+    CREATE :: 0x0008;
 }
 
 /*
@@ -33,73 +33,73 @@ IOFlag enum : uint32 {
  * chunks of pre-allocated bytes to the file.
  */
 FileHandle struct {
-	
-	handle     void*;
-	auto_close bool;
-	
-	fn FileHandle(handle void*, auto_close := true) {
-		this.handle     = handle;
-		this.auto_close = auto_close;
-	}
-	
-	fn ~FileHandle() {
-		if auto_close {
-			close();
-		}
-	}
-	
-	fn read(buffer char*, length int) int {
-		// TODO: make sure the stream is still open.
-		
-		number_of_bytes_read uint32;
-		win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
-		return cast(int) number_of_bytes_read;
-	}
-	
-	fn write(buffer cstr, length int) int {
-		// TODO: make sure the stream is still open.
-	
-		number_of_bytes_written uint32;
-		win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null);
-		return cast(int) number_of_bytes_written;
-	}
-	
-	fn get_size() int {
-		size uint32 = win32.GetFileSize(handle, null);
-		return cast(int) size;
-	}
-	
-	fn close() {
-		win32.CloseHandle(handle);
-		handle = null;
-	}
+    
+    handle     void*;
+    auto_close bool;
+    
+    fn FileHandle(handle void*, auto_close := true) {
+        this.handle     = handle;
+        this.auto_close = auto_close;
+    }
+    
+    fn ~FileHandle() {
+        if auto_close {
+            close();
+        }
+    }
+    
+    fn read(buffer char*, length int) int {
+        // TODO: make sure the stream is still open.
+        
+        number_of_bytes_read uint32;
+        win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
+        return cast(int) number_of_bytes_read;
+    }
+    
+    fn write(buffer cstr, length int) int {
+        // TODO: make sure the stream is still open.
+    
+        number_of_bytes_written uint32;
+        win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null);
+        return cast(int) number_of_bytes_written;
+    }
+    
+    fn get_size() int {
+        size uint32 = win32.GetFileSize(handle, null);
+        return cast(int) size;
+    }
+    
+    fn close() {
+        win32.CloseHandle(handle);
+        handle = null;
+    }
 }
 
 /*
  * Reads an entire file into a string.
  */
 fn read(path cstr) String {
-	
-	stream := open(path, IOFlag.IN);
-	size   := stream.get_size();
-	buffer := new char[size + 1];
-	
-	read_bytes := stream.read(buffer, size);
-	if read_bytes != size {
-		// TODO: proper error handling
-		panic("Failed to read file");
-	}
+    
+    stream := open(path, IOFlag.IN);
+    size   := stream.get_size();
+    buffer := new char[size + 1];
+    
+    read_bytes := stream.read(buffer, size);
+    if read_bytes != size {
+        // TODO: proper error handling
+        panic("Failed to read file");
+    }
 
-	// Null terminating
-	buffer[size] = '\0';
-	return String{ buffer, size, false };
+    // Null terminating
+    buffer[size] = '\0';
+    return String{ buffer, size, false };
 }
 
 /*
  * Reads an entire file into a string.
  */
 fn read(path String*) String {
-	return read(path.buffer);
+    return read(path.buffer);
 }
 
 /*
@@ -107,8 +107,8 @@ fn read(path String*) String {
  * folder at the given path.
  */
 fn exists(path cstr) bool {
-	attribs uint32 = win32.GetFileAttributesA(path);
-	return attribs != win32.INVALID_FILE_ATTRIBUTES;
+    attribs uint32 = win32.GetFileAttributesA(path);
+    return attribs != win32.INVALID_FILE_ATTRIBUTES;
 }
 
 /*
@@ -116,7 +116,7 @@ fn exists(path cstr) bool {
  * folder at the given path.
  */
 fn exists(path String*) bool {
-	return exists(path.buffer);
+    return exists(path.buffer);
 }
 
 /*
@@ -124,9 +124,9 @@ fn exists(path String*) bool {
  * is not a directory at the given path.
  */
 fn file_exists(path cstr) bool {
-	attribs uint32 = win32.GetFileAttributesA(path);
-	return attribs != win32.INVALID_FILE_ATTRIBUTES &&
-	      (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) == 0;
+    attribs uint32 = win32.GetFileAttributesA(path);
+    return attribs != win32.INVALID_FILE_ATTRIBUTES &&
+          (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) == 0;
 }
 
 /*
@@ -134,7 +134,7 @@ fn file_exists(path cstr) bool {
  * is not a directory at the given path.
  */
 fn file_exists(path String*) bool {
-	return file_exists(path.buffer);
+    return file_exists(path.buffer);
 }
 
 /*
@@ -142,9 +142,9 @@ fn file_exists(path String*) bool {
  * at the given path.
  */
 fn directory_exists(path cstr) bool {
-	attribs uint32 = win32.GetFileAttributesA(path);
-	return attribs != win32.INVALID_FILE_ATTRIBUTES &&
-	      (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) != 0;
+    attribs uint32 = win32.GetFileAttributesA(path);
+    return attribs != win32.INVALID_FILE_ATTRIBUTES &&
+          (attribs &  win32.FILE_ATTRIBUTE_DIRECTORY) != 0;
 }
 
 /*
@@ -152,7 +152,7 @@ fn directory_exists(path cstr) bool {
  * at the given path.
  */
 fn directory_exists(path String*) bool {
-	return directory_exists(path.buffer);
+    return directory_exists(path.buffer);
 }
 
 /*
@@ -163,8 +163,8 @@ fn directory_exists(path String*) bool {
  *                  necessary parent directories.
  */
 fn mkdir(path cstr, mkparents := false) bool {
-	// TODO: implement making parents.
-	return win32.CreateDirectoryA(path, null) != 0;
+    // TODO: implement making parents.
+    return win32.CreateDirectoryA(path, null) != 0;
 }
 
 /*
@@ -175,7 +175,7 @@ fn mkdir(path cstr, mkparents := false) bool {
  *                  necessary parent directories.
  */
 fn mkdir(path String*, mkparents := false) bool {
-	return mkdir(path.buffer);
+    return mkdir(path.buffer);
 }
 
 /*
@@ -186,14 +186,14 @@ fn mkdir(path String*, mkparents := false) bool {
  * empty.
  */
 fn remove(path cstr) bool {
-	attribs uint32 = win32.GetFileAttributesA(path);
-	if attribs == win32.INVALID_FILE_ATTRIBUTES {
-		return false;
-	}
-	if (attribs & win32.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return win32.RemoveDirectoryA(path) != 0;
-	}
-	return win32.DeleteFileA(path) != 0;
+    attribs uint32 = win32.GetFileAttributesA(path);
+    if attribs == win32.INVALID_FILE_ATTRIBUTES {
+        return false;
+    }
+    if (attribs & win32.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+        return win32.RemoveDirectoryA(path) != 0;
+    }
+    return win32.DeleteFileA(path) != 0;
 }
 
 /*
@@ -204,7 +204,7 @@ fn remove(path cstr) bool {
  * empty.
  */
 fn remove(path String*) bool {
-	return remove(path.buffer);
+    return remove(path.buffer);
 }
 
 /*
@@ -213,26 +213,26 @@ fn remove(path String*) bool {
  * intervals since January 1, 1601 (UTC).
  */
 fn last_modified(path cstr) uint64 {
-	// TODO: Proper error handling.
+    // TODO: Proper error handling.
 
-	handle := win32.CreateFileA(path,
-	                            win32.GENERIC_ALL,
-								win32.FILE_SHARE_READ,
-								null,
-								win32.OPEN_EXISTING,
-								0,
-								null);
+    handle := win32.CreateFileA(path,
+                                win32.GENERIC_ALL,
+                                win32.FILE_SHARE_READ,
+                                null,
+                                win32.OPEN_EXISTING,
+                                0,
+                                null);
 
-	if handle == win32.INVALID_HANDLE_VALUE {
-		panic("Could not get last modified time for path");
-	}
+    if handle == win32.INVALID_HANDLE_VALUE {
+        panic("Could not get last modified time for path");
+    }
 
-	create_time, access_time, write_time uint64;
-	if win32.GetFileTime(handle, &create_time, &access_time, &write_time) == 0 {
-		panic("Could not get last modified time for path");
-	}
+    create_time, access_time, write_time uint64;
+    if win32.GetFileTime(handle, &create_time, &access_time, &write_time) == 0 {
+        panic("Could not get last modified time for path");
+    }
 
-	return write_time;
+    return write_time;
 }
 
 /*
@@ -243,62 +243,62 @@ fn last_modified(path cstr) uint64 {
  * parent's directory or a different directory entirely.
  */
 fn current_dir() String {
-	// TODO: proper error handling.
+    // TODO: proper error handling.
 
-	path_length := win32.GetCurrentDirectoryA(0, null);
-	if path_length == 0 {
-		panic("Failed to get the length of the current directory path");
-	}
-	buffer := new char[path_length];
+    path_length := win32.GetCurrentDirectoryA(0, null);
+    if path_length == 0 {
+        panic("Failed to get the length of the current directory path");
+    }
+    buffer := new char[path_length];
 
-	// TODO: recheck if the length is not long enough?
-	if win32.GetCurrentDirectoryA(path_length, buffer) == 0 {
-		panic("Failed to read the current directory path");
-	}
-	
-	// -1 because path_length contains the null terminating character.
-	return String{ buffer, path_length - 1, false };
+    // TODO: recheck if the length is not long enough?
+    if win32.GetCurrentDirectoryA(path_length, buffer) == 0 {
+        panic("Failed to read the current directory path");
+    }
+    
+    // -1 because path_length contains the null terminating character.
+    return String{ buffer, path_length - 1, false };
 }
 
 fn open(path cstr, flags IOFlag) FileHandle {
-	access_flags uint32 = 0;
-	share_flags  uint32 = 0;
-	create_flags uint32 = 0;
+    access_flags uint32 = 0;
+    share_flags  uint32 = 0;
+    create_flags uint32 = 0;
 
-	if flags == 0 {
-		access_flags = win32.GENERIC_ALL;
-	}
+    if flags == 0 {
+        access_flags = win32.GENERIC_ALL;
+    }
 
-	if (flags & IOFlag.IN) != 0 {
-		access_flags |= win32.GENERIC_READ;
-	}
+    if (flags & IOFlag.IN) != 0 {
+        access_flags |= win32.GENERIC_READ;
+    }
 
-	if (flags & IOFlag.OUT) != 0 {
-		access_flags |= win32.GENERIC_WRITE;
-	}
+    if (flags & IOFlag.OUT) != 0 {
+        access_flags |= win32.GENERIC_WRITE;
+    }
 
-	if (flags & IOFlag.SHARE) != 0 {
-		share_flags |= win32.FILE_SHARE_READ;
-	}
+    if (flags & IOFlag.SHARE) != 0 {
+        share_flags |= win32.FILE_SHARE_READ;
+    }
 
-	if (flags & IOFlag.CREATE) != 0 {
-		create_flags |= win32.CREATE_NEW;
-	} else {
-		create_flags |= win32.OPEN_EXISTING;
-	}
+    if (flags & IOFlag.CREATE) != 0 {
+        create_flags |= win32.CREATE_NEW;
+    } else {
+        create_flags |= win32.OPEN_EXISTING;
+    }
 
-	handle void* = win32.CreateFileA(path,
-	                                 access_flags,
-								     share_flags,
-								     null,
-								     create_flags,
-								     win32.FILE_ATTRIBUTE_NORMAL,
-								     null);
+    handle void* = win32.CreateFileA(path,
+                                     access_flags,
+                                     share_flags,
+                                     null,
+                                     create_flags,
+                                     win32.FILE_ATTRIBUTE_NORMAL,
+                                     null);
 
-	if handle == win32.INVALID_HANDLE_VALUE {
-		// TODO: properly handle the error once supported.
-		panic("Failed to open filestream!");
-	}
-	
-	return FileHandle{ handle };
+    if handle == win32.INVALID_HANDLE_VALUE {
+        // TODO: properly handle the error once supported.
+        panic("Failed to open filestream!");
+    }
+    
+    return FileHandle{ handle };
 }

@@ -1,15 +1,15 @@
 
 A struct {
-	y int;
+    y int;
 
-	fn ~A() {
-		print("Destroyed!", 10);
-	}
+    fn ~A() {
+        print("Destroyed!", 10);
+    }
 }
 
 a A;
 
 fn main() {
-	print("Begin ", 6);
-	a.y = 44; // Setting a variable so the global gets generated.
+    print("Begin ", 6);
+    a.y = 44; // Setting a variable so the global gets generated.
 }

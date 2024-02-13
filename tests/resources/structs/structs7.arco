@@ -2,13 +2,13 @@
 //    works when one field uses another.
 
 Data struct {
-	a int = 55;
-	b int = a + 44;
+    a int = 55;
+    b int = a + 44;
 }
 
 fn main() {
-	data Data;
-	print(data.a);
-	print(" ", 1);
-	print(data.b);
+    data Data;
+    print(data.a);
+    print(" ", 1);
+    print(data.b);
 }

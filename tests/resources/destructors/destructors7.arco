@@ -1,14 +1,14 @@
 A struct {
-	fn ~A() {
-		print("Destroyed!", 10);
-	}
+    fn ~A() {
+        print("Destroyed!", 10);
+    }
 }
 
 B struct {
-	a A;
+    a A;
 }
 
 fn main() {
-	b B;
-	print("Begin ", 6);
+    b B;
+    print("Begin ", 6);
 }

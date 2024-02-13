@@ -5,7 +5,7 @@ a int = 32;
 b int = a + 154;
 
 fn main() {
-	print(a);
-	print(" ", 1);
-	print(b);
+    print(a);
+    print(" ", 1);
+    print(b);
 }

@@ -1,9 +1,9 @@
 fn main() {
-	print(0xaB21);   // -21727
-	print(" ", 1);
-	print(0xffFfF);  // 1048575
-	print(" ", 1);
-	print(0x0);      // 0
-	print(" ", 1);
-	print(0xabcdef); // 11259375
+    print(0xaB21);   // -21727
+    print(" ", 1);
+    print(0xffFfF);  // 1048575
+    print(" ", 1);
+    print(0x0);      // 0
+    print(" ", 1);
+    print(0xabcdef); // 11259375
 }

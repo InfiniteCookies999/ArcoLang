@@ -37,28 +37,28 @@ RADIANS_TO_DEGREES :: 57.29577951308232;
  * Converts the angle in degrees to radians.
  */
 fn to_radians(angle f64) f64 {
-	return angle * DEGREES_TO_RADIAS;
+    return angle * DEGREES_TO_RADIAS;
 }
 
 /*
  * Converts the angle in degrees to radians.
  */
 fn to_radians(angle f32) f32 {
-	return cast(f32) (angle * DEGREES_TO_RADIAS);
+    return cast(f32) (angle * DEGREES_TO_RADIAS);
 }
 
 /*
  * Converts the angle in radians to degrees.
  */
 fn to_degrees(angle f64) f64 {
-	return angle * RADIANS_TO_DEGREES;
+    return angle * RADIANS_TO_DEGREES;
 }
 
 /*
  * Converts the angle in radians to degrees.
  */
 fn to_degrees(angle f32) f32 {
-	return cast(f32) (angle * RADIANS_TO_DEGREES);
+    return cast(f32) (angle * RADIANS_TO_DEGREES);
 }
 
 /*
@@ -181,7 +181,7 @@ native fn cos(x f32) f32;
  * @param x an angle in radians.
  */
 fn tan(x f64) f64 {
-	return sin(x) / cos(x);
+    return sin(x) / cos(x);
 }
 
 /*
@@ -190,7 +190,7 @@ fn tan(x f64) f64 {
  * @param x an angle in radians.
  */
 fn tan(x f32) f32 {
-	return sin(x) / cos(x);
+    return sin(x) / cos(x);
 }
 
 

@@ -2,10 +2,10 @@
 //    the iterator index outside the loop works.
 
 fn main() {
-	sum int = 0;
-	i int = 0;
-	loop ; i < 5; i = i + 1 {
-		sum = sum + i;
-	}
-	print(sum);
+    sum int = 0;
+    i int = 0;
+    loop ; i < 5; i = i + 1 {
+        sum = sum + i;
+    }
+    print(sum);
 }

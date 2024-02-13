@@ -3,9 +3,9 @@
 //    types that they cast correctly.
 
 fn main() {
-	a int[5] = [ 14, 'c', 55, 1, 'y' ];
-	loop i int = 0; i < 5; i = i + 1 {
-		print(a[i]);
-		print(" ", 1);
-	}
+    a int[5] = [ 14, 'c', 55, 1, 'y' ];
+    loop i int = 0; i < 5; i = i + 1 {
+        print(a[i]);
+        print(" ", 1);
+    }
 }

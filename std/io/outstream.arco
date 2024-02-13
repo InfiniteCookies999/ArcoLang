@@ -8,231 +8,231 @@ import reflect.TypeId;
  * any streamable handle that is writeable.
  */
 OutStream struct {
-	
-	// TODO: This handle should eventually be more abstract
-	//       and be a any writable handle instead.
-	handle FileHandle;
+    
+    // TODO: This handle should eventually be more abstract
+    //       and be a any writable handle instead.
+    handle FileHandle;
 
-	fn OutStream(handle void*, auto_close := true)
-		: handle(FileHandle{handle, auto_close}) {
-	}
+    fn OutStream(handle void*, auto_close := true)
+        : handle(FileHandle{handle, auto_close}) {
+    }
 
-	// TODO: This stream should not write directly to the handle.
-	//       In the future the stream should be abstracted in such
-	//       a way that it writes to another stream such as a buffered
-	//       output stream, which then writes to the handle.
-	fn write(msg cstr, length int) {
-		handle.write(msg, length);
-	}
+    // TODO: This stream should not write directly to the handle.
+    //       In the future the stream should be abstracted in such
+    //       a way that it writes to another stream such as a buffered
+    //       output stream, which then writes to the handle.
+    fn write(msg cstr, length int) {
+        handle.write(msg, length);
+    }
 
-	fn write(msg cstr) {
-		write(msg, strlen(msg));
-	}
+    fn write(msg cstr) {
+        write(msg, strlen(msg));
+    }
 
-	fn write(b bool) {
-		if b {
-			write("true");
-		} else {
-			write("false");
-		}
-	}
+    fn write(b bool) {
+        if b {
+            write("true");
+        } else {
+            write("false");
+        }
+    }
 
-	fn write(c char) {
-		write(&c, 1);
-	}
+    fn write(c char) {
+        write(&c, 1);
+    }
 
-	fn write(i int64, base := 10) {
-		if i < 0 {
-			i = -i;
-			write("-");
-		}
+    fn write(i int64, base := 10) {
+        if i < 0 {
+            i = -i;
+            write("-");
+        }
 
-		write(cast(uint64) i, base);
-	}
+        write(cast(uint64) i, base);
+    }
 
-	fn write(i uint64, base := 10) {
-		// TODO: validate the base.
+    fn write(i uint64, base := 10) {
+        // TODO: validate the base.
 
-		BUFFER_SIZE :: 21;
-		buffer char[BUFFER_SIZE];
+        BUFFER_SIZE :: 21;
+        buffer char[BUFFER_SIZE];
 
-		ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
+        ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 
-		length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
-		write(ptr, length);
-	}
+        length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+        write(ptr, length);
+    }
 
-	fn write(i int, base := 10) {
-		write(cast(int64) i, base);
-	}
+    fn write(i int, base := 10) {
+        write(cast(int64) i, base);
+    }
 
-	fn write(i uint, base := 10) {
-		write(cast(uint64) i, base);
-	}
+    fn write(i uint, base := 10) {
+        write(cast(uint64) i, base);
+    }
 
-	fn write(any Any) {
-		write_any(any.value, any.type);
-	}
+    fn write(any Any) {
+        write_any(any.value, any.type);
+    }
 
-	fn write_any(value void*, type const Type*) {
-		if type.id == TypeId.CSTR {
-			write(cast(cstr) value);
-		} else if type.is_int() {
-			if type.is_signed() {
-				write(*cast(int64*) value);
-			} else {
-				write(*cast(uint64*) value);
-			}
-		} else if type.is_pointer() {
-			// TODO: abstract pointer printing out?
-			// TODO: pad 0s.
-			write("0x");
-			write(cast(uint) cast(uint*) value, 16);
-		} else if type.id == TypeId.ARRAY {
-			array_info := type.array_info;
-			write_array_like_type(value, array_info.element_type, array_info.length);
-		} else if type.id == TypeId.BOOL {
-			write(*cast(bool*) value);
-		} else if type.id == TypeId.CHAR {
-			write(*cast(char*) value);
-		} else if type.id == TypeId.EMPTY_ARRAY_ELM {
-			write("[ ]");
-		} else if type.id == TypeId.F32 {
-			write("printing floats not supported yet");
-		} else if type.id == TypeId.F64 {
-			write("printing floats not supported yet");
-		} else if type.id == TypeId.SLICE {
-			slice_length  := *cast(int*) value;
-			slice_arr_ptr := value + sizeof(int);
-			// We have the address of the pointer need the pointer itself.
-			array void* = *cast(void**) slice_arr_ptr;
-			
-			write_array_like_type(array, type.element_type, slice_length);
-		} else if type.id == TypeId.STRUCT {
-			//if type.struct_info == typeof(String).struct_info {
-			if type == typeof(String) {
-				string := cast(String*) value;
-				write(string.buffer, string.length);
-				return;
-			}
-			
-			write(type.struct_info.name);
-			write("{ ");
-			
-			num_fields := type.struct_info.num_fields;
-			loop i := 0; i < num_fields; i++ {
-				field := type.struct_info.fields[i];
-				
-				write(field.name);
-				write(":");
-				field_value void* = value + field.offset_in_bytes;
-				
-				if field.type.is_string() {
-					write("\"");
-				}
-				if field.type.is_pointer() {
-					// See comment unrder write_array_like_type for explaination.
-					ptr_addr := cast(void**) field_value;
-					field_value = *ptr_addr;
-				}
-				write_any(field_value, field.type);
-				
-				if field.type.is_string() {
-					write("\"");
-				}
-				if i+1 != num_fields {
-					write(", ");
-				}
-			}
-			
-			write(" }");
-		} else {
-			write("do not know how to write type!");
-		}
-	}
-	
-	fn write_array_like_type(array void*, elm_type Type*, length int) {
-		write("[ ");
-			
-		elm_byte_size := elm_type.size_in_bytes;
-		loop i := 0; i < length; i++ {
-			offset_into_array void* = array + (i * elm_byte_size);
-			if elm_type.is_string() {
-				write("\"");
-			}
-			if elm_type.is_pointer() {
-				// The offset into the array gives us an address of the element
-				// which is typically what we want except for pointer types in
-				// which case we want the pointer itself.
-				ptr_addr := cast(void**) offset_into_array;
-				offset_into_array = *ptr_addr;
-			}
-			write_any(offset_into_array, elm_type);
-			if elm_type.is_string() {
-				write("\"");
-			}
-			
-			if i+1 != length {
-				write(", ");
-			}
-		}
-		
-		write(" ]");
-	}
+    fn write_any(value void*, type const Type*) {
+        if type.id == TypeId.CSTR {
+            write(cast(cstr) value);
+        } else if type.is_int() {
+            if type.is_signed() {
+                write(*cast(int64*) value);
+            } else {
+                write(*cast(uint64*) value);
+            }
+        } else if type.is_pointer() {
+            // TODO: abstract pointer printing out?
+            // TODO: pad 0s.
+            write("0x");
+            write(cast(uint) cast(uint*) value, 16);
+        } else if type.id == TypeId.ARRAY {
+            array_info := type.array_info;
+            write_array_like_type(value, array_info.element_type, array_info.length);
+        } else if type.id == TypeId.BOOL {
+            write(*cast(bool*) value);
+        } else if type.id == TypeId.CHAR {
+            write(*cast(char*) value);
+        } else if type.id == TypeId.EMPTY_ARRAY_ELM {
+            write("[ ]");
+        } else if type.id == TypeId.F32 {
+            write("printing floats not supported yet");
+        } else if type.id == TypeId.F64 {
+            write("printing floats not supported yet");
+        } else if type.id == TypeId.SLICE {
+            slice_length  := *cast(int*) value;
+            slice_arr_ptr := value + sizeof(int);
+            // We have the address of the pointer need the pointer itself.
+            array void* = *cast(void**) slice_arr_ptr;
+            
+            write_array_like_type(array, type.element_type, slice_length);
+        } else if type.id == TypeId.STRUCT {
+            //if type.struct_info == typeof(String).struct_info {
+            if type == typeof(String) {
+                string := cast(String*) value;
+                write(string.buffer, string.length);
+                return;
+            }
+            
+            write(type.struct_info.name);
+            write("{ ");
+            
+            num_fields := type.struct_info.num_fields;
+            loop i := 0; i < num_fields; i++ {
+                field := type.struct_info.fields[i];
+                
+                write(field.name);
+                write(":");
+                field_value void* = value + field.offset_in_bytes;
+                
+                if field.type.is_string() {
+                    write("\"");
+                }
+                if field.type.is_pointer() {
+                    // See comment unrder write_array_like_type for explaination.
+                    ptr_addr := cast(void**) field_value;
+                    field_value = *ptr_addr;
+                }
+                write_any(field_value, field.type);
+                
+                if field.type.is_string() {
+                    write("\"");
+                }
+                if i+1 != num_fields {
+                    write(", ");
+                }
+            }
+            
+            write(" }");
+        } else {
+            write("do not know how to write type!");
+        }
+    }
+    
+    fn write_array_like_type(array void*, elm_type Type*, length int) {
+        write("[ ");
+            
+        elm_byte_size := elm_type.size_in_bytes;
+        loop i := 0; i < length; i++ {
+            offset_into_array void* = array + (i * elm_byte_size);
+            if elm_type.is_string() {
+                write("\"");
+            }
+            if elm_type.is_pointer() {
+                // The offset into the array gives us an address of the element
+                // which is typically what we want except for pointer types in
+                // which case we want the pointer itself.
+                ptr_addr := cast(void**) offset_into_array;
+                offset_into_array = *ptr_addr;
+            }
+            write_any(offset_into_array, elm_type);
+            if elm_type.is_string() {
+                write("\"");
+            }
+            
+            if i+1 != length {
+                write(", ");
+            }
+        }
+        
+        write(" ]");
+    }
 
-	// ----------------------------------------
-	// writeln functions
+    // ----------------------------------------
+    // writeln functions
 
-	fn writeln(msg cstr) {
-		write(msg, strlen(msg));
-		write("\n", 1);
-	}
+    fn writeln(msg cstr) {
+        write(msg, strlen(msg));
+        write("\n", 1);
+    }
 
-	fn writeln(msg String*) {
-		write(msg);
-		write("\n", 1);
-	}
+    fn writeln(msg String*) {
+        write(msg);
+        write("\n", 1);
+    }
 
-	fn writeln(i int, base := 10) {
-		write(cast(int64) i, base);
-		write("\n", 1);
-	}
+    fn writeln(i int, base := 10) {
+        write(cast(int64) i, base);
+        write("\n", 1);
+    }
 
-	fn writeln(i uint, base := 10) {
-		write(cast(uint64) i, base);
-		write("\n", 1);
-	}
+    fn writeln(i uint, base := 10) {
+        write(cast(uint64) i, base);
+        write("\n", 1);
+    }
 
-	fn writeln(i int64, base := 10) {
-		write(i);
-		write("\n", 1);
-	}
+    fn writeln(i int64, base := 10) {
+        write(i);
+        write("\n", 1);
+    }
 
-	fn writeln(i uint64, base := 10) {
-		write(i, base);
-		write("\n", 1);
-	}
+    fn writeln(i uint64, base := 10) {
+        write(i, base);
+        write("\n", 1);
+    }
 
-	fn writeln(b bool) {
-		write(b);
-		write("\n", 1);
-	}
+    fn writeln(b bool) {
+        write(b);
+        write("\n", 1);
+    }
 
-	fn writeln(c char) {
-		write(c);
-		write("\n", 1);
-	}
+    fn writeln(c char) {
+        write(c);
+        write("\n", 1);
+    }
 
-	fn writeln(any Any) {
-		write(any);
-		write("\n", 1);
-	}
+    fn writeln(any Any) {
+        write(any);
+        write("\n", 1);
+    }
 
-	fn writeln() {
-		write("\n", 1);
-	}
+    fn writeln() {
+        write("\n", 1);
+    }
 
-	fn close() {
-		handle.close();
-	}
+    fn close() {
+        handle.close();
+    }
 }

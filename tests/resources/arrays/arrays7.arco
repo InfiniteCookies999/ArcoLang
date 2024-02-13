@@ -3,12 +3,12 @@
 //    to create a variable.
 
 fn func(a int[5]) {
-	loop i int = 0; i < 5; i = i + 1 {
-		print(a[i]);
-		print(" ", 1);
-	}
+    loop i int = 0; i < 5; i = i + 1 {
+        print(a[i]);
+        print(" ", 1);
+    }
 }
 
 fn main() {
-	func([ 1, 2, 3, 4, 5 ]);
+    func([ 1, 2, 3, 4, 5 ]);
 }

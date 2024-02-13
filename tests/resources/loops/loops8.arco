@@ -3,10 +3,10 @@
 //    referenced.
 
 fn main() {
-	
-	arr int[*] = [ 124, 346, 22, 15, 77 ];
-	loop v int* : arr {
-		print(*v);
-		print(" ", 1);
-	}
+    
+    arr int[*] = [ 124, 346, 22, 15, 77 ];
+    loop v int* : arr {
+        print(*v);
+        print(" ", 1);
+    }
 }

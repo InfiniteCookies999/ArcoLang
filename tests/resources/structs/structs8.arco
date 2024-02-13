@@ -2,17 +2,17 @@
 //    inline and accessed inline.
 
 A struct {
-	val int;
+    val int;
 }
 
 fn foo(a A) {
-	print(a.val);
+    print(a.val);
 }
 
 fn main() {
-	print(A{ 55 }.val);
-	print(" ", 1);
-	print((A{ 55 }).val);
-	print(" ", 1);
-	foo(A{ 55 });
+    print(A{ 55 }.val);
+    print(" ", 1);
+    print((A{ 55 }).val);
+    print(" ", 1);
+    foo(A{ 55 });
 }

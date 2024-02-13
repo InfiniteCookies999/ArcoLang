@@ -3,8 +3,8 @@ set(CMAKE_CXX_STANDARD ${PROJECT_CXX_STANDARD})
 
 # Some of these warnings on MSVC are rather annoying so ive disabled them
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd\"26812\"")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd\"26495\"")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd\"26812\"")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd\"26495\"")
 endif()
 
 #importing LLVM

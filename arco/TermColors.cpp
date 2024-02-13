@@ -8,10 +8,10 @@
 bool arco::DisableTerminalColors = false;
 
 void arco::SetTerminalColor(u32 ColorCode) {
-	if (DisableTerminalColors) {
-		return;
-	}
+    if (DisableTerminalColors) {
+        return;
+    }
 #ifdef _WIN32
-	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), ColorCode);
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), ColorCode);
 #endif
 }

@@ -2,9 +2,9 @@
 //    operator works on arrays.
 
 fn main() {
-	a int[5] = [ 214, 452, 12, 32, 11 ];
-	loop i int = 0; i < a.length; i = i + 1 {
-		print(a[i]);
-		print(" ", 1);
-	}
+    a int[5] = [ 214, 452, 12, 32, 11 ];
+    loop i int = 0; i < a.length; i = i + 1 {
+        print(a[i]);
+        print(" ", 1);
+    }
 }

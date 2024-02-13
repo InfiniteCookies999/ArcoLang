@@ -2,14 +2,14 @@
 //    statements work.
 
 fn main() {
-	loop i int = 0; i < 100; i = i + 1 {
-		if i > 50 {
-			break;
-		}
-		if i % 2 == 0 {
-			continue;
-		}
-		print(i);
-		print(" ", 1);
-	}
+    loop i int = 0; i < 100; i = i + 1 {
+        if i > 50 {
+            break;
+        }
+        if i % 2 == 0 {
+            continue;
+        }
+        print(i);
+        print(" ", 1);
+    }
 }

@@ -1,17 +1,17 @@
 
 A struct {
-	
-	fn ~A() {
-		print("Destroyed!", 10);
-	}
+    
+    fn ~A() {
+        print("Destroyed!", 10);
+    }
 }
 
 fn main() {
-	loop i int = 0; i < 5; i = i + 1 {
-		a A;
-		if i == 2 {
-			continue;
-		}
-		print("NoContinue", 10);
-	}
+    loop i int = 0; i < 5; i = i + 1 {
+        a A;
+        if i == 2 {
+            continue;
+        }
+        print("NoContinue", 10);
+    }
 }

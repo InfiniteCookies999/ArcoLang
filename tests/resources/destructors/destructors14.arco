@@ -1,13 +1,13 @@
 
 A struct {
-	
-	fn ~A() {
-		print("Destroyed!", 10);
-	}
+    
+    fn ~A() {
+        print("Destroyed!", 10);
+    }
 }
 
 fn main() {
-	print("Begin ", 6);
-	a A;
-	a = A{};
+    print("Begin ", 6);
+    a A;
+    a = A{};
 }

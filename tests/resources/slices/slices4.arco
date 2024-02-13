@@ -1,14 +1,14 @@
 
 fn foo(s int[*]) {
-	loop i int = 0; i < s.length; i++ {
-		print(s[i]);
-		print(" ", 1);
-	}
+    loop i int = 0; i < s.length; i++ {
+        print(s[i]);
+        print(" ", 1);
+    }
 }
 
 fn main() {
-	a int[4] = [ 134, 55, 22, 6 ];
-	b int[2] = [ 42, 66 ];
-	foo(a);
-	foo(b);
+    a int[4] = [ 134, 55, 22, 6 ];
+    b int[2] = [ 42, 66 ];
+    foo(a);
+    foo(b);
 }

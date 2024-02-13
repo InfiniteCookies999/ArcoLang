@@ -4,7 +4,7 @@ import win32;
  * Terminates the application with an exit code.
  */
 fn exit(exit_code int) {
-	win32.ExitProcess(cast(uint32) exit_code);
+    win32.ExitProcess(cast(uint32) exit_code);
 }
 
 /*
@@ -12,22 +12,22 @@ fn exit(exit_code int) {
  * stream and terminates the application.
  */
 fn panic(msg cstr) {
-	eprintln(msg);
-	exit(1);
+    eprintln(msg);
+    exit(1);
 }
 
 // Used to keep track of time.
 performance_freq int64;
 
 fn time_in_nanosecs() int64 {
-	if performance_freq == 0 {
-		win32.QueryPerformanceFrequency(&performance_freq);
-	}
-	current int64;
-	win32.QueryPerformanceCounter(&current);
-	return cast(int64) ((cast(f64) (current * 1E+9) /performance_freq));
+    if performance_freq == 0 {
+        win32.QueryPerformanceFrequency(&performance_freq);
+    }
+    current int64;
+    win32.QueryPerformanceCounter(&current);
+    return cast(int64) ((cast(f64) (current * 1E+9) /performance_freq));
 }
 
 fn time_in_millisecs() int64 {
-	return time_in_nanosecs() / cast(int64) 1e+6;
+    return time_in_nanosecs() / cast(int64) 1e+6;
 }

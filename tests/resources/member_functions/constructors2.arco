@@ -3,13 +3,13 @@
 //    constructor.
 
 MyStruct struct {
-	a int;
-	fn MyStruct() {
-		a = 55;
-	}
+    a int;
+    fn MyStruct() {
+        a = 55;
+    }
 }
 
 fn main() {
-	s MyStruct;
-	print(s.a);
+    s MyStruct;
+    print(s.a);
 }

@@ -2,21 +2,21 @@
 //    initialization works.
 
 A struct {
-	f1 int = 124;
-	f2 int = 66;
+    f1 int = 124;
+    f2 int = 66;
 }
 
 Data struct {
-	a A;
-	b int = 25;
+    a A;
+    b int = 25;
 }
 
 fn main() {
-	data Data;
-	
-	print(data.a.f1);
-	print(" ", 1);
-	print(data.a.f2);
-	print(" ", 1);
-	print(data.b);
+    data Data;
+    
+    print(data.a.f1);
+    print(" ", 1);
+    print(data.a.f2);
+    print(" ", 1);
+    print(data.b);
 }

@@ -1,12 +1,12 @@
 
 fn main() {
-	print(sizeof(int8));
-	print(" ", 1);
-	print(sizeof(int16));
-	print(" ", 1);
-	print(sizeof(int32));
-	print(" ", 1);
-	print(sizeof(int64));
-	print(" ", 1);
-	print(sizeof(char));
+    print(sizeof(int8));
+    print(" ", 1);
+    print(sizeof(int16));
+    print(" ", 1);
+    print(sizeof(int32));
+    print(" ", 1);
+    print(sizeof(int64));
+    print(" ", 1);
+    print(sizeof(char));
 }

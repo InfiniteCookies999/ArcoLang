@@ -28,7 +28,7 @@ DIGIT_TO_BASE64_TABLE :: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqr
  * base 16 characters.
  */
 BASE64_CHAR_DIGIT_TABLE :: [
-	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 0-19
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 0-19
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 20-39
     -1, -1, -1, -1, -1, -1, -1, -1,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1,   // 40-59
     -1, 63, -1, 62, -1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,   // 60-79
@@ -41,7 +41,7 @@ BASE64_CHAR_DIGIT_TABLE :: [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 200-219
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 220-229
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,   // 230-249
-	-1, -1, -1, -1, -1, -1                                                            // 250-255
+    -1, -1, -1, -1, -1, -1                                                            // 250-255
 ];
 
 /*
@@ -52,13 +52,13 @@ BASE64_CHAR_DIGIT_TABLE :: [
  * the character to lowercase first.
  */
 fn to_digit_for_base(c char, base int) int {
-	digit := BASE64_CHAR_DIGIT_TABLE[c];
-	// TODO: ternary operators.
-	if digit >= 0 && digit < base {
-		return digit;
-	} else {
-		return -1;
-	}
+    digit := BASE64_CHAR_DIGIT_TABLE[c];
+    // TODO: ternary operators.
+    if digit >= 0 && digit < base {
+        return digit;
+    } else {
+        return -1;
+    }
 }
 
 /*
@@ -77,22 +77,22 @@ fn to_digit_for_base(c char, base int) int {
  *                      string containing the digits.
  */
 fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
-	ptr := end_of_buffer;
+    ptr := end_of_buffer;
 
-	if value == 0 {
-		*ptr = '0';
-		return ptr;
-	}
-	
-	loop value > 0 {
-		digit uint64 = value % base;
-		value /= cast(uint64) base;
-		
-		*ptr = DIGIT_TO_BASE64_TABLE[digit];
-		--ptr;
-	}
+    if value == 0 {
+        *ptr = '0';
+        return ptr;
+    }
+    
+    loop value > 0 {
+        digit uint64 = value % base;
+        value /= cast(uint64) base;
+        
+        *ptr = DIGIT_TO_BASE64_TABLE[digit];
+        --ptr;
+    }
 
-	return ptr + 1;
+    return ptr + 1;
 }
 
 /*
@@ -100,12 +100,12 @@ fn chars_of_uint64(value uint64, end_of_buffer char*, base int) char* {
  * character is uppercase.
  */
 fn tolower(c char) char {
-	// TODO: ternary operator.
-	if c >= 'A' && c <= 'Z' {
-		return c + 32;
-	} else {
-		return c;
-	}
+    // TODO: ternary operator.
+    if c >= 'A' && c <= 'Z' {
+        return c + 32;
+    } else {
+        return c;
+    }
 }
 
 /*
@@ -113,19 +113,19 @@ fn tolower(c char) char {
  * the character is lowercase.
  */
 fn toupper(c char) char {
-	// TODO: ternary operator.
-	if c >= 'a' && c <= 'z' {
-		return c - 32;
-	} else {
-		return c;
-	}
+    // TODO: ternary operator.
+    if c >= 'a' && c <= 'z' {
+        return c - 32;
+    } else {
+        return c;
+    }
 }
 
 /*
  * Checks if the character is a digit.
  */
 fn isdigit(c char) bool {
-	return c >= '0' && c <= '9';
+    return c >= '0' && c <= '9';
 }
 
 /*
@@ -133,15 +133,15 @@ fn isdigit(c char) bool {
  * This means the character is between a-z or A-Z.
  */
 fn isalpha(c char) bool {
-	return (c >= 'a' && c <= 'z') ||
-	       (c >= 'A' && c <= 'Z');
+    return (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z');
 }
 
 /*
  * Checks if the character is ascii.
  */
 fn isascii(c char) bool {
-	return c <= 127;
+    return c <= 127;
 }
 
 // TODO: come back to this once explicit array index
@@ -158,8 +158,8 @@ fn isascii(c char) bool {
  * character.
  */
 fn iswspace(c char) bool {
-	return c == ' '  || c == '\t' ||
-	       c == '\r' || c == '\n' ||
-		   c == '\v' || c == '\f';
+    return c == ' '  || c == '\t' ||
+           c == '\r' || c == '\n' ||
+           c == '\v' || c == '\f';
 }
 

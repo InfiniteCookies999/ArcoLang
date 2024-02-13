@@ -1,29 +1,29 @@
 
 A struct {
-	v int;
+    v int;
 
-	fn ~A() {
-		print("Destroyed!", 10);
-		print(v);
-	}
+    fn ~A() {
+        print("Destroyed!", 10);
+        print(v);
+    }
 }
 
 fn foo(cond1 int, cond2 int) {
-	a A = A{ 5 };
+    a A = A{ 5 };
 
-	if cond1 > 0 {
-		return;
-	}
+    if cond1 > 0 {
+        return;
+    }
 
-	b A = A{ 3 };
+    b A = A{ 3 };
 
-	if cond2 > 0 {
-		return;
-	}
+    if cond2 > 0 {
+        return;
+    }
 
-	c A = A{ 8 };
+    c A = A{ 8 };
 }
 
 fn main() {
-	foo(-1, +1);
+    foo(-1, +1);
 }

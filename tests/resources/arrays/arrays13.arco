@@ -3,18 +3,18 @@
 //    objects works.
 
 Data struct {
-	a int = 25;
-	b int = 55;
+    a int = 25;
+    b int = 55;
 }
 
 fn main() {
-	arr Data[5][5];
-	loop i int = 0; i < 5; i = i + 1 {
-		loop j int = 0; j < 5; j = j + 1 {
-			print(arr[i][j].a);
-			print(" ", 1);
-			print(arr[i][j].b);
-			print(" ", 1);
-		}
-	}
+    arr Data[5][5];
+    loop i int = 0; i < 5; i = i + 1 {
+        loop j int = 0; j < 5; j = j + 1 {
+            print(arr[i][j].a);
+            print(" ", 1);
+            print(arr[i][j].b);
+            print(" ", 1);
+        }
+    }
 }

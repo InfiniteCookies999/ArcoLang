@@ -1,33 +1,33 @@
 
 A struct {
-	f1 int;
-	f2 int;
+    f1 int;
+    f2 int;
 }
 
 CONSTANT :: 6;
 
 fn main() {
-	a := 5;
-	b := "a message!";
-	c := [ 16, 31 ];
-	d := A{ 53, 99 };
-	e, f := 8, "nice";
-	
-	print(a);
-	print(" ", 1);
-	print(b, 10);
-	print(" ", 1);
-	print(c[0]);
-	print(" ", 1);
-	print(c[1]);
-	print(" ", 1);
-	print(d.f1);
-	print(" ", 1);
-	print(d.f2);
-	print(" ", 1);
-	print(CONSTANT);
-	print(" ", 1);
-	print(e);
-	print(" ", 1);
-	print(f, 4);
+    a := 5;
+    b := "a message!";
+    c := [ 16, 31 ];
+    d := A{ 53, 99 };
+    e, f := 8, "nice";
+    
+    print(a);
+    print(" ", 1);
+    print(b, 10);
+    print(" ", 1);
+    print(c[0]);
+    print(" ", 1);
+    print(c[1]);
+    print(" ", 1);
+    print(d.f1);
+    print(" ", 1);
+    print(d.f2);
+    print(" ", 1);
+    print(CONSTANT);
+    print(" ", 1);
+    print(e);
+    print(" ", 1);
+    print(f, 4);
 }

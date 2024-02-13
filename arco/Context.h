@@ -9,171 +9,171 @@
 #include <llvm/ADT/StringMap.h>
 
 namespace llvm {
-	class LLVMContext;
-	class Module;
-	class Type;
-	class GlobalVariable;
-	class StructType;
-	namespace CallingConv {
-		using ID = unsigned;
-	}
-	
-	// The function pointer cache needs vector of u32s to be hashed.
-	template<> struct DenseMapInfo<llvm::SmallVector<u32>> {
-		static bool isEqual(const llvm::SmallVector<u32>& LHS, const llvm::SmallVector<u32>& RHS) {
-			return LHS == RHS;
-		}
-		static llvm::SmallVector<u32> getTombstoneKey() {
-			// Do not remove function types from maps.
-			return llvm::SmallVector<u32>{};
-		}
-		static llvm::SmallVector<u32> getEmptyKey() {
-			return llvm::SmallVector<u32>{};
-		}
-		static unsigned getHashValue(const llvm::SmallVector<u32>& Val) {
-			// We know index 0 exists because that is the return type.
-			unsigned Hash = DenseMapInfo<u32>::getHashValue(Val[0]);
-			for (ulen i = 0; i < Val.size(); i++) {
-				Hash = detail::combineHashValue(DenseMapInfo<u32>::getHashValue(Val[i]), Hash);
-			}
-			return Hash;
-		}
-	};
+    class LLVMContext;
+    class Module;
+    class Type;
+    class GlobalVariable;
+    class StructType;
+    namespace CallingConv {
+        using ID = unsigned;
+    }
+    
+    // The function pointer cache needs vector of u32s to be hashed.
+    template<> struct DenseMapInfo<llvm::SmallVector<u32>> {
+        static bool isEqual(const llvm::SmallVector<u32>& LHS, const llvm::SmallVector<u32>& RHS) {
+            return LHS == RHS;
+        }
+        static llvm::SmallVector<u32> getTombstoneKey() {
+            // Do not remove function types from maps.
+            return llvm::SmallVector<u32>{};
+        }
+        static llvm::SmallVector<u32> getEmptyKey() {
+            return llvm::SmallVector<u32>{};
+        }
+        static unsigned getHashValue(const llvm::SmallVector<u32>& Val) {
+            // We know index 0 exists because that is the return type.
+            unsigned Hash = DenseMapInfo<u32>::getHashValue(Val[0]);
+            for (ulen i = 0; i < Val.size(); i++) {
+                Hash = detail::combineHashValue(DenseMapInfo<u32>::getHashValue(Val[i]), Hash);
+            }
+            return Hash;
+        }
+    };
 }
 
 namespace arco {
 
-	class ArcoContext {
-	public:
+    class ArcoContext {
+    public:
 
-		ArcoContext();
+        ArcoContext();
 
-		~ArcoContext();
+        ~ArcoContext();
 
-		void Initialize();
+        void Initialize();
 
-		/// If the text matches one of the keywords then
-		/// the token kind for the text is returned. Otherwise,
-		/// a token kind of TokenKind::INVALID is returned.
-		TokenKind GetKeywordKind(llvm::StringRef Text) const;
+        /// If the text matches one of the keywords then
+        /// the token kind for the text is returned. Otherwise,
+        /// a token kind of TokenKind::INVALID is returned.
+        TokenKind GetKeywordKind(llvm::StringRef Text) const;
 
-		/// Converts a keyword's token kind into its equivalent
-		/// string.
-		llvm::StringRef GetKeywordAsString(u16 Kind) const {
-			return TokenKeywordInvertedMap.find(static_cast<u32>(Kind))->second;
-		}
+        /// Converts a keyword's token kind into its equivalent
+        /// string.
+        llvm::StringRef GetKeywordAsString(u16 Kind) const {
+            return TokenKeywordInvertedMap.find(static_cast<u32>(Kind))->second;
+        }
 
-		void RequestGen(Decl* D);
+        void RequestGen(Decl* D);
 
-		llvm::StringMap<Module*> ModNamesToMods;
+        llvm::StringMap<Module*> ModNamesToMods;
 
-		FuncDecl* MainEntryFunc = nullptr;
+        FuncDecl* MainEntryFunc = nullptr;
 
-		// 'main' identifier (for identifying entry points)
-		Identifier MainIdentifier;
-		// 'length' identifier (for identifying array lengths)
-		Identifier LengthIdentifier;
-		// Identifiers for calling conventions
-		Identifier StdcallIdentifier;
-		Identifier CdeclIdentifier;
-		Identifier FastcallIdentifier;
-		llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
+        // 'main' identifier (for identifying entry points)
+        Identifier MainIdentifier;
+        // 'length' identifier (for identifying array lengths)
+        Identifier LengthIdentifier;
+        // Identifiers for calling conventions
+        Identifier StdcallIdentifier;
+        Identifier CdeclIdentifier;
+        Identifier FastcallIdentifier;
+        llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
 
-		u32 UniqueTypeIdCounter = 1;
+        u32 UniqueTypeIdCounter = 1;
 
-		Identifier StringIdentifier;
-		Identifier AnyIdentifier;
-		Identifier TypeIdentifier;
-		Identifier ArrayTypeIdentifier;
-		Identifier StructTypeIdentifier;
-		Identifier FieldTypeIdentifier;
-		StructDecl* StdStringStruct      = nullptr;
-		StructDecl* StdAnyStruct         = nullptr;
-		StructDecl* StdTypeStruct        = nullptr;
-		StructDecl* StdArrayTypeStruct   = nullptr;
-		StructDecl* StdStructTypeStruct  = nullptr;
-		StructDecl* StdFieldTypeStruct   = nullptr;
+        Identifier StringIdentifier;
+        Identifier AnyIdentifier;
+        Identifier TypeIdentifier;
+        Identifier ArrayTypeIdentifier;
+        Identifier StructTypeIdentifier;
+        Identifier FieldTypeIdentifier;
+        StructDecl* StdStringStruct      = nullptr;
+        StructDecl* StdAnyStruct         = nullptr;
+        StructDecl* StdTypeStruct        = nullptr;
+        StructDecl* StdArrayTypeStruct   = nullptr;
+        StructDecl* StdStructTypeStruct  = nullptr;
+        StructDecl* StdFieldTypeStruct   = nullptr;
 
-		Type* IntType;
-		Type* UIntType;
-		Type* VoidType;
-		Type* CharType;
-		Type* BoolType;
-		Type* CStrType;
-		Type* NullType;
-		Type* Int8Type;
-		Type* Int16Type;
-		Type* Int32Type;
-		Type* Int64Type;
-		Type* UInt8Type;
-		Type* UInt16Type;
-		Type* UInt32Type;
-		Type* UInt64Type;
-		Type* Float32Type;
-		Type* Float64Type;
-		Type* ErrorType;
-		Type* EmptyArrayElmType;
-		Type* ImportType;
-		Type* VoidPtrType;
-		Type* CharPtrType;
-		Type* FuncRefType;
-		Type* StructRefType;
-		Type* EnumRefType;
+        Type* IntType;
+        Type* UIntType;
+        Type* VoidType;
+        Type* CharType;
+        Type* BoolType;
+        Type* CStrType;
+        Type* NullType;
+        Type* Int8Type;
+        Type* Int16Type;
+        Type* Int32Type;
+        Type* Int64Type;
+        Type* UInt8Type;
+        Type* UInt16Type;
+        Type* UInt32Type;
+        Type* UInt64Type;
+        Type* Float32Type;
+        Type* Float64Type;
+        Type* ErrorType;
+        Type* EmptyArrayElmType;
+        Type* ImportType;
+        Type* VoidPtrType;
+        Type* CharPtrType;
+        Type* FuncRefType;
+        Type* StructRefType;
+        Type* EnumRefType;
 
-		// Maps a binary operator to its precedence.
-		llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
+        // Maps a binary operator to its precedence.
+        llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
 
-		std::queue<Decl*> QueuedDeclsToGen;
+        std::queue<Decl*> QueuedDeclsToGen;
 
-		// Even if a declaration is not generated it should
-		// still be checked to make sure there is not errors
-		// with the code.
-		std::unordered_set<Decl*> UncheckedDecls;
+        // Even if a declaration is not generated it should
+        // still be checked to make sure there is not errors
+        // with the code.
+        std::unordered_set<Decl*> UncheckedDecls;
 
-		/// When the assignment of a global variable is not foldable
-		/// it must be assigned at the start of the program. The variables
-		/// that need assignment are stored here until their assignments
-		/// are generated.
-		///
-		llvm::SmallVector<VarDecl*, 16> GlobalPostponedAssignments;
+        /// When the assignment of a global variable is not foldable
+        /// it must be assigned at the start of the program. The variables
+        /// that need assignment are stored here until their assignments
+        /// are generated.
+        ///
+        llvm::SmallVector<VarDecl*, 16> GlobalPostponedAssignments;
 
-		// ----- LLVM -----
-		llvm::LLVMContext& LLContext;
-		llvm::Module&      LLArcoModule;
-		ulen               NumGeneratedGlobalVars = 0;
-		llvm::Function*    LLInitGlobalFunc;
-		llvm::Function*    LLDestroyGlobalsFunc;
-		llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
-		struct LLIntrinsicDef {
-			Identifier               Name;
-			llvm::SmallVector<Type*> ParamTypes;
-			Type*                    RetType;
-		};
-		// TODO: should this be a map instead?
-		llvm::SmallVector<LLIntrinsicDef>               LLVMValidIntrinsicArgs;
-		llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
-		llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
-		llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
-		llvm::DenseMap<u32, llvm::StructType*>     LLSliceTypes;
+        // ----- LLVM -----
+        llvm::LLVMContext& LLContext;
+        llvm::Module&      LLArcoModule;
+        ulen               NumGeneratedGlobalVars = 0;
+        llvm::Function*    LLInitGlobalFunc;
+        llvm::Function*    LLDestroyGlobalsFunc;
+        llvm::DenseMap<Identifier, llvm::Intrinsic::ID> LLVMIntrinsicsTable;
+        struct LLIntrinsicDef {
+            Identifier               Name;
+            llvm::SmallVector<Type*> ParamTypes;
+            Type*                    RetType;
+        };
+        // TODO: should this be a map instead?
+        llvm::SmallVector<LLIntrinsicDef>               LLVMValidIntrinsicArgs;
+        llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
+        llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
+        llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
+        llvm::DenseMap<u32, llvm::StructType*>     LLSliceTypes;
 
-		llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
-		llvm::DenseMap<u32, SliceType*>                       SliceTyCache;
-		llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
-		llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;
-		// TODO: llvm::DenseMap<u32, StructType*>                   StructCache;
-		std::queue<StructDecl*>                          DefaultConstrucorsNeedingCreated;
+        llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
+        llvm::DenseMap<u32, SliceType*>                       SliceTyCache;
+        llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
+        llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;
+        // TODO: llvm::DenseMap<u32, StructType*>                   StructCache;
+        std::queue<StructDecl*>                          DefaultConstrucorsNeedingCreated;
 
-	private:
-		// TODO: This can be replaced with perfect hashing!
-		llvm::DenseMap<llvm::StringRef, TokenKind> TokenKeywordMap;
+    private:
+        // TODO: This can be replaced with perfect hashing!
+        llvm::DenseMap<llvm::StringRef, TokenKind> TokenKeywordMap;
 
-		// Keyword kind => Text
-		//
-		// The keyword kind is stored as a 32 bit integer
-		// since DenseMaps know about how to store keys
-		// of integers but not TokenKind.
-		llvm::DenseMap<u32, llvm::StringRef> TokenKeywordInvertedMap;
-	};
+        // Keyword kind => Text
+        //
+        // The keyword kind is stored as a 32 bit integer
+        // since DenseMaps know about how to store keys
+        // of integers but not TokenKind.
+        llvm::DenseMap<u32, llvm::StringRef> TokenKeywordInvertedMap;
+    };
 }
 
 #endif // ARCO_CONTEXT_H

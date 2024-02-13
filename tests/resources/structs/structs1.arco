@@ -2,16 +2,16 @@
 //    field accessing works.
 
 Data struct {
-	a int;
-	b int;
+    a int;
+    b int;
 }
 
 fn main() {
-	data Data;
-	data.a = 55;
-	data.b = 44;
+    data Data;
+    data.a = 55;
+    data.b = 44;
 
-	print(data.a);
-	print(" ", 1);
-	print(data.b);
+    print(data.a);
+    print(" ", 1);
+    print(data.b);
 }

@@ -4,282 +4,282 @@ import reflect.TypeId;
 
 String struct {
 
-	length int;
-	buffer char*;
+    length int;
+    buffer char*;
 
-	fn ~String() {
-		delete buffer;
-		buffer = null;
-		length = 0;
-	}
+    fn ~String() {
+        delete buffer;
+        buffer = null;
+        length = 0;
+    }
 
-	/*
-	 * Defaults to having zero length.
-	 */
-	fn String() {
-		
-	}
+    /*
+     * Defaults to having zero length.
+     */
+    fn String() {
+        
+    }
 
-	/*
-	 * Creates a string from a null terminated
-	 * character buffer.
-	 */
-	fn String(buffer cstr) {
-		this.length = strlen(buffer);
-		this.buffer = new char[length + 1]; // +1 for null terminator.
-		memcpy(this.buffer, buffer, length + 1);
-	}
+    /*
+     * Creates a string from a null terminated
+     * character buffer.
+     */
+    fn String(buffer cstr) {
+        this.length = strlen(buffer);
+        this.buffer = new char[length + 1]; // +1 for null terminator.
+        memcpy(this.buffer, buffer, length + 1);
+    }
 
-	/*
-	 * Creates a String from a character buffer and
-	 * an explicit length. Because of the explicity
-	 * defined length the buffer does not have to be
-	 * null terminated.
-	 *
-	 * If the buffer is null terminated do not include
-	 * the null termination in the length.
-	 */
-	fn String(buffer cstr, length int) {
-		if length < 0 {
-			panic("String length length < 0");
-		}
+    /*
+     * Creates a String from a character buffer and
+     * an explicit length. Because of the explicity
+     * defined length the buffer does not have to be
+     * null terminated.
+     *
+     * If the buffer is null terminated do not include
+     * the null termination in the length.
+     */
+    fn String(buffer cstr, length int) {
+        if length < 0 {
+            panic("String length length < 0");
+        }
 
-		this.length = length;
-		this.buffer = new char[length + 1]; // +1 for null terminator.
-		memcpy(this.buffer, buffer, length);
-		this.buffer[length] = '\0';
-	}
+        this.length = length;
+        this.buffer = new char[length + 1]; // +1 for null terminator.
+        memcpy(this.buffer, buffer, length);
+        this.buffer[length] = '\0';
+    }
 
-	/*
-	 * Creates a String from a character buffer and
-	 * an explicit length. Because of the explicity
-	 * defined length the buffer does not have to be
-	 * null terminated.
-	 *
-	 * If the buffer is null terminated do not include
-	 * the null termination in the length.
-	 *
-	 * @Param copy_buffer if true it allocates new memory
-	 *                    and copies the buffer over otherwise
-	 *                    the buffer is assumed to be already
-	 *                    allocated and null terminated.
-	 */
-	fn String(buffer char*, length int, copy_buffer bool = true) {
-		if length < 0 {
-			panic("String length length < 0");
-		}
-		
-		this.length = length;
-		if copy_buffer {
-			this.buffer = new char[length + 1]; // +1 for null terminator.
-			memcpy(this.buffer, buffer, length);
-			this.buffer[length] = '\0';
-		} else {
-			this.buffer = buffer;
-		}
-	}
+    /*
+     * Creates a String from a character buffer and
+     * an explicit length. Because of the explicity
+     * defined length the buffer does not have to be
+     * null terminated.
+     *
+     * If the buffer is null terminated do not include
+     * the null termination in the length.
+     *
+     * @Param copy_buffer if true it allocates new memory
+     *                    and copies the buffer over otherwise
+     *                    the buffer is assumed to be already
+     *                    allocated and null terminated.
+     */
+    fn String(buffer char*, length int, copy_buffer bool = true) {
+        if length < 0 {
+            panic("String length length < 0");
+        }
+        
+        this.length = length;
+        if copy_buffer {
+            this.buffer = new char[length + 1]; // +1 for null terminator.
+            memcpy(this.buffer, buffer, length);
+            this.buffer[length] = '\0';
+        } else {
+            this.buffer = buffer;
+        }
+    }
 
-	/*
-	 * Copy constructor.
-	 */
-	fn copyobj String(string String*) {
-		this.length = string.length;
-		this.buffer = new char[length + 1]; // +1 for null terminator.
-		memcpy(this.buffer, string.buffer, length);
-		this.buffer[length] = '\0';
-	}
+    /*
+     * Copy constructor.
+     */
+    fn copyobj String(string String*) {
+        this.length = string.length;
+        this.buffer = new char[length + 1]; // +1 for null terminator.
+        memcpy(this.buffer, string.buffer, length);
+        this.buffer[length] = '\0';
+    }
 
-	/*
-	 * Parses the string into a signed an  integer
-	 * for using base-10. All the characters in the
-	 * string (excluding a leading + or -) must be digits
-	 * or _ for number seperation.
-	 *
-	 * The number is expected to fit into a 32 bit integer.
-	 *
-	 * @return a parsed signed integer.
-	 */
-	fn parse_int() int {
-		return parse_int32();
-	}
+    /*
+     * Parses the string into a signed an  integer
+     * for using base-10. All the characters in the
+     * string (excluding a leading + or -) must be digits
+     * or _ for number seperation.
+     *
+     * The number is expected to fit into a 32 bit integer.
+     *
+     * @return a parsed signed integer.
+     */
+    fn parse_int() int {
+        return parse_int32();
+    }
 
-	/*
-	 * Parses the string into a signed 32 bit integer
-	 * for using base-10. All the characters in the
-	 * string (excluding a leading + or -) must be digits
-	 * or _ for number seperation.
-	 *
-	 * @return a parsed signed integer.
-	 */
-	fn parse_int32() int32 {
-		return parse_int32(10);
-	}
+    /*
+     * Parses the string into a signed 32 bit integer
+     * for using base-10. All the characters in the
+     * string (excluding a leading + or -) must be digits
+     * or _ for number seperation.
+     *
+     * @return a parsed signed integer.
+     */
+    fn parse_int32() int32 {
+        return parse_int32(10);
+    }
 
-	/*
-	 * Parses the string into a signed 32 bit integer
-	 * for the given base. All the characters in the
-	 * string (excluding a leading + or -) must be digits
-	 * or _ for number seperation.
-	 *
-	 * @param  base to be used during parsing.
-	 * @return a parsed signed integer.
-	 */
-	fn parse_int32(base int) uint32 {
-		// TODO: Provide proper error handling once supported!
+    /*
+     * Parses the string into a signed 32 bit integer
+     * for the given base. All the characters in the
+     * string (excluding a leading + or -) must be digits
+     * or _ for number seperation.
+     *
+     * @param  base to be used during parsing.
+     * @return a parsed signed integer.
+     */
+    fn parse_int32(base int) uint32 {
+        // TODO: Provide proper error handling once supported!
 
-		if empty() {
-			panic("Parse errror: empty string");
-		}
+        if empty() {
+            panic("Parse errror: empty string");
+        }
 
-		if base < MIN_PARSE_BASE {
-			panic("Parse error: base < PARSE_MIN_BASE");
-		}
+        if base < MIN_PARSE_BASE {
+            panic("Parse error: base < PARSE_MIN_BASE");
+        }
 
-		if base > MAX_PARSE_BASE {
-			panic("Parse error: base > PARSE_MAX_BASE");
-		}
+        if base > MAX_PARSE_BASE {
+            panic("Parse error: base > PARSE_MAX_BASE");
+        }
 
-		is_neg := false;
-		i := 0;
-		if base == 16 && buffer[0] == '0' && buffer[1] == 'x' {
-			i = 2;
-		}
-		uc bool = base >= 11 && base <= 16;
-		
+        is_neg := false;
+        i := 0;
+        if base == 16 && buffer[0] == '0' && buffer[1] == 'x' {
+            i = 2;
+        }
+        uc bool = base >= 11 && base <= 16;
+        
 
-		first := buffer[i];
-		if first < '0' {
-			if first == '-' {
-				is_neg = true;
-			} else if first != '+' {
-				panic("Parse error: Invalid start to characters");
-			}
+        first := buffer[i];
+        if first < '0' {
+            if first == '-' {
+                is_neg = true;
+            } else if first != '+' {
+                panic("Parse error: Invalid start to characters");
+            }
 
-			if length == 1 {
-				panic("Parse error: + or - by itself");
-			}
+            if length == 1 {
+                panic("Parse error: + or - by itself");
+            }
 
-			++i; // Move over the + or - character.
-		}
+            ++i; // Move over the + or - character.
+        }
 
-		b int32 = cast(int32) base;
-		result, prev_value int32;
-		loop i < length {
-			ch := buffer[i++];
-			if ch == NUMBER_SEPERATOR {
-				continue;
-			}
+        b int32 = cast(int32) base;
+        result, prev_value int32;
+        loop i < length {
+            ch := buffer[i++];
+            if ch == NUMBER_SEPERATOR {
+                continue;
+            }
 
-			if uc {
-				ch = tolower(ch);
-			}
+            if uc {
+                ch = tolower(ch);
+            }
 
-			digit int32 = cast(int32) to_digit_for_base(ch, base);
-			if digit < 0 {
-				panic("Parse error: character was not a digit");
-			}
+            digit int32 = cast(int32) to_digit_for_base(ch, base);
+            if digit < 0 {
+                panic("Parse error: character was not a digit");
+            }
 
-			prev_value = result;
-			result     = result * b + digit;
+            prev_value = result;
+            result     = result * b + digit;
 
-			if result / b < prev_value {
-				panic("Parse error: Numeric overflow");
-			}
-		}
-		
-		// TODO: Would be nice to replace with ternary operator.
-		if is_neg {
-			return -result;
-		} else {
-			return result;
-		}
-	}
+            if result / b < prev_value {
+                panic("Parse error: Numeric overflow");
+            }
+        }
+        
+        // TODO: Would be nice to replace with ternary operator.
+        if is_neg {
+            return -result;
+        } else {
+            return result;
+        }
+    }
 
-	/*
-	 * Parses the string into a boolean.
-	 *
-	 * Must either be "true" or "false".
-	 */
-	fn parse_bool() bool {
-		// TODO: Provide proper error handling once supported!
-		if empty() {
-			panic("Parse error: empty string");
-		}
+    /*
+     * Parses the string into a boolean.
+     *
+     * Must either be "true" or "false".
+     */
+    fn parse_bool() bool {
+        // TODO: Provide proper error handling once supported!
+        if empty() {
+            panic("Parse error: empty string");
+        }
 
-		if equals("true", 4) {
-			return true;
-		} else if equals("false", 5) {
-			return false;
-		} else {
-			panic("Parse error: expected true or false");
-			return false;
-		}
-	}
+        if equals("true", 4) {
+            return true;
+        } else if equals("false", 5) {
+            return false;
+        } else {
+            panic("Parse error: expected true or false");
+            return false;
+        }
+    }
 
-	/*
-	 * Parses the string into a character.
-	 */
-	fn parse_char() char {
-		// TODO: Provide proper error handling once supported!
+    /*
+     * Parses the string into a character.
+     */
+    fn parse_char() char {
+        // TODO: Provide proper error handling once supported!
 
-		if empty() {
-			panic("Parse error: empty string");
-		}
-		if length != 1 {
-			panic("Parse error: length > 1");
-		}
+        if empty() {
+            panic("Parse error: empty string");
+        }
+        if length != 1 {
+            panic("Parse error: length > 1");
+        }
 
-		return buffer[0];
-	}
+        return buffer[0];
+    }
 
-	fn append(s String*) String* {
-		return append(s.buffer, s.length);
-	}
+    fn append(s String*) String* {
+        return append(s.buffer, s.length);
+    }
 
-	fn append(s cstr) String* {
-		return append(s, strlen(s));
-	}
+    fn append(s cstr) String* {
+        return append(s, strlen(s));
+    }
 
-	fn append(s cstr, length int) String* {
-		// TODO: should probably use capacities and grow by *2 when not enough space.
+    fn append(s cstr, length int) String* {
+        // TODO: should probably use capacities and grow by *2 when not enough space.
 
-		new_length := this.length + length;
-		new_buffer := new char[new_length + 1]; // +1 for null termination.
+        new_length := this.length + length;
+        new_buffer := new char[new_length + 1]; // +1 for null termination.
 
-		memcpy(new_buffer, this.buffer, this.length);
-		memcpy(new_buffer + this.length, s, length);
-		
-		delete this.buffer;
-		this.buffer = new_buffer;
-		this.length = new_length;
-		this.buffer[this.length] = '\0';
+        memcpy(new_buffer, this.buffer, this.length);
+        memcpy(new_buffer + this.length, s, length);
+        
+        delete this.buffer;
+        this.buffer = new_buffer;
+        this.length = new_length;
+        this.buffer[this.length] = '\0';
 
-		return this;
-	}
+        return this;
+    }
 
-	fn equals(s String*) bool {
-		return equals(s.buffer, s.length);
-	}
+    fn equals(s String*) bool {
+        return equals(s.buffer, s.length);
+    }
 
-	fn equals(s cstr) bool {
-		return equals(s, strlen(s));
-	}
+    fn equals(s cstr) bool {
+        return equals(s, strlen(s));
+    }
 
-	fn equals(s cstr, s_length int) bool {
-		if s_length != length {
-			return false;
-		}
-		loop i := 0; i < length; i++ {
-			if buffer[i] != s[i] {
-				return false;
-			}
-		}
-		return true;
-	}
+    fn equals(s cstr, s_length int) bool {
+        if s_length != length {
+            return false;
+        }
+        loop i := 0; i < length; i++ {
+            if buffer[i] != s[i] {
+                return false;
+            }
+        }
+        return true;
+    }
 
-	fn empty() bool {
-		return length == 0;
-	}
+    fn empty() bool {
+        return length == 0;
+    }
 }
 
 /*
@@ -290,13 +290,13 @@ String struct {
  * Defaults to base-10.
  */
 fn to_string(i uint64, base := 10) String {
-	BUFFER_SIZE :: 21;
-	buffer char[BUFFER_SIZE];
+    BUFFER_SIZE :: 21;
+    buffer char[BUFFER_SIZE];
 
-	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
-	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
-	
-	return String{ ptr, length };
+    ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
+    length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+    
+    return String{ ptr, length };
 }
 
 /*
@@ -307,157 +307,157 @@ fn to_string(i uint64, base := 10) String {
  * Defaults to base-10.
  */
 fn to_string(i int64, base := 10) String {
-	BUFFER_SIZE :: 21 + 1;
-	buffer char[BUFFER_SIZE];
+    BUFFER_SIZE :: 21 + 1;
+    buffer char[BUFFER_SIZE];
 
-	is_neg := i < 0;
-	if is_neg {
-		i = -i;
-	}
+    is_neg := i < 0;
+    if is_neg {
+        i = -i;
+    }
 
-	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
-	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+    ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
+    length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
 
-	if is_neg {
-		--ptr;
-		*ptr = '-';
-		++length;
-	}
+    if is_neg {
+        --ptr;
+        *ptr = '-';
+        ++length;
+    }
 
-	return String{ ptr, length };
+    return String{ ptr, length };
 }
 
 fn to_string(i uint, base := 10) String {
-	return to_string(cast(uint64) i, base);
+    return to_string(cast(uint64) i, base);
 }
 
 fn to_string(i int, base := 10) String {
-	return to_string(cast(int64) i, base);
+    return to_string(cast(int64) i, base);
 }
 
 fn to_string(b bool) String {
-	// TODO: can be replaced with a ternary operator.
-	if b {
-		return String{ "true", 4 };
-	} else {
-		return String{ "false", 5 };
-	}
+    // TODO: can be replaced with a ternary operator.
+    if b {
+        return String{ "true", 4 };
+    } else {
+        return String{ "false", 5 };
+    }
 }
 
 fn to_string(c char) String {
-	return String{ &c, 1 };
+    return String{ &c, 1 };
 }
 
 fn to_string(any Any) String {
-	return any_to_string(any.value, any.type);
+    return any_to_string(any.value, any.type);
 }
 
 fn any_to_string(value void*, type const Type*) String {
-	if type.id == TypeId.CSTR {
-		return String{ cast(cstr) value };
-	} else if type.is_int() {
-		if type.is_signed() {
-			return to_string(*cast(int64*) value);
-		} else {
-			return to_string(*cast(uint64*) value);
-		}
-	} else if type.is_pointer() {
-		// TODO: abstract pointer printing out?
-		// TODO: pad 0s.
-		string := String{ "0x" };
-		string.append(&to_string(cast(uint) cast(uint*) value, 16));
-		return string;
-	} else if type.id == TypeId.ARRAY {
-		array_info := type.array_info;
-		return array_like_type_to_string(value, array_info.element_type, array_info.length);
-	} else if type.id == TypeId.BOOL {
-		return to_string(*cast(bool*) value);
-	} else if type.id == TypeId.CHAR {
-		return to_string(*cast(char*) value);
-	} else if type.id == TypeId.EMPTY_ARRAY_ELM {
-		return String{ "[ ]" };
-	} else if type.id == TypeId.F32 {
-		panic("parsing floats not supported yet");
-		return String{ "" };
-	} else if type.id == TypeId.F64 {
-		panic("parsing floats not supported yet");
-		return String{ "" };
-	} else if type.id == TypeId.SLICE {
-		slice_length  := *cast(int*) value;
-		slice_arr_ptr := value + sizeof(int);
-		// We have the address of the pointer need the pointer itself.
-		array void* = *cast(void**) slice_arr_ptr;
-		
-		return array_like_type_to_string(array, type.element_type, slice_length);
-	} else if type.id == TypeId.STRUCT {
-		if type == typeof(String) {
-			string := cast(String*) value;
-			return *string;
-		}
-		
-		string := String{ type.struct_info.name };
-		string.append("{ ");
-		
-		num_fields := type.struct_info.num_fields;
-		loop i := 0; i < num_fields; i++ {
-			field := type.struct_info.fields[i];
-			
-			string.append(field.name);
-			string.append(":");
-			field_value void* = value + field.offset_in_bytes;
-			
-			if field.type.is_string() {
-				string.append("\"");
-			}
-			if field.type.is_pointer() {
-				// See comment unrder write_array_like_type for explaination.
-				ptr_addr := cast(void**) field_value;
-				field_value = *ptr_addr;
-			}
-			string.append(&any_to_string(field_value, field.type));
-			
-			if field.type.is_string() {
-				string.append("\"");
-			}
-			if i+1 != num_fields {
-				string.append(", ");
-			}
-		}
-		
-		string.append(" }");
-		return string;
-	} else {
-		panic("do not know how to parse type!");
-		return String{ "" };
-	}
+    if type.id == TypeId.CSTR {
+        return String{ cast(cstr) value };
+    } else if type.is_int() {
+        if type.is_signed() {
+            return to_string(*cast(int64*) value);
+        } else {
+            return to_string(*cast(uint64*) value);
+        }
+    } else if type.is_pointer() {
+        // TODO: abstract pointer printing out?
+        // TODO: pad 0s.
+        string := String{ "0x" };
+        string.append(&to_string(cast(uint) cast(uint*) value, 16));
+        return string;
+    } else if type.id == TypeId.ARRAY {
+        array_info := type.array_info;
+        return array_like_type_to_string(value, array_info.element_type, array_info.length);
+    } else if type.id == TypeId.BOOL {
+        return to_string(*cast(bool*) value);
+    } else if type.id == TypeId.CHAR {
+        return to_string(*cast(char*) value);
+    } else if type.id == TypeId.EMPTY_ARRAY_ELM {
+        return String{ "[ ]" };
+    } else if type.id == TypeId.F32 {
+        panic("parsing floats not supported yet");
+        return String{ "" };
+    } else if type.id == TypeId.F64 {
+        panic("parsing floats not supported yet");
+        return String{ "" };
+    } else if type.id == TypeId.SLICE {
+        slice_length  := *cast(int*) value;
+        slice_arr_ptr := value + sizeof(int);
+        // We have the address of the pointer need the pointer itself.
+        array void* = *cast(void**) slice_arr_ptr;
+        
+        return array_like_type_to_string(array, type.element_type, slice_length);
+    } else if type.id == TypeId.STRUCT {
+        if type == typeof(String) {
+            string := cast(String*) value;
+            return *string;
+        }
+        
+        string := String{ type.struct_info.name };
+        string.append("{ ");
+        
+        num_fields := type.struct_info.num_fields;
+        loop i := 0; i < num_fields; i++ {
+            field := type.struct_info.fields[i];
+            
+            string.append(field.name);
+            string.append(":");
+            field_value void* = value + field.offset_in_bytes;
+            
+            if field.type.is_string() {
+                string.append("\"");
+            }
+            if field.type.is_pointer() {
+                // See comment unrder write_array_like_type for explaination.
+                ptr_addr := cast(void**) field_value;
+                field_value = *ptr_addr;
+            }
+            string.append(&any_to_string(field_value, field.type));
+            
+            if field.type.is_string() {
+                string.append("\"");
+            }
+            if i+1 != num_fields {
+                string.append(", ");
+            }
+        }
+        
+        string.append(" }");
+        return string;
+    } else {
+        panic("do not know how to parse type!");
+        return String{ "" };
+    }
 }
 
 fn array_like_type_to_string(array void*, elm_type Type*, length int) String {
-	string := String{ "[ " };
-		
-	elm_byte_size := elm_type.size_in_bytes;
-	loop i := 0; i < length; i++ {
-		offset_into_array void* = array + (i * elm_byte_size);
-		if elm_type.is_string() {
-			string.append("\"");
-		}
-		if elm_type.is_pointer() {
-			// The offset into the array gives us an address of the element
-			// which is typically what we want except for pointer types in
-			// which case we want the pointer itself.
-			ptr_addr := cast(void**) offset_into_array;
-			offset_into_array = *ptr_addr;
-		}
-		string.append(&any_to_string(offset_into_array, elm_type));
-		if elm_type.is_string() {
-			string.append("\"");
-		}
-		
-		if i+1 != length {
-			string.append(", ");
-		}
-	}
-	
-	string.append(" ]");
-	return string;
+    string := String{ "[ " };
+        
+    elm_byte_size := elm_type.size_in_bytes;
+    loop i := 0; i < length; i++ {
+        offset_into_array void* = array + (i * elm_byte_size);
+        if elm_type.is_string() {
+            string.append("\"");
+        }
+        if elm_type.is_pointer() {
+            // The offset into the array gives us an address of the element
+            // which is typically what we want except for pointer types in
+            // which case we want the pointer itself.
+            ptr_addr := cast(void**) offset_into_array;
+            offset_into_array = *ptr_addr;
+        }
+        string.append(&any_to_string(offset_into_array, elm_type));
+        if elm_type.is_string() {
+            string.append("\"");
+        }
+        
+        if i+1 != length {
+            string.append(", ");
+        }
+    }
+    
+    string.append(" ]");
+    return string;
 }

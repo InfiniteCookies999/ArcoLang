@@ -4,28 +4,28 @@
 //    a function.
 
 A struct {
-	val int32;
+    val int32;
 }
 
 B struct {
-	val1 int32;
-	val2 int32;
-	val3 int32;
-	val4 int32;
+    val1 int32;
+    val2 int32;
+    val3 int32;
+    val4 int32;
 }
 
 fn func1() A {
-	return A{ 55 };
+    return A{ 55 };
 }
 
 fn func2() B {
-	return B{ 55 };
+    return B{ 55 };
 }
 
 fn main() {
-	a int32 = func1().val;
-	print(a);
-	print(" ", 1);
-	b int32 = func2().val1;
-	print(b);
+    a int32 = func1().val;
+    print(a);
+    print(" ", 1);
+    b int32 = func2().val1;
+    print(b);
 }
