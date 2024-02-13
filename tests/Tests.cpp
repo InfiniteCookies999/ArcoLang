@@ -136,6 +136,7 @@ int main() {
 	RunTest(SRC("returns/returns4.arco"), "55 55");
 	RunTest(SRC("returns/returns5.arco"), "55 55");
 	RunTest(SRC("returns/returns6.arco"), "55 55");
+	RunTest(SRC("returns/returns7.arco"), "44 55");
 	
 	RunTest(SRC("member_functions/member_functions1.arco"), "1234");
 	RunTest(SRC("member_functions/member_functions2.arco"), "1234");
@@ -174,7 +175,7 @@ int main() {
 	RunTest(SRC("enums/enums3.arco"), "2 3 4 5 6 7 8");
 	RunTest(SRC("enums/enums4.arco"), "6 9 6 1 7 2 1");
 	RunTest(SRC("enums/enums5.arco"), "Programming is fun cool message");
-
+	
 	RunTest(SRC("slices/slices1.arco"), "134 55 22 6");
 	RunTest(SRC("slices/slices2.arco"), "134 55 22 6");
 	RunTest(SRC("slices/slices3.arco"), "134 55 22 6");

@@ -1,3 +1,6 @@
+import reflect.Any;
+import reflect.Type;
+import reflect.TypeId;
 
 String struct {
 
@@ -281,13 +284,16 @@ String struct {
 
 /*
  * Converts a 64 bit unsigned integer to
- * a string containing the digits in base-10.
+ * a string containing the digits in the
+ * base.
+ *
+ * Defaults to base-10.
  */
-fn to_string(i uint64) String {
+fn to_string(i uint64, base := 10) String {
 	BUFFER_SIZE :: 21;
 	buffer char[BUFFER_SIZE];
 
-	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
+	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
 	
 	return String{ ptr, length };
@@ -295,9 +301,12 @@ fn to_string(i uint64) String {
 
 /*
  * Converts a 64 bit signed integer to
- * a string containing the digits in base-10.
+ * a string containing the digits in the
+ * base.
+ *
+ * Defaults to base-10.
  */
-fn to_string(i int64) String {
+fn to_string(i int64, base := 10) String {
 	BUFFER_SIZE :: 21 + 1;
 	buffer char[BUFFER_SIZE];
 
@@ -306,7 +315,7 @@ fn to_string(i int64) String {
 		i = -i;
 	}
 
-	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, 10);
+	ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 	length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
 
 	if is_neg {
@@ -318,12 +327,12 @@ fn to_string(i int64) String {
 	return String{ ptr, length };
 }
 
-fn to_string(i uint) String {
-	return to_string(cast(uint64) i);
+fn to_string(i uint, base := 10) String {
+	return to_string(cast(uint64) i, base);
 }
 
-fn to_string(i int) String {
-	return to_string(cast(int64) i);
+fn to_string(i int, base := 10) String {
+	return to_string(cast(int64) i, base);
 }
 
 fn to_string(b bool) String {
@@ -337,4 +346,118 @@ fn to_string(b bool) String {
 
 fn to_string(c char) String {
 	return String{ &c, 1 };
+}
+
+fn to_string(any Any) String {
+	return any_to_string(any.value, any.type);
+}
+
+fn any_to_string(value void*, type const Type*) String {
+	if type.id == TypeId.CSTR {
+		return String{ cast(cstr) value };
+	} else if type.is_int() {
+		if type.is_signed() {
+			return to_string(*cast(int64*) value);
+		} else {
+			return to_string(*cast(uint64*) value);
+		}
+	} else if type.is_pointer() {
+		// TODO: abstract pointer printing out?
+		// TODO: pad 0s.
+		string := String{ "0x" };
+		string.append(&to_string(cast(uint) cast(uint*) value, 16));
+		return string;
+	} else if type.id == TypeId.ARRAY {
+		array_info := type.array_info;
+		return array_like_type_to_string(value, array_info.element_type, array_info.length);
+	} else if type.id == TypeId.BOOL {
+		return to_string(*cast(bool*) value);
+	} else if type.id == TypeId.CHAR {
+		return to_string(*cast(char*) value);
+	} else if type.id == TypeId.EMPTY_ARRAY_ELM {
+		return String{ "[ ]" };
+	} else if type.id == TypeId.F32 {
+		panic("parsing floats not supported yet");
+		return String{ "" };
+	} else if type.id == TypeId.F64 {
+		panic("parsing floats not supported yet");
+		return String{ "" };
+	} else if type.id == TypeId.SLICE {
+		slice_length  := *cast(int*) value;
+		slice_arr_ptr := value + sizeof(int);
+		// We have the address of the pointer need the pointer itself.
+		array void* = *cast(void**) slice_arr_ptr;
+		
+		return array_like_type_to_string(array, type.element_type, slice_length);
+	} else if type.id == TypeId.STRUCT {
+		if type == typeof(String) {
+			string := cast(String*) value;
+			return *string;
+		}
+		
+		string := String{ type.struct_info.name };
+		string.append("{ ");
+		
+		num_fields := type.struct_info.num_fields;
+		loop i := 0; i < num_fields; i++ {
+			field := type.struct_info.fields[i];
+			
+			string.append(field.name);
+			string.append(":");
+			field_value void* = value + field.offset_in_bytes;
+			
+			if field.type.is_string() {
+				string.append("\"");
+			}
+			if field.type.is_pointer() {
+				// See comment unrder write_array_like_type for explaination.
+				ptr_addr := cast(void**) field_value;
+				field_value = *ptr_addr;
+			}
+			string.append(&any_to_string(field_value, field.type));
+			
+			if field.type.is_string() {
+				string.append("\"");
+			}
+			if i+1 != num_fields {
+				string.append(", ");
+			}
+		}
+		
+		string.append(" }");
+		return string;
+	} else {
+		panic("do not know how to parse type!");
+		return String{ "" };
+	}
+}
+
+fn array_like_type_to_string(array void*, elm_type Type*, length int) String {
+	string := String{ "[ " };
+		
+	elm_byte_size := elm_type.size_in_bytes;
+	loop i := 0; i < length; i++ {
+		offset_into_array void* = array + (i * elm_byte_size);
+		if elm_type.is_string() {
+			string.append("\"");
+		}
+		if elm_type.is_pointer() {
+			// The offset into the array gives us an address of the element
+			// which is typically what we want except for pointer types in
+			// which case we want the pointer itself.
+			ptr_addr := cast(void**) offset_into_array;
+			offset_into_array = *ptr_addr;
+		}
+		string.append(&any_to_string(offset_into_array, elm_type));
+		if elm_type.is_string() {
+			string.append("\"");
+		}
+		
+		if i+1 != length {
+			string.append(", ");
+		}
+	}
+	
+	string.append(" ]");
+	return string;
 }

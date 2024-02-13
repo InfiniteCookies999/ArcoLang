@@ -196,7 +196,7 @@ namespace arco {
 
 		llvm::Value* GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal);
 
-		void GenReturnByStoreToElisionRetSlot(Expr* Value);
+		void GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Value* LLSlot);
 
 		void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 

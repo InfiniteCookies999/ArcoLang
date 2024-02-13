@@ -810,7 +810,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 				CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
 
 			} else {
-				GenReturnByStoreToElisionRetSlot(Ret->Value);
+				GenReturnByStoreToElisionRetSlot(Ret->Value, GetElisionRetSlotAddr(CFunc));
 			}
 		} else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
 			// Default to returning zero for the main function.
@@ -849,11 +849,32 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
 			llvm::Value* LLToAddr = CFunc->UsesParamRetSlot
 				                          ? GetElisionRetSlotAddr(CFunc)
 				                          : LLRetAddr;
-			llvm::Value* LLFromAddr = GenNode(Ret->Value);
-			// TODO: Move constructors if supported
-
-			CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
-
+			
+			if (CFunc->UsesOptimizedIntRet) {
+				// TODO: This can actually be optimized further by checking if the thing being
+				// returned is a struct initializer then instead of creating the struct
+				// just generat it's integer value and store it directly into the return slot.
+			
+				llvm::Value* LLRetValue = GenNode(Ret->Value);
+				
+				// Bitcasting the return slot to the an integer address to store the optimized integer
+				// return value.
+				llvm::Type* LLRetTy = CFunc->LLFunction->getReturnType();
+				LLToAddr = Builder.CreateBitCast(LLToAddr, llvm::PointerType::get(LLRetTy, 0));
+				
+				Builder.CreateStore(GenReturnValueForOptimizedStructAsInt(LLRetValue), LLToAddr);
+			}
+			// Check for cases in which the value needs to be copied into the elision
+			// return address.
+			else if (
+				Ret->Value->Is(AstKind::IDENT_REF) ||
+				Ret->Value->Is(AstKind::UNARY_OP)  // dereferencing another object need to copy.
+					) {
+				llvm::Value* LLFromAddr = GenNode(Ret->Value);
+				CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
+			} else {
+				GenReturnByStoreToElisionRetSlot(Ret->Value, LLToAddr);
+			}
 		} else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
 			Builder.CreateStore(GetLLInt32(0, LLContext), LLRetAddr);
 		} else if (Ret->Value) {
@@ -2894,15 +2915,13 @@ llvm::Value* arco::IRGenerator::GenReturnValueForOptimizedStructAsInt(llvm::Valu
 	}
 }
 
-void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value) {
+void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Value* LLSlot) {
 	if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
 		// Ex.  'return StructName{ 43, 22 };'
-		GenStructInitializer(static_cast<StructInitializer*>(Value),
-							 GetElisionRetSlotAddr(CFunc));
+		GenStructInitializer(static_cast<StructInitializer*>(Value), LLSlot);
 	} else if (Value->Is(AstKind::FUNC_CALL)) {
 		// Ex.  'fn foo() StructName { return bar(); }
-		GenFuncCall(static_cast<FuncCall*>(Value),
-			        GetElisionRetSlotAddr(CFunc));
+		GenFuncCall(static_cast<FuncCall*>(Value), LLSlot);
 	} // else the remaining case should be that Value is AstKind::IDENT_REF
 	// in which the identifier reference should already point to the elision
 	// return address.

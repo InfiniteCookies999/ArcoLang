@@ -91,6 +91,10 @@ OutStream struct {
 		} else if type.id == TypeId.ARRAY {
 			array_info := type.array_info;
 			write_array_like_type(value, array_info.element_type, array_info.length);
+		} else if type.id == TypeId.BOOL {
+			write(*cast(bool*) value);
+		} else if type.id == TypeId.CHAR {
+			write(*cast(char*) value);
 		} else if type.id == TypeId.EMPTY_ARRAY_ELM {
 			write("[ ]");
 		} else if type.id == TypeId.F32 {

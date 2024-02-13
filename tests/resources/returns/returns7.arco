@@ -1,0 +1,43 @@
+
+A struct {
+	val int32;
+}
+
+B struct {
+	val1 int32;
+	val2 int32;
+	val3 int32;
+	val4 int32;
+}
+
+fn func1() A {
+	return A{ 44 };
+}
+
+fn func11(cond int) A {
+	if cond > 5 {
+		return func1();	
+	} else {
+		return func1();
+	}
+}
+
+fn func2() B {
+	return B{ 55 };
+}
+
+fn func22(cond int) B {
+	if cond > 5 {
+		return func2();	
+	} else {
+		return func2();
+	}
+}
+
+fn main() {
+	a A = func11(7);
+	print(a.val);
+	print(" ", 1);
+	b B = func22(7);
+	print(b.val1);
+}
