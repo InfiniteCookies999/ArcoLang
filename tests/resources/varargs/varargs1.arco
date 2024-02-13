@@ -1,0 +1,10 @@
+// -- Test to make sure no arguments can be passed to
+//    varargs function and the length is 0.
+
+fn foo(args int...) {
+    print(args.length);
+}
+
+fn main() {
+    foo();
+}

@@ -123,10 +123,8 @@ namespace arco {
         llvm::Value* GenFuncCallGeneral(Expr* CallNode,
                                         FuncDecl* CalledFunc,
                                         llvm::SmallVector<NonNamedValue, 2>& Args,
-                                        llvm::Value* LLAddr);
-        void GenFuncCallArgs(ulen& ArgIdx,
-                             llvm::SmallVector<llvm::Value*, 2>& LLArgs,
-                             llvm::SmallVector<NonNamedValue, 2>& Args);
+                                        llvm::Value* LLAddr,
+                                        bool VarArgsPassAlong);
         llvm::Value* GenCallArg(Expr* Arg);
         llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
         ArrayType* GetGenArrayDestType(Array* Arr);
@@ -243,6 +241,8 @@ namespace arco {
 
         void GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr* Value, bool IsConstAddress);
         void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
+
+        void GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment);
 
         void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);
         llvm::Function* GenDefaultConstructorDecl(StructDecl* Struct);

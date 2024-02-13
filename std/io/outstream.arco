@@ -77,6 +77,8 @@ OutStream struct {
     fn write_any(value void*, type const Type*) {
         if type.id == TypeId.CSTR {
             write(cast(cstr) value);
+        } else if type.id == TypeId.CHAR {
+            write(*cast(char*) value);
         } else if type.is_int() {
             if type.is_signed() {
                 write(*cast(int64*) value);
@@ -93,8 +95,6 @@ OutStream struct {
             write_array_like_type(value, array_info.element_type, array_info.length);
         } else if type.id == TypeId.BOOL {
             write(*cast(bool*) value);
-        } else if type.id == TypeId.CHAR {
-            write(*cast(char*) value);
         } else if type.id == TypeId.EMPTY_ARRAY_ELM {
             write("[ ]");
         } else if type.id == TypeId.F32 {
@@ -180,6 +180,22 @@ OutStream struct {
         write(" ]");
     }
 
+    fn write(fmt cstr, args Any...) {
+        length  := strlen(fmt);
+        arg_idx := 0;
+        loop i := 0; i < length; i++ {
+            c := fmt[i];
+            if c == '%' && arg_idx < args.length {
+                if i+1 < length && fmt[i+1] == 's' {
+                    write(args[arg_idx++]);
+                    ++i;
+                }
+            } else {
+                write(c);
+            }
+        }
+    }
+
     // ----------------------------------------
     // writeln functions
 
@@ -225,6 +241,11 @@ OutStream struct {
 
     fn writeln(any Any) {
         write(any);
+        write("\n", 1);
+    }
+
+    fn writeln(fmt cstr, args Any...) {
+        write(fmt, args);
         write("\n", 1);
     }
 

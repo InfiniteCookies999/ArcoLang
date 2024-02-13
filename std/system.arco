@@ -1,4 +1,5 @@
 import win32;
+import reflect.Any;
 
 /*
  * Terminates the application with an exit code.
@@ -13,6 +14,15 @@ fn exit(exit_code int) {
  */
 fn panic(msg cstr) {
     eprintln(msg);
+    exit(1);
+}
+
+/*
+ * Prints a formatted error message to the standard
+ * error stream and terminates the application.
+ */
+fn panic(msg cstr, args Any...) {
+    eprintln(msg, args);
     exit(1);
 }
 

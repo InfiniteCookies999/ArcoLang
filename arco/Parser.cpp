@@ -414,6 +414,16 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
             }
         } while (MoreParams);
     }
+    if (CTok.Is(TokenKind::DOT_DOT)) {
+        Error(CTok, "Did you mean to type ... for variadic arguments?");
+        NextToken();
+    } else if (CTok.Is(TokenKind::DOT_DOT_DOT)) {
+        if (Func->Params.empty()) {
+            Error(Func->Loc, "Cannot variadic arguments without a parameter");
+        }
+        Func->IsVariadic = true;
+        NextToken();
+    }
     Match(')');
 
     if (CTok.IsNot('{') && CTok.IsNot(':') &&

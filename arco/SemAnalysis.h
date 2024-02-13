@@ -89,13 +89,16 @@ namespace arco {
         void CheckFuncCall(FuncCall* Call);
         FuncDecl* CheckCallToCanidates(SourceLoc ErrorLoc,
                                        FuncsList* Canidates,
-                                       llvm::SmallVector<NonNamedValue, 2>& Args);
+                                       llvm::SmallVector<NonNamedValue, 2>& Args,
+                                       bool& VarArgsPassAlong);
         FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
-                                           const llvm::SmallVector<NonNamedValue, 2>& Args);
+                                           const llvm::SmallVector<NonNamedValue, 2>& Args,
+                                           bool& SelectedVarArgsPassAlong);
         bool CompareAsCanidate(FuncDecl* Canidate,
                                const llvm::SmallVector<NonNamedValue, 2>& Args,
                                ulen& NumConflicts,
-                               ulen& EnumImplicitConflicts);
+                               ulen& EnumImplicitConflicts,
+                               bool& CanidateVarArgPassAlong);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue, 2>& Args);
@@ -110,7 +113,8 @@ namespace arco {
         std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
         std::string GetCallMismatchInfo(const llvm::SmallVector<TypeInfo>& ParamTypes,
                                         const llvm::SmallVector<NonNamedValue, 2>& Args,
-                                        ulen NumDefaultArgs);
+                                        ulen NumDefaultArgs,
+                                        bool IsVariadic);
         
         void CheckArray(Array* Arr);
         void CheckArrayAccess(ArrayAccess* Access);

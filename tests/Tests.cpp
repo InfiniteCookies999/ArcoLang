@@ -5,16 +5,32 @@
 #include <Compiler.h>
 
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/ADT/StringSet.h>
 
 #define SRC(x) ARCO_TEST_SOURCE_DIR x
 
 static ulen Failed = 0;
 static ulen Succeeded = 0;
 static llvm::SmallVector<const char*, 4> FailedTests;
+static llvm::StringSet RanTests;
 
 void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
     llvm::outs() << "Testing: \"" << TestSource << "\"\n";
     llvm::outs() << "----------------------------\n";
+
+    // Prevent accidently running a test twice
+    if (RanTests.find(TestSource) != RanTests.end()) {
+        llvm::outs() << "Status:";
+        arco::SetTerminalColor(arco::TerminalColorRed);
+        llvm::outs() << " (FAIL)";
+        arco::SetTerminalColor(arco::TerminalColorDefault);
+        llvm::outs() << " Ran test twice!\n";
+        FailedTests.push_back(TestSource);
+        ++Failed;
+        return;
+    }
+
+    RanTests.insert(TestSource);
 
     llvm::SmallVector<arco::Source> Sources;
     Sources.push_back(arco::Source{ true, "default.program.module", SRC("test_utils.arco") });
@@ -182,6 +198,12 @@ int main() {
     RunTest(SRC("slices/slices4.arco"), "134 55 22 6 42 66 ");
     RunTest(SRC("slices/slices5.arco"), "134 55 22 6");
 
+    RunTest(SRC("varargs/varargs1.arco"), "0");
+    RunTest(SRC("varargs/varargs2.arco"), "2 44 122");
+    RunTest(SRC("varargs/varargs3.arco"), "23 62 11");
+    RunTest(SRC("varargs/varargs4.arco"), "21 665 11");
+    RunTest(SRC("varargs/varargs5.arco"), "31 3");
+    
     //RunTest(SRC("lots_of_errors.arco"), "");
 
     if (Succeeded + Failed > 0) {

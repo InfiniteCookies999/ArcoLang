@@ -59,7 +59,13 @@ restartLex:
     case ']': return CreateToken(']', TokStart);
     case ';': return CreateToken(';', TokStart);
     case ',': return CreateToken(',', TokStart);
-    case '.': return CreateToken('.', TokStart);
+    case '.':
+        if (*CurPtr == '.') {
+            ++CurPtr;
+            if (*CurPtr == '.') return CreateTokenAndEat(TokenKind::DOT_DOT_DOT, TokStart);
+            else                return CreateTokenAndEat(TokenKind::DOT_DOT, TokStart);
+        }
+        else                    return CreateToken('.', TokStart);
     case ':':
         if (*CurPtr == '=')      return CreateTokenAndEat(TokenKind::COL_EQ, TokStart);
         else if (*CurPtr == ':') return CreateTokenAndEat(TokenKind::COL_COL, TokStart);

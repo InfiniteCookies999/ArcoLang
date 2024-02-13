@@ -355,6 +355,8 @@ fn to_string(any Any) String {
 fn any_to_string(value void*, type const Type*) String {
     if type.id == TypeId.CSTR {
         return String{ cast(cstr) value };
+    } else if type.id == TypeId.CHAR {
+        return to_string(*cast(char*) value);
     } else if type.is_int() {
         if type.is_signed() {
             return to_string(*cast(int64*) value);
@@ -372,8 +374,6 @@ fn any_to_string(value void*, type const Type*) String {
         return array_like_type_to_string(value, array_info.element_type, array_info.length);
     } else if type.id == TypeId.BOOL {
         return to_string(*cast(bool*) value);
-    } else if type.id == TypeId.CHAR {
-        return to_string(*cast(char*) value);
     } else if type.id == TypeId.EMPTY_ARRAY_ELM {
         return String{ "[ ]" };
     } else if type.id == TypeId.F32 {

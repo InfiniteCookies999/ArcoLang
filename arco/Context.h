@@ -119,6 +119,7 @@ namespace arco {
         Type* FuncRefType;
         Type* StructRefType;
         Type* EnumRefType;
+        Type* AnyType;
 
         // Maps a binary operator to its precedence.
         llvm::DenseMap<u16, u32> BinaryOpsPrecedence;

@@ -4,7 +4,5 @@ import std.String;
 fn main() {
     std.print("What is your name? ");
     name String = std.read_line();
-    std.print("Hello ");
-    std.print(&name);
-    std.print("!");
+    std.println("Hello %s!", name);
 }

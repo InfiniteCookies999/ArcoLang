@@ -1,0 +1,14 @@
+// -- Test to make sure multiple arguments can
+//    be passed to varargs functions.
+
+fn foo(args int...) {
+    print(args.length);
+    print(" ", 1);
+    print(args[0]);
+    print(" ", 1);
+    print(args[1]);
+}
+
+fn main() {
+    foo(44, 122);
+}

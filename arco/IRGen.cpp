@@ -1859,7 +1859,8 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
             Call,
             CalledFunc,
             Call->Args,
-            LLAddr
+            LLAddr,
+            Call->VarArgsPassAlong
         );
     }
 
@@ -1867,7 +1868,9 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
     llvm::SmallVector<llvm::Value*, 2> LLArgs;
     LLArgs.resize(Call->Args.size());
     ulen ArgIdx = 0;
-    GenFuncCallArgs(ArgIdx, LLArgs, Call->Args);
+    for (ulen i = 0; i < Call->Args.size(); i++) {
+        LLArgs[ArgIdx++] = GenCallArg(Call->Args[i].E);
+    }
     
     llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(
         GenType(Call->Site->Ty)->getPointerElementType());
@@ -1883,7 +1886,8 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    FuncDecl* CalledFunc,
                                                    llvm::SmallVector<NonNamedValue, 2>& Args,
-                                                   llvm::Value* LLAddr) {
+                                                   llvm::Value* LLAddr,
+                                                   bool VarArgsPassAlong) {
     GenFuncDecl(CalledFunc);
     
     if (CalledFunc->LLVMIntrinsicID) {
@@ -1934,8 +1938,43 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         }
     }
 
-    GenFuncCallArgs(ArgIdx, LLArgs, Args);
-    
+    if (!CalledFunc->IsVariadic) {
+        for (ulen i = 0; i < Args.size(); i++) {
+            LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
+        }
+    } else {
+        ulen i = 0;
+        for (; i < CalledFunc->Params.size() - 1; i++) {
+            LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
+        }
+        if (VarArgsPassAlong) {
+            LLArgs[ArgIdx++] = GenRValue(Args[i].E);
+        } else {
+            ulen NumVarArgs = Args.size() - (CalledFunc->Params.size() - 1);
+            VarDecl* LastParam = CalledFunc->Params[CalledFunc->Params.size() - 1];
+
+            // Creating the array that the slice points to.
+            // TODO: could optimize this in case the arguments are constant...
+
+            Type* ElmType = LastParam->Ty->AsSliceTy()->GetElementType();
+            ArrayType* ArrayTy = ArrayType::Create(ElmType, NumVarArgs, Context);
+            llvm::Value* LLArray = CreateUnseenAlloca(GenType(ArrayTy), "tmp.varargs.arr");
+            ulen ArrayIdx = 0;
+            for (; i < Args.size(); i++, ArrayIdx++) {
+                llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx, LLContext, LLModule));
+                Builder.CreateStore(GenCallArg(Args[i].E), LLElmAddr);
+            }
+        
+            llvm::Value* LLVarArgs = CreateUnseenAlloca(GenType(LastParam->Ty), "tmp.varargs");
+            llvm::Value* LLSliceLengthAddr = CreateStructGEP(LLVarArgs, 0);
+            Builder.CreateStore(GetSystemInt(NumVarArgs, LLContext, LLModule), LLSliceLengthAddr);
+            llvm::Value* LLSliceArrPtrAddr = CreateStructGEP(LLVarArgs, 1);
+            Builder.CreateStore(DecayArray(LLArray), LLSliceArrPtrAddr);
+        
+            LLArgs[ArgIdx++] = CreateLoad(LLVarArgs);
+        }
+    }
+
     if (CalledFunc->NumDefaultArgs) {
         for (ulen i = 0; i < CalledFunc->Params.size() - Args.size(); i++) {
             VarDecl* Param = CalledFunc->Params[Args.size() + i];
@@ -1965,18 +2004,17 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     return LLRetValue;
 }
 
-void arco::IRGenerator::GenFuncCallArgs(ulen& ArgIdx,
-                                        llvm::SmallVector<llvm::Value*, 2>& LLArgs,
-                                        llvm::SmallVector<NonNamedValue, 2>& Args) {
-    for (ulen i = 0; i < Args.size(); i++) {
-        LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
-    }
-}
-
 llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
-    if (Arg->CastTy && Arg->CastTy->GetKind() == TypeKind::Struct) {
-        // Cast to any so nothing below applies.
-        return GenRValue(Arg);
+    if (Context.StdAnyStruct) {
+        if (Arg->Ty->Equals(Context.AnyType)) {
+            // Any type is the argument so the destination type
+            // must be Any type.
+            return GenRValue(Arg);
+        }
+        if (Arg->CastTy && Arg->CastTy->GetKind() == TypeKind::Struct) {
+            // Cast to any so nothing below applies.
+            return GenRValue(Arg);
+        }
     }
 
     // TODO: If the object is a struct but not from another call
@@ -2230,7 +2268,8 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
             StructInit,
             StructInit->CalledConstructor,
             StructInit->Args,
-            LLAddr
+            LLAddr,
+            false // TODO!!
         );
         return LLAddr;
     }
@@ -2295,7 +2334,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
             StructType* StructTy = TypeToAlloc->AsStructType();
             StructDecl* Struct = StructTy->GetStruct();
             if (Alloc->CalledConstructor) {
-                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc);
+                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc, false /* TODO!! */);
             } else {
                 if (!Alloc->Values.empty()) {
                     GenStructInitArgs(LLMalloc, Struct, Alloc->Values);
@@ -2652,6 +2691,12 @@ void arco::IRGenerator::GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArr
 
 void arco::IRGenerator::GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type* ValueTy) {
     
+    if (ValueTy->Equals(Context.AnyType)) {
+        // TODO: performance?
+        Builder.CreateStore(CreateLoad(LLValue), LLAny);
+        return;
+    }
+
     llvm::Value* LLTypeFieldAddr = CreateStructGEP(LLAny, 0);
     // Just point directly to the global variable no need to copy since
     // we cannot it is declared as constant.
@@ -3223,7 +3268,9 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr
     } else if (AddrTy->GetKind() == TypeKind::Slice) {
         if (Value->Ty->GetKind() == TypeKind::Array) {
             GenArrayToSlice(LLAddress, GenNode(Value), Value->CastTy, Value->Ty);
-        } // TODO: deal with case in which there is a slice is being assigned to another slice.
+        } else {
+            GenSliceToSlice(LLAddress, Value);
+        }
     } else {
         llvm::Value* LLAssignment = GenRValue(Value);
         // -- DEBUG
@@ -3279,6 +3326,12 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
     } else {
         Builder.CreateStore(GenZeroedValue(Ty), LLAddr);
     }
+}
+
+void arco::IRGenerator::GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment) {
+    // TODO: Performance: may be better to call GenNode and redirect the data
+    // if it is a pointer otherwise store.
+    Builder.CreateStore(GenRValue(Assignment), LLToAddr);
 }
 
 void arco::IRGenerator::CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy) {

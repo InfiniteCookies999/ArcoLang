@@ -1,0 +1,17 @@
+// -- Test to make sure varargs functions
+//    can call other varargs functions with
+//    the varargs parameter.
+
+fn foo1(args int...) {
+    print(args[0]);
+    print(" ", 1);
+    print(args[1]);
+}
+
+fn foo(args int...) {
+    foo1(args);
+}
+
+fn main() {
+    foo(31, 3);
+}

@@ -242,6 +242,7 @@ namespace arco {
         bool ReturnsConstAddress = false;
         bool IsDestructor        = false;
         bool IsCopyConstructor   = false;
+        bool IsVariadic          = false;
 
         // Non-nullptr if the function is a member function.
         StructDecl* Struct = nullptr;
@@ -432,6 +433,9 @@ namespace arco {
         // runtime to determine the expression's
         // result.
         bool IsFoldable = true;
+        // If true then calling a varargs function from a varargs
+        // function which passes it's varargs.
+        bool VarArgsPassAlong;
 
         // If the expression results in an lvalue
         // for an address marked const then this

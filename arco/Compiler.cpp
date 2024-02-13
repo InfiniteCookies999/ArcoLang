@@ -408,6 +408,7 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdArrayTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.ArrayTypeIdentifier);
     Context.StdStructTypeStruct  = FindStdLibStruct(ReflectNamespace, Context.StructTypeIdentifier);
     Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);
+    Context.AnyType              = StructType::Create(Context.StdAnyStruct, Context);
 
     return NumErrs == TotalAccumulatedErrors;
 }
