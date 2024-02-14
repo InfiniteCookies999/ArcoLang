@@ -82,7 +82,34 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& OS, const LLTypePrinter& Printe
     return OS;
 }
 
+bool arco::FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes) {
+    return StructTy->GetStruct()->NeedsDestruction ||
+        SizeInBytes > LLModule.getDataLayout().getPointerSize();
+}
 
+bool arco::FuncUsesParamRetSlot(ArcoContext& Context, StructType* StructTy) {
+    ulen SizeInBytes = SizeOfTypeInBytes(Context.LLArcoModule, GenStructType(Context, StructTy->GetStruct()));
+    return FuncUsesParamRetSlot(Context.LLArcoModule,
+                                StructTy,
+                                SizeInBytes);
+}
+
+ulen arco::SizeOfTypeInBytes(llvm::Module& LLModule, llvm::Type* LLType) {
+    const llvm::DataLayout& LLDataLayout = LLModule.getDataLayout();
+    llvm::TypeSize LLTypeSize = LLDataLayout.getTypeAllocSize(LLType);
+    return LLTypeSize.getFixedSize();
+}
+
+ulen NextPow2(ulen V) {
+    --V;
+    V |= V >> 1;
+    V |= V >> 2;
+    V |= V >> 4;
+    V |= V >> 8;
+    V |= V >> 16;
+    V++;
+    return V;
+};
 
 llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
     llvm::LLVMContext& LLContext = Context.LLContext;
@@ -129,13 +156,34 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
         FunctionType* FuncTy = Ty->AsFunctionType();
         llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
         
-        llvm::Type* LLRetType = GenType(Context, FuncTy->RetTyInfo.Ty);
 
+        bool UsesParamRetSlot = false;
+        Type* RetTy = FuncTy->RetTyInfo.Ty;
+        llvm::Type* LLRetType;
+        llvm::StructType* LLStructType;
+        if (RetTy->GetKind() == TypeKind::Struct) {
+            StructType* StructTy = RetTy->AsStructType();
+            LLStructType = GenStructType(Context, StructTy->GetStruct());
+            ulen SizeInBytes = SizeOfTypeInBytes(Context.LLArcoModule, LLStructType);
+            UsesParamRetSlot = FuncUsesParamRetSlot(Context.LLArcoModule, RetTy->AsStructType(), SizeInBytes);
+            if (UsesParamRetSlot) {
+                LLRetType = llvm::Type::getVoidTy(LLContext);
+            } else {
+                LLRetType = llvm::Type::getIntNTy(LLContext, NextPow2(SizeInBytes) * 8); // *8 because bits
+            }
+        } else {
+            LLRetType = GenType(Context, RetTy);
+        }
+        
         // TODO: This relies on the calling convention so there will need
         // to be a way to attach calling convention information to the type
         // so that the compiler knows how to properly pass parameters.
         //
         // For now it just conforms to arco's way of handling parameters.
+        if (UsesParamRetSlot) {
+            LLParamTypes.push_back(llvm::PointerType::get(LLStructType, 0));
+        }
+
         for (TypeInfo ParamTyInfo : FuncTy->ParamTypes) {
             Type* Ty = ParamTyInfo.Ty;
             if (Ty->GetKind() == TypeKind::Array) {
@@ -337,22 +385,10 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
         StructType* StructTy = Func->RetTy->AsStructType();
         
         ulen SizeInBytes = SizeOfTypeInBytes(GenStructType(StructTy));
-        if (!StructTy->GetStruct()->NeedsDestruction &&
-            SizeInBytes <= LLModule.getDataLayout().getPointerSize()) {
+        if (!FuncUsesParamRetSlot(LLModule, StructTy, SizeInBytes)) {
             // Return type is optimized to fit into an integer.
-            auto NextPow2 = [](ulen V) {
-                --V;
-                V |= V >> 1;
-                V |= V >> 2;
-                V |= V >> 4;
-                V |= V >> 8;
-                V |= V >> 16;
-                V++;
-                return V;
-            };
             Func->UsesOptimizedIntRet = true;
             LLRetTy = llvm::Type::getIntNTy(LLContext, NextPow2(SizeInBytes) * 8); // *8 because bits
-
         } else {
             // Copy elision case by passing return value as param.
             Func->UsesParamRetSlot = true;
@@ -1865,9 +1901,22 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
     }
 
     // Making a call on a variable instead.
+    ulen NumArgs = Call->Args.size();
+
+    bool UsesParameterRetSlot = false;
+    if (Call->Ty->GetKind() == TypeKind::Struct) {
+        StructType* StructTy = Call->Ty->AsStructType();
+        UsesParameterRetSlot = FuncUsesParamRetSlot(Context, Call->Ty->AsStructType());
+    }
+
     llvm::SmallVector<llvm::Value*, 2> LLArgs;
-    LLArgs.resize(Call->Args.size());
+    LLArgs.resize(Call->Args.size() + (UsesParameterRetSlot ? 1 : 0));
     ulen ArgIdx = 0;
+    
+    if (UsesParameterRetSlot) {
+        LLArgs[ArgIdx++] = GenFuncCallParamRetSlot(Call->Ty, LLAddr);
+    }
+    
     for (ulen i = 0; i < Call->Args.size(); i++) {
         LLArgs[ArgIdx++] = GenCallArg(Call->Args[i].E);
     }
@@ -1905,7 +1954,6 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     llvm::SmallVector<llvm::Value*, 2> LLArgs;
     LLArgs.resize(NumArgs);
 
-    // TODO: This stuff probably also belongs where we call variables.
     ulen ArgIdx = 0;
     if (CalledFunc->Struct) {
         if (CalledFunc->IsConstructor) {
@@ -1926,16 +1974,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         }
     }
     if (CalledFunc->UsesParamRetSlot) {
-        if (LLAddr) {
-            LLArgs[ArgIdx++] = LLAddr;
-        } else {
-            // Strange, but the user has decided to ignore
-            // the return value so a temporary object needs
-            // to be created.
-            LLAddr = CreateUnseenAlloca(GenType(CallNode->Ty), "ignored.ret");
-            AddObjectToDestroyOpt(CallNode->Ty, LLAddr);
-            LLArgs[ArgIdx++] = LLAddr;
-        }
+        LLArgs[ArgIdx++] = GenFuncCallParamRetSlot(CallNode->Ty, LLAddr);
     }
 
     if (!CalledFunc->IsVariadic) {
@@ -2002,6 +2041,18 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         LLRetValue->setName("ret.val");
     }
     return LLRetValue;
+}
+
+llvm::Value* arco::IRGenerator::GenFuncCallParamRetSlot(Type* RetTy, llvm::Value* LLAddr) {
+    if (!LLAddr) {
+        // Strange, but the user has decided to ignore
+        // the return value so a temporary object needs
+        // to be created.
+        LLAddr = CreateUnseenAlloca(GenType(RetTy), "ignored.ret");
+        AddObjectToDestroyOpt(RetTy, LLAddr);
+    }
+    
+    return LLAddr;
 }
 
 llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
@@ -2938,12 +2989,6 @@ llvm::GlobalVariable* arco::IRGenerator::GenConstGlobalArray(llvm::Constant* LLA
     return LLGlobalVar;
 }
 
-inline ulen arco::IRGenerator::SizeOfTypeInBytes(llvm::Type* LLType) {
-    const llvm::DataLayout& LLDataLayout = LLModule.getDataLayout();
-    llvm::TypeSize LLTypeSize = LLDataLayout.getTypeAllocSize(LLType);
-    return LLTypeSize.getFixedSize();
-}
-
 inline llvm::Align arco::IRGenerator::GetAlignment(llvm::Type* LLType) {
     return llvm::Align(LLModule.getDataLayout().getPrefTypeAlignment(LLType));
 }
@@ -3274,7 +3319,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr
     } else {
         llvm::Value* LLAssignment = GenRValue(Value);
         // -- DEBUG
-        // llvm::outs() << "Address Type: " << LLValTypePrinter(LLAddress) << " Assignment Type: " << LLValTypePrinter(LLAssignment);
+        // llvm::outs() << "Address Type: " << LLValTypePrinter(LLAddress) << " Assignment Type: " << LLValTypePrinter(LLAssignment) << "\n";
         Builder.CreateStore(LLAssignment, LLAddress);
     }
 }

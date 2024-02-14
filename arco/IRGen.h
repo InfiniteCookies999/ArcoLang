@@ -11,7 +11,12 @@ namespace arco {
 
     llvm::Type* GenType(ArcoContext& Context, Type* Ty);
     llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
-    
+
+    bool FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes);
+    bool FuncUsesParamRetSlot(ArcoContext& Context, StructType* StructTy);
+
+    ulen SizeOfTypeInBytes(llvm::Module& LLModule, llvm::Type* LLType);
+
     class IRGenerator {
     public:
 
@@ -125,6 +130,7 @@ namespace arco {
                                         llvm::SmallVector<NonNamedValue, 2>& Args,
                                         llvm::Value* LLAddr,
                                         bool VarArgsPassAlong);
+        llvm::Value* GenFuncCallParamRetSlot(Type* RetTy, llvm::Value* LLAddr);
         llvm::Value* GenCallArg(Expr* Arg);
         llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
         ArrayType* GetGenArrayDestType(Array* Arr);
@@ -189,7 +195,9 @@ namespace arco {
         llvm::GlobalVariable* GenLLVMGlobalVariable(llvm::StringRef Name, llvm::Type* LLType);
         llvm::GlobalVariable* GenConstGlobalArray(llvm::Constant* LLArray, bool DSOLocal = true);
 
-        inline ulen SizeOfTypeInBytes(llvm::Type* LLType);
+        inline ulen SizeOfTypeInBytes(llvm::Type* LLType) {
+            return arco::SizeOfTypeInBytes(LLModule, LLType);
+        }
         inline llvm::Align GetAlignment(llvm::Type* LLType);
 
         llvm::Value* GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal);
