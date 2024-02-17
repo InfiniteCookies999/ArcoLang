@@ -225,6 +225,10 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         Error(Func, "Only constructors can use keyword moveobj to indicate it is a move constructor");
     }
 
+    if (!Func->IsConstructor && Func->Struct && Func->Name == Func->Struct->Name) {
+        Error(Func, "Cannot name member functions the same name as a constructor");
+    }
+
     CheckFuncParams(Func);
     if (Func->RetTy->GetKind() == TypeKind::Array) {
         Error(Func, "Functions cannot return arrays");

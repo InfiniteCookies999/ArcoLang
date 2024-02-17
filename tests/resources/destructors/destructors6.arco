@@ -1,6 +1,6 @@
 
 A struct {
-    fn ~A() {
+    ~A() {
         print("Destroyed! ", 11);
     }
 }

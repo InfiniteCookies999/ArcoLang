@@ -3,7 +3,7 @@
 A struct {
     v int;
 
-    fn A(iv int) {
+    A(iv int) {
         v = iv;
     }
 }

@@ -2,7 +2,7 @@
 A struct {
     v int;
 
-    fn ~A() {
+    ~A() {
         print("Destroyed!", 10);
         print(v);
     }

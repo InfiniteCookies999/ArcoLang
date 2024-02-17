@@ -22,7 +22,7 @@ LineStream struct {
     // TODO: Do not support move operators yet to implement this
     // correctly. fn LineStream(in InStream) {}
 
-    fn LineStream(handle void*, auto_close := true)
+    LineStream(handle void*, auto_close := true)
         : handle(FileHandle{handle, auto_close}){
     }
 

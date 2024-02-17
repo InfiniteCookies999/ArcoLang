@@ -7,24 +7,24 @@ String struct {
     length int;
     buffer char*;
 
-    fn ~String() {
+    ~String() {
         delete buffer;
-        buffer = null;
         length = 0;
+        buffer = null;
     }
 
     /*
      * Defaults to having zero length.
      */
-    fn String() {
-        
+    String() {
+
     }
 
     /*
      * Creates a string from a null terminated
      * character buffer.
      */
-    fn String(buffer cstr) {
+    String(buffer cstr) {
         this.length = strlen(buffer);
         this.buffer = new char[length + 1]; // +1 for null terminator.
         memcpy(this.buffer, buffer, length + 1);
@@ -39,7 +39,7 @@ String struct {
      * If the buffer is null terminated do not include
      * the null termination in the length.
      */
-    fn String(buffer cstr, length int) {
+    String(buffer cstr, length int) {
         if length < 0 {
             panic("String length length < 0");
         }
@@ -64,7 +64,7 @@ String struct {
      *                    the buffer is assumed to be already
      *                    allocated and null terminated.
      */
-    fn String(buffer char*, length int, copy_buffer bool = true) {
+    String(buffer char*, length int, copy_buffer := true) {
         if length < 0 {
             panic("String length length < 0");
         }
@@ -79,14 +79,18 @@ String struct {
         }
     }
 
-    /*
-     * Copy constructor.
-     */
-    fn copyobj String(string String*) {
+    String copyobj(string String*) {
         this.length = string.length;
         this.buffer = new char[length + 1]; // +1 for null terminator.
         memcpy(this.buffer, string.buffer, length);
         this.buffer[length] = '\0';
+    }
+
+    String moveobj(string String*) {
+        this.length = string.length;
+        this.buffer = string.buffer;
+        string.length = 0;
+        string.buffer = null;
     }
 
     /*

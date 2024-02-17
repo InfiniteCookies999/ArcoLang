@@ -2,7 +2,7 @@
 Foo1 struct {
     a int;
     b int;
-    fn Foo1(a int, b int) {
+    Foo1(a int, b int) {
         this.a = a;
         this.b = b;
     }

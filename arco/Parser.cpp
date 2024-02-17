@@ -289,6 +289,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:
     case TokenKind::KW_DLLIMPORT: {
+        // TODO: constructors!
         Modifiers Mods = ParseModifiers();
         if (CTok.Is(TokenKind::KW_FN)) {
             return ParseFuncDecl(Mods);
@@ -309,6 +310,11 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_FN:
         return ParseFuncDecl(0);
     case TokenKind::IDENT: {
+        if (CStruct && Identifier(CTok.GetText()) == CStruct->Name) {
+            Stmt = ParseFuncDecl(0);
+            break;
+        }
+
         switch (PeekToken(1).Kind) {
         case IDENT:
         case TYPE_KW_START_CASES:
@@ -335,6 +341,20 @@ arco::AstNode* arco::Parser::ParseStmt() {
         }
         break;
     }
+    case '~': {
+        Token PeekTok = PeekToken(1);
+        if (PeekTok.Is(TokenKind::IDENT)) {
+            if (CStruct && Identifier(PeekTok.GetText()) == CStruct->Name) {
+                // Destructor.
+                Stmt = ParseFuncDecl(0);
+                break;
+            }
+        }
+        
+        Stmt = ParseAssignmentAndExprs();
+        Match(';');
+        break;
+    }
     case '{':
         Stmt = ParseNestedScope();
         break;
@@ -350,40 +370,48 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
     
     ulen NumErrs = TotalAccumulatedErrors;
 
-    NextToken(); // Consuming 'fn' keyword.
-
     FuncDecl* Func = NewNode<FuncDecl>(CTok);
-    if (CTok.Is(TokenKind::KW_COPYOBJ)) {
-        NextToken(); // Consuming 'copyobj' keyword.
-        Func->IsCopyConstructor = true;
-    } else if (CTok.Is(TokenKind::KW_MOVEOBJ)) {
-        NextToken(); // Consuming 'moveobj' keyword.
-        Func->IsMoveConstructor = true;
-    }
-
-    if (CTok.Is('(')) {
-        NextToken();
-        Token Tok = CTok;
-        Identifier CallingConv = ParseIdentifier("Expected identifier for calling convention");
-        if (!CallingConv.IsNull()) {
-            auto Itr = Context.CallConventions.find(CallingConv);
-            if (Itr == Context.CallConventions.end()) {
-                Error(Tok, "%s is not a valid calling convention", CallingConv);
+    if (CTok.Is(TokenKind::KW_FN)) {
+        NextToken(); // Consuming 'fn' keyword.
+        Func->Loc = CTok.Loc;
+        if (CTok.Is('(')) {
+            NextToken();
+            Token Tok = CTok;
+            Identifier CallingConv = ParseIdentifier("Expected identifier for calling convention");
+            if (!CallingConv.IsNull()) {
+                auto Itr = Context.CallConventions.find(CallingConv);
+                if (Itr == Context.CallConventions.end()) {
+                    Error(Tok, "%s is not a valid calling convention", CallingConv);
+                }
             }
+            Match(')', "Expected for calling convention");
+            Func->CallingConv = CallingConv;
         }
-        Match(')', "Expected for calling convention");
-        Func->CallingConv = CallingConv;
+    } else {
+        // Constructor/Destructor.
+        if (!CTok.Is('~')) {
+            Func->Loc = CTok.Loc;
+            Func->IsConstructor = true;
+        } else {
+            NextToken();
+            Func->Loc = CTok.Loc;
+            Func->IsDestructor = true;
+        }
     }
 
     Func->Mod        = Mod;
     Func->FScope     = FScope;
-    if (CTok.Is('~')) {
-        // The function is a destructor.
-        NextToken(); // Consuming '~' token.
-        Func->IsDestructor = true;
-    }
     Token      NameTok = CTok;
     Identifier Name    = ParseIdentifier("Expected identifier for function declaration");
+    if (Func->IsConstructor) {
+        if (CTok.Is(TokenKind::KW_COPYOBJ)) {
+            NextToken(); // Consuming 'copyobj' keyword.
+            Func->IsCopyConstructor = true;
+        } else if (CTok.Is(TokenKind::KW_MOVEOBJ)) {
+            NextToken(); // Consuming 'moveobj' keyword.
+            Func->IsMoveConstructor = true;
+        }
+    }
     if (Func->IsDestructor) {
         llvm::StringRef DestructorName =
             llvm::StringRef(NameTok.Loc.Text.begin() - 1, NameTok.GetText().size() + 1);
@@ -647,6 +675,9 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
 
     Context.UncheckedDecls.insert(Struct);
 
+    StructDecl* PrevStruct = CStruct;
+    CStruct = Struct;
+
     auto ProcessField = [=](VarDecl* Field) {
         if (!Field->Name.IsNull()) {
             Field->FieldIdx = Struct->Fields.size();
@@ -683,9 +714,8 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
                     Struct->Destructor = Func;
                 }
                 
-                if (Func->Name == Struct->Name) {
+                if (Func->IsConstructor) {
                     // TODO: Should it also go into the Funcs list?
-                    Func->IsConstructor = true;
                     if (Func->IsCopyConstructor) {
                         if (Struct->CopyConstructor) {
                             Error(Func->Loc, "Duplicate copy constructor");
@@ -719,6 +749,8 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
     if (NumErrs != TotalAccumulatedErrors) {
         Struct->ParsingError = true;
     }
+
+    CStruct = PrevStruct;
 
     return Struct;
 }

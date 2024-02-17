@@ -2,7 +2,7 @@
 Bar struct {
     a int;
 
-    fn Bar(a int) {
+    Bar(a int) {
         this.a = a;
     }
 }
@@ -10,7 +10,7 @@ Bar struct {
 Foo struct {
     bar Bar;
     b int;
-    fn Foo(bar Bar, b int)
+    Foo(bar Bar, b int)
         : bar(bar), b(b) {
     }
 }

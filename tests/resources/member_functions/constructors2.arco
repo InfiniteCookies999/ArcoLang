@@ -4,7 +4,7 @@
 
 MyStruct struct {
     a int;
-    fn MyStruct() {
+    MyStruct() {
         a = 55;
     }
 }

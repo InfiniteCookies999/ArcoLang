@@ -45,8 +45,8 @@ namespace arco {
         ulen  SavedTokensCount = 0;
         Token SavedTokens[MAX_SAVED_TOKENS];
 
-        // Current declaration being parsed.
-        Decl*       CDecl   = nullptr;
+        // The current structure being parsed.
+        StructDecl* CStruct = nullptr;
         // Current function being parsed.
         FuncDecl*   CFunc   = nullptr;
 

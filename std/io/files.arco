@@ -39,17 +39,17 @@ FileHandle struct {
     handle     void*;
     auto_close bool;
     
-    fn FileHandle(handle void*, auto_close := true) {
+    FileHandle(handle void*, auto_close := true) {
         this.handle     = handle;
         this.auto_close = auto_close;
     }
     
-    fn moveobj FileHandle(fhandle FileHandle*) {
+    FileHandle moveobj(fhandle FileHandle*) {
         this.handle = fhandle.handle;
         fhandle.handle = null;
     }
     
-    fn ~FileHandle() {
+    ~FileHandle() {
         if auto_close {
             close();
         }

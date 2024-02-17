@@ -20,7 +20,7 @@ BufferedStream struct {
     // Position offset into the buffer.
     pos           := 0;
     
-    fn BufferedStream(path cstr, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
+    BufferedStream(path cstr, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
         : handle(files.open(path, io_flags)) {
         if buffer_size < 0 {
             panic("buffer_size < 0");
@@ -82,7 +82,7 @@ BufferedStream struct {
         return amount_read;
     }
     
-    fn ~BufferedStream() {
+    ~BufferedStream() {
         delete buffer;
     }
     

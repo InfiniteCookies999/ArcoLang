@@ -13,7 +13,7 @@ OutStream struct {
     //       and be a any writable handle instead.
     handle FileHandle;
 
-    fn OutStream(handle void*, auto_close := true)
+    OutStream(handle void*, auto_close := true)
         : handle(FileHandle{handle, auto_close}) {
     }
 

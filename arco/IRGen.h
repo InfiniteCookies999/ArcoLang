@@ -267,7 +267,8 @@ namespace arco {
 
         void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr);
 
-        llvm::Value* GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
+        llvm::Value* GenLLVMIntrinsicCall(SourceLoc CallLoc,
+                                          FuncDecl* CalledFunc,
                                           const llvm::SmallVector<NonNamedValue, 2>& Args);
 
         inline DebugInfoEmitter* GetDIEmitter(Decl* D) {

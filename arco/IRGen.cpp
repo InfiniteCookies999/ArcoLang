@@ -2077,7 +2077,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     GenFuncDecl(CalledFunc);
     
     if (CalledFunc->LLVMIntrinsicID) {
-        return GenLLVMIntrinsicCall(CalledFunc, Args);
+        return GenLLVMIntrinsicCall(CallNode->Loc, CalledFunc, Args);
     }
 
     ulen NumArgs = CalledFunc->Params.size();
@@ -3187,7 +3187,7 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
 
 void arco::IRGenerator::MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct) {
     GenFuncDecl(Struct->MoveConstructor);
-    Builder.CreateCall(Struct->CopyConstructor->LLFunction, { LLFromAddr, LLToAddr });
+    Builder.CreateCall(Struct->CopyConstructor->LLFunction, { LLToAddr, LLFromAddr });
 }
 
 void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct) {
@@ -3639,38 +3639,45 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 // For reference:
 // https://github.com/llvm/llvm-project/blob/main/clang/lib/CodeGen/CGBuiltin.cpp
 // https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
-llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
+llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
+                                                     FuncDecl* CalledFunc,
                                                      const llvm::SmallVector<NonNamedValue, 2>& Args) {
     // TODO: may want to verify the function definition is correct as to not cause an error.
 #define CALL_GET_DECL1(Name)                                          \
 llvm::Value* Arg0 = GenRValue(Args[0].E);                             \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(			  \
             &LLModule, llvm::Intrinsic::##Name, { Arg0->getType() }); \
-return Builder.CreateCall(LLFunc, Arg0);
+LLCall = Builder.CreateCall(LLFunc, Arg0);                            \
+break;
+
 #define CALL_GET_DECL2(Name)                                                           \
 llvm::Value* Arg0 = GenRValue(Args[0].E);                                              \
 llvm::Value* Arg1 = GenRValue(Args[1].E);                                              \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(                              \
             &LLModule, llvm::Intrinsic::##Name, { Arg0->getType(), Arg1->getType() }); \
-return Builder.CreateCall(LLFunc, { Arg0, Arg1 });
+LLCall = Builder.CreateCall(LLFunc, { Arg0, Arg1 });                                   \
+break;
     
+    llvm::Instruction* LLCall;
     switch (CalledFunc->LLVMIntrinsicID) {
     case llvm::Intrinsic::memcpy: {
         llvm::Align LLAlignment = llvm::Align();
-        return Builder.CreateMemCpy(
+        LLCall = Builder.CreateMemCpy(
             GenRValue(Args[0].E), LLAlignment,
             GenRValue(Args[1].E), LLAlignment,
             GenRValue(Args[2].E)
         );
+        break;
     }
     case llvm::Intrinsic::memset: {
         llvm::Align LLAlignment = llvm::Align();
-        return Builder.CreateMemSet(
+        LLCall = Builder.CreateMemSet(
             GenRValue(Args[0].E),
             GenRValue(Args[1].E),
             GenRValue(Args[2].E),
             LLAlignment
         );
+        break;
     }
     case llvm::Intrinsic::floor: {
         CALL_GET_DECL1(floor);
@@ -3696,11 +3703,15 @@ return Builder.CreateCall(LLFunc, { Arg0, Arg1 });
     case llvm::Intrinsic::cos: {
         CALL_GET_DECL1(cos);
     }
-    }
+    default:
     assert(!"Failed to implement intrinsic");
+        break;
+    }
+    
+    EMIT_DI(EmitDebugLocation(CallLoc));
 #undef CALL_GET_DECL1
 #undef CALL_GET_DECL2
-    return nullptr;
+    return LLCall;
 }
 
 void arco::IRGenerator::EmitDebugLocation(SourceLoc Loc) {
