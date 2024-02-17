@@ -841,6 +841,7 @@ arco::AstNode* arco::Parser::ParseLoop() {
         return ParseRangeLoop(LoopTok);
     } else if (CTok.Is(TokenKind::IDENT)) { // loop i ... {}
         switch (PeekToken(1).Kind) {
+        case TokenKind::IDENT:
         case TYPE_KW_START_CASES:
         case TokenKind::KW_CONST: {
             PUSH_SCOPE();
@@ -852,6 +853,10 @@ arco::AstNode* arco::Parser::ParseLoop() {
                 return ParseRangeLoop(LoopTok);
             }
             break;
+        }
+        case ':': {
+            PUSH_SCOPE();
+            return ParseIteratorLoop(LoopTok);
         }
         case TokenKind::COL_EQ:
         case TokenKind::COL_COL: {
@@ -890,6 +895,14 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
     if (CTok.IsNot('{')) {
         AllowStructInitializer = false;
         Loop->Cond = ParseExpr();
+        if (CTok.Is(TokenKind::DOT_DOT) || CTok.Is(TokenKind::DOT_DOT_LT)) {
+            Range* Rg = NewNode<Range>(CTok);
+            Rg->Op = CTok.Kind;
+            NextToken(); // Consuming '..' token.
+            Rg->LHS = Loop->Cond;
+            Rg->RHS = ParseExpr();
+            Loop->Cond = Rg;
+        }
         AllowStructInitializer = true;
     }
 
@@ -934,13 +947,29 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
     IteratorLoopStmt* Loop = NewNode<IteratorLoopStmt>(LoopTok);
 
+    
     // TODO: Deal with multiple declarations.
-    Loop->VarVal = SingleVarDeclList->List[0];
-    SingleVarDeclList->List.clear();
+    if (!SingleVarDeclList->List.empty()) {
+        Loop->VarVal = SingleVarDeclList->List[0];
+        SingleVarDeclList->List.clear();
+    } else if (CTok.Is(TokenKind::IDENT)) {
+        // Infered type.
+        Loop->VarVal = CreateVarDecl(CTok, Identifier(CTok.GetText()), 0);
+        Loop->VarVal->Ty = nullptr;
+        NextToken();
+    }
 
     Match(':', "for iteration loop");
     AllowStructInitializer = false;
     Loop->IterOnExpr = ParseExpr();
+    if (CTok.Is(TokenKind::DOT_DOT) || CTok.Is(TokenKind::DOT_DOT_LT)) {
+        Range* Rg = NewNode<Range>(CTok);
+        Rg->Op = CTok.Kind;
+        NextToken(); // Consuming '..' token.
+        Rg->LHS = Loop->IterOnExpr;
+        Rg->RHS = ParseExpr();
+        Loop->IterOnExpr = Rg;
+    }
     AllowStructInitializer = true;
 
     // PUSH_SCOPE(); -- Called in ParseLoop

@@ -966,6 +966,11 @@ llvm::Value* arco::IRGenerator::GenLoopControl(LoopControlStmt* LoopControl) {
 }
 
 llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
+
+    if (Loop->Cond->Is(AstKind::RANGE)) {
+        return GenRangeExprLoop(static_cast<Range*>(Loop->Cond), Loop->Scope, nullptr);
+    }
+
     llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "loop.end", LLFunc);
     llvm::BasicBlock* LLBodyBB = llvm::BasicBlock::Create(LLContext, "loop.body", LLFunc);
     llvm::BasicBlock* LLCondBB = llvm::BasicBlock::Create(LLContext, "loop.cond", LLFunc);
@@ -991,6 +996,81 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     GenBranchIfNotTerm(LLEndBB);
     Builder.SetInsertPoint(LLEndBB);
     
+    return nullptr;
+}
+
+llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, VarDecl* CaptureVar) {
+
+    llvm::BasicBlock* LLEndBB      = llvm::BasicBlock::Create(LLContext, "loop.end", LLFunc);
+    llvm::BasicBlock* LLBodyBB     = llvm::BasicBlock::Create(LLContext, "loop.body", LLFunc);
+    llvm::BasicBlock* LLIncBB      = llvm::BasicBlock::Create(LLContext, "loop.inc", LLFunc);
+    llvm::BasicBlock* LLCondBB     = llvm::BasicBlock::Create(LLContext, "loop.cond", LLFunc);
+    llvm::BasicBlock* LLContinueBB = LLIncBB;
+
+    LoopBreakStack.push_back(LLEndBB);
+    LoopContinueStack.push_back(LLContinueBB);
+
+    llvm::Value* LLIndex;
+    if (CaptureVar) {
+        LLIndex = CaptureVar->LLAddress;
+    } else {
+        LLIndex = CreateUnseenAlloca(GenType(Rg->Ty), "tmp.loop.index");
+    }
+    Builder.CreateStore(GenRValue(Rg->LHS), LLIndex);
+
+    PUSH_SCOPE();
+    LocScope->IsLoopScope = true;
+    
+    // Generating the condition block
+    Builder.CreateBr(LLCondBB);
+    Builder.SetInsertPoint(LLCondBB);
+
+    llvm::Value* LLIndexValue = CreateLoad(LLIndex);
+    llvm::Value* LLRHS, *LLCond;
+    if (Rg->Op == TokenKind::DOT_DOT) {
+        //..
+        LLRHS = Builder.CreateAdd(GenRValue(Rg->RHS), GetOneValue(Rg->Ty), "one.more");
+    } else {
+        // ..<
+        LLRHS = GenRValue(Rg->RHS);
+    }
+    // Use less than because RHS might start out less in some cases and we do
+    // not want to infinite loop.
+    if (Rg->Ty->IsSigned()) {
+        LLCond = Builder.CreateICmpSLT(LLIndexValue, LLRHS);
+    } else {
+        LLCond = Builder.CreateICmpULT(LLIndexValue, LLRHS);
+    }
+
+    Builder.CreateCondBr(LLCond, LLBodyBB, LLEndBB);
+
+    GenBlock(LLBodyBB, LScope.Stmts);
+    POP_SCOPE();
+
+    LoopBreakStack.pop_back();
+    LoopContinueStack.pop_back();
+
+    // Unconditionally branch back to the condition or inc. block
+    // to restart the loop.
+    GenBranchIfNotTerm(LLContinueBB);
+
+    // Creating the code for the inc. block if needed
+    if (LLIncBB) {
+
+        Builder.SetInsertPoint(LLIncBB);
+        
+        // Increment the index.
+        llvm::Value* LLIndexValue = CreateLoad(LLIndex);
+        LLIndexValue = Builder.CreateAdd(LLIndexValue, GetOneValue(Rg->Ty), "inc");
+        Builder.CreateStore(LLIndexValue, LLIndex);
+
+        // Jumping directly into the loop condition
+        Builder.CreateBr(LLCondBB); // No need to check for terminal since expressions cannot jump.
+    }
+
+    GenBranchIfNotTerm(LLEndBB);
+    Builder.SetInsertPoint(LLEndBB);
+
     return nullptr;
 }
 
@@ -1050,6 +1130,10 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 
 llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
 
+    if (Loop->IterOnExpr->Is(AstKind::RANGE)) {
+        return GenRangeExprLoop(static_cast<Range*>(Loop->IterOnExpr), Loop->Scope, Loop->VarVal);
+    }
+
     llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "loop.end", LLFunc);
     llvm::BasicBlock* LLBodyBB = llvm::BasicBlock::Create(LLContext, "loop.body", LLFunc);
     llvm::BasicBlock* LLIncBB  = llvm::BasicBlock::Create(LLContext, "loop.inc", LLFunc);
@@ -1089,11 +1173,16 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     GenBranchIfNotTerm(LLBodyBB);
     Builder.SetInsertPoint(LLBodyBB);
 
+    // TODO: Optimize, can't this just have the variable's address be what indexes instead of needing
+    // a seperate pointer to point to the array and iterator when working with pointer types?
+
     // TODO: Optimize this for storing arrays so that it doesn't copy then entire array
     //       every iteration if iterating on arrays.
     // Storing into the variable
     llvm::Value* LLArrPtrValue = CreateLoad(LLArrItrPtrAddr);
     LLArrPtrValue = LoadIteratorLoopValueIfNeeded(LLArrPtrValue, Loop->VarVal->Ty, ContainerTy->GetElementType());
+    // TODO: Doesn't this need to cast since SemAnalysis uses IsAssignableTo?
+    
     Builder.CreateStore(LLArrPtrValue, Loop->VarVal->LLAddress);
 
     PUSH_SCOPE();
@@ -1648,45 +1737,6 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 
 llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
     
-    auto GetOneValue = [](Type* Ty, llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
-        llvm::Value* LLOne = nullptr;
-        switch (Ty->GetKind()) {
-        case TypeKind::Int8:
-        case TypeKind::Char:
-            LLOne = GetLLInt8(1, LLContext);
-            break;
-        case TypeKind::UnsignedInt8:
-            LLOne = GetLLUInt8(1, LLContext);
-            break;
-        case TypeKind::Int16:
-            LLOne = GetLLInt16(1, LLContext);
-            break;
-        case TypeKind::UnsignedInt16:
-            LLOne = GetLLUInt16(1, LLContext);
-            break;
-        case TypeKind::Int32:
-            LLOne = GetLLInt32(1, LLContext);
-            break;
-        case TypeKind::UnsignedInt32:
-            LLOne = GetLLUInt32(1, LLContext);
-            break;
-        case TypeKind::Int64:
-            LLOne = GetLLInt64(1, LLContext);
-            break;
-        case TypeKind::UnsignedInt64:
-            LLOne = GetLLUInt64(1, LLContext);
-            break;
-        case TypeKind::Int:
-            LLOne = GetSystemInt(1, LLContext, LLModule);
-            break;
-        case TypeKind::UnsignedInt:
-            LLOne = GetSystemUInt(1, LLContext, LLModule);
-            break;
-        default: assert(!"unimplementd!"); break;
-        }
-        return LLOne;
-    };
-    
     switch (UniOp->Op) {
     case TokenKind::PLUS_PLUS: case TokenKind::POST_PLUS_PLUS: {
         llvm::Value* LLVal  = GenNode(UniOp->Value);
@@ -1696,7 +1746,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
             // Pointer arithemtic
             IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(1,  LLContext) });
         } else {
-            IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+            IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
         Builder.CreateStore(IncRes, LLVal);
         return UniOp->Op == TokenKind::PLUS_PLUS ? IncRes : LLRVal;
@@ -1709,7 +1759,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
             // Pointer arithemtic
             IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(-1,  LLContext) });
         } else {
-            IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty, LLContext, LLModule), "inc");
+            IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
         Builder.CreateStore(IncRes, LLVal);
         return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
@@ -3231,6 +3281,45 @@ void arco::IRGenerator::DestroyCurrentlyInitializedObjects() {
         CallDestructors(S->ObjectsNeedingDestroyed);
         S = S->Parent;
     }
+}
+
+llvm::Value* arco::IRGenerator::GetOneValue(Type* Ty) {
+    llvm::Value* LLOne = nullptr;
+    switch (Ty->GetKind()) {
+    case TypeKind::Int8:
+    case TypeKind::Char:
+        LLOne = GetLLInt8(1, LLContext);
+        break;
+    case TypeKind::UnsignedInt8:
+        LLOne = GetLLUInt8(1, LLContext);
+        break;
+    case TypeKind::Int16:
+        LLOne = GetLLInt16(1, LLContext);
+        break;
+    case TypeKind::UnsignedInt16:
+        LLOne = GetLLUInt16(1, LLContext);
+        break;
+    case TypeKind::Int32:
+        LLOne = GetLLInt32(1, LLContext);
+        break;
+    case TypeKind::UnsignedInt32:
+        LLOne = GetLLUInt32(1, LLContext);
+        break;
+    case TypeKind::Int64:
+        LLOne = GetLLInt64(1, LLContext);
+        break;
+    case TypeKind::UnsignedInt64:
+        LLOne = GetLLUInt64(1, LLContext);
+        break;
+    case TypeKind::Int:
+        LLOne = GetSystemInt(1, LLContext, LLModule);
+        break;
+    case TypeKind::UnsignedInt:
+        LLOne = GetSystemUInt(1, LLContext, LLModule);
+        break;
+    default: assert(!"unimplementd!"); break;
+    }
+    return LLOne;
 }
 
 void arco::IRGenerator::GenBranchIfNotTerm(llvm::BasicBlock* LLBB) {

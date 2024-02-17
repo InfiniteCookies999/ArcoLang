@@ -128,6 +128,7 @@ namespace arco {
         void CheckHeapAlloc(HeapAlloc* Alloc);
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);
+        void CheckRange(Range* Rg);
 
         void CheckCondition(Expr* Cond, const char* PreErrorText);
 

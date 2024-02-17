@@ -105,6 +105,7 @@ namespace arco {
         llvm::Value* GenReturn(ReturnStmt* Ret);
         llvm::Value* GenLoopControl(LoopControlStmt* LoopControl);
         llvm::Value* GenPredicateLoop(PredicateLoopStmt* Loop);
+        llvm::Value* GenRangeExprLoop(Range* Rg, LexScope& LScope, VarDecl* CaptureVar);
         llvm::Value* GenRangeLoop(RangeLoopStmt* Loop);
         llvm::Value* GenIteratorLoop(IteratorLoopStmt* Loop);
         llvm::Value* LoadIteratorLoopValueIfNeeded(llvm::Value* LLValuePtr, Type* ToTy, Type* FromTy);
@@ -220,6 +221,8 @@ namespace arco {
 
         void DestroyLocScopeInitializedObjects();
         void DestroyCurrentlyInitializedObjects();
+
+        llvm::Value* GetOneValue(Type* Ty);
 
         /// This will only unconditionally branch to the given
         /// block as long as the current block does not already

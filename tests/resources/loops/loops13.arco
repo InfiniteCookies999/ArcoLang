@@ -1,0 +1,17 @@
+
+Day enum {
+    MONDAY;
+    TUESDAY;
+    WEDNESDAY;
+    THURSDAY;
+    FRIDAY;
+    SATURDAY;
+    SUNDAY;
+}
+
+fn main() {
+    loop i Day : Day.MONDAY .. Day.SUNDAY {
+        print(i);
+        print(" ", 1);
+    }
+}

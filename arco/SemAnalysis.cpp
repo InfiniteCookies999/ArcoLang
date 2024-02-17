@@ -1009,8 +1009,13 @@ void arco::SemAnalyzer::CheckLoopControl(LoopControlStmt* LoopControl) {
 }
 
 void arco::SemAnalyzer::CheckPredicateLoop(PredicateLoopStmt* Loop) {
+
     if (Loop->Cond) {
-        CheckCondition(Loop->Cond, "Loop");
+        if (Loop->Cond->Is(AstKind::RANGE)) {
+            CheckRange(static_cast<Range*>(Loop->Cond));
+        } else {
+            CheckCondition(Loop->Cond, "Loop");
+        }
     }
 
     ++LoopDepth;
@@ -1037,32 +1042,49 @@ void arco::SemAnalyzer::CheckRangeLoop(RangeLoopStmt* Loop) {
 }
 
 void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
-    CheckNode(Loop->IterOnExpr);
-    if (!FixupType(Loop->VarVal->Ty, false)) {
-        return;
-    }
-
-    YIELD_IF_ERROR(Loop->IterOnExpr);
-    Type* IterableType = Loop->IterOnExpr->Ty;
-    Type* IterOnType;
-    if (IterableType->GetKind() == TypeKind::Array || IterableType->GetKind() == TypeKind::Slice) {
-        IterOnType = IterableType->AsContainerType()->GetElementType();
-    } else {
-        // TODO: expanded location?
-        Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType->ToString());
-        return;
-    }
-
-    if (!IsAssignableTo(Loop->VarVal->Ty, IterOnType, nullptr)) {
-        // Maybe the iteration may happen by pointers instead.
-
-        if (!(Loop->VarVal->Ty->GetKind() == TypeKind::Pointer &&
-              IterOnType->Equals(Loop->VarVal->Ty->AsPointerTy()->GetElementType())
-            )) {
-            Error(Loop->VarVal->Loc, "Cannot assign type '%s' to variable of type '%s'",
-                IterOnType->ToString(), Loop->VarVal->Ty->ToString());
+    if (Loop->VarVal->Ty) {
+        if (!FixupType(Loop->VarVal->Ty, false)) {
             return;
         }
+    }
+
+    Type* IterOnType;
+    if (Loop->IterOnExpr->Is(AstKind::RANGE)) {
+        Range* Rg = static_cast<Range*>(Loop->IterOnExpr);
+        CheckRange(Rg);
+        YIELD_IF_ERROR(Rg);
+        IterOnType = Rg->Ty;
+    } else {
+        CheckNode(Loop->IterOnExpr);
+        YIELD_IF_ERROR(Loop->IterOnExpr);
+
+        Type* IterableType = Loop->IterOnExpr->Ty;
+        if (IterableType->GetKind() == TypeKind::Array || IterableType->GetKind() == TypeKind::Slice) {
+            IterOnType = IterableType->AsContainerType()->GetElementType();
+        } else {
+            // TODO: expanded location?
+            Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType->ToString());
+            return;
+        }
+    }
+
+    if (Loop->VarVal->Ty) {
+        if (!IsAssignableTo(Loop->VarVal->Ty, IterOnType, nullptr)) {
+            // Maybe the iteration may happen by pointers instead.
+
+            if (!(Loop->VarVal->Ty->GetKind() == TypeKind::Pointer &&
+                  IterOnType->Equals(Loop->VarVal->Ty->AsPointerTy()->GetElementType())
+                )) {
+                Error(Loop->VarVal->Loc, "Cannot assign type '%s' to variable of type '%s'",
+                    IterOnType->ToString(), Loop->VarVal->Ty->ToString());
+                return;
+            }
+        }
+    } else {
+        // Type is infered.
+        // TODO: Should this select for pointer types if the type is a structure
+        // and a large enough to not want to copy?
+        Loop->VarVal->Ty = IterOnType;
     }
 
     ++LoopDepth;
@@ -1502,6 +1524,7 @@ YIELD_ERROR(BinOp)
         BinOp->Ty = Context.BoolType;
         break;
     }
+    
     default:
         assert(!"Failed to implement binary operator check");
         break;
@@ -2692,6 +2715,48 @@ void arco::SemAnalyzer::CheckTypeOf(TypeOf* TOf) {
     TOf->Ty = PointerType::Create(StructType::Create(Context.StdTypeStruct, Context), Context);
     TOf->HasConstAddress = true;
     TOf->IsFoldable = false; // TODO: change?
+}
+
+void arco::SemAnalyzer::CheckRange(Range* Rg) {
+
+    CheckNode(Rg->LHS);
+    CheckNode(Rg->RHS);
+
+    if (Rg->LHS->Ty == Context.ErrorType ||
+        Rg->RHS->Ty == Context.ErrorType) {
+        YIELD_ERROR(Rg);
+    }
+
+    bool Errors = false;
+    if (!Rg->LHS->Ty->IsInt() &&
+            Rg->LHS->Ty->GetRealKind() != TypeKind::Enum) {
+        Error(Rg->LHS, "Expected indexable type for range. Found type '%s'", Rg->LHS->Ty->ToString());
+        Errors = true;
+    }
+    if (!Rg->RHS->Ty->IsInt() &&
+            Rg->RHS->Ty->GetRealKind() != TypeKind::Enum) {
+        Error(Rg->RHS, "Expected indexable type for range. Found type '%s'", Rg->RHS->Ty->ToString());
+        Errors = true;
+    }
+
+    if (Errors) {
+        YIELD_ERROR(Rg);
+    }
+
+    // TODO: Check if the range doesn't go off into infinitity?
+
+    if (!IsAssignableTo(Rg->RHS->Ty, Rg->LHS)) {
+        if (!IsAssignableTo(Rg->LHS->Ty, Rg->RHS)) {
+            Error(Rg, "The left hand and right hand types of the range are incompatible");
+            YIELD_ERROR(Rg);
+        } else {
+            CreateCast(Rg->RHS, Rg->LHS->Ty);
+            Rg->Ty = Rg->LHS->Ty;
+        }
+    } else {
+        CreateCast(Rg->LHS, Rg->RHS->Ty);
+        Rg->Ty = Rg->RHS->Ty;
+    }
 }
 
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {

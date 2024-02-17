@@ -112,6 +112,7 @@ namespace arco {
         COL_EQ,      // :=
         COL_COL,     // ::
         DOT_DOT,     // ..
+        DOT_DOT_LT,  // ..<
         DOT_DOT_DOT, // ...
 
         // End of file

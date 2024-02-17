@@ -62,8 +62,9 @@ restartLex:
     case '.':
         if (*CurPtr == '.') {
             ++CurPtr;
-            if (*CurPtr == '.') return CreateTokenAndEat(TokenKind::DOT_DOT_DOT, TokStart);
-            else                return CreateTokenAndEat(TokenKind::DOT_DOT, TokStart);
+            if (*CurPtr == '.')      return CreateTokenAndEat(TokenKind::DOT_DOT_DOT, TokStart);
+            else if (*CurPtr == '<') return CreateTokenAndEat(TokenKind::DOT_DOT_LT, TokStart);
+            else                     return CreateToken(TokenKind::DOT_DOT, TokStart);
         }
         else                    return CreateToken('.', TokStart);
     case ':':
@@ -187,7 +188,8 @@ arco::Token arco::Lexer::NextNumber() {
     }
 
     bool IsFloating = false;
-    if (*CurPtr == '.' || *CurPtr == 'E' || *CurPtr == 'e') {
+    if ((*CurPtr == '.' && !(*(CurPtr +1) == '.')) ||
+        *CurPtr == 'E' || *CurPtr == 'e') {
         IsFloating = true;
         if (*CurPtr == '.') {
             ++CurPtr; // Eating '.'.

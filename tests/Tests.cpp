@@ -116,7 +116,13 @@ int main() {
     RunTest(SRC("loops/loops6.arco"), "124 346 22 15 77 ");
     RunTest(SRC("loops/loops7.arco"), "124 346 22 15 77 ");
     RunTest(SRC("loops/loops8.arco"), "124 346 22 15 77 ");
-    
+    RunTest(SRC("loops/loops9.arco"), "go!go!go!go!go!go!");
+    RunTest(SRC("loops/loops10.arco"), "go!go!go!go!go!");
+    RunTest(SRC("loops/loops11.arco"), "0 1 2 3 4 5 ");
+    RunTest(SRC("loops/loops12.arco"), "0 1 2 3 4 ");
+    RunTest(SRC("loops/loops13.arco"), "0 1 2 3 4 5 6 ");
+    RunTest(SRC("loops/loops14.arco"), "0 1 2 3 4 5 ");
+
     RunTest(SRC("arrays/arrays1.arco"), "21 55 11 56 3 ");
     RunTest(SRC("arrays/arrays2.arco"), "412 21 5 6 4 0 ");
     RunTest(SRC("arrays/arrays3.arco"), "412 77 121 45 56 ");
@@ -197,7 +203,7 @@ int main() {
     RunTest(SRC("slices/slices3.arco"), "134 55 22 6");
     RunTest(SRC("slices/slices4.arco"), "134 55 22 6 42 66 ");
     RunTest(SRC("slices/slices5.arco"), "134 55 22 6");
-
+    
     RunTest(SRC("varargs/varargs1.arco"), "0");
     RunTest(SRC("varargs/varargs2.arco"), "2 44 122");
     RunTest(SRC("varargs/varargs3.arco"), "23 62 11");

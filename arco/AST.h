@@ -47,6 +47,7 @@ namespace arco {
         ITERATOR_LOOP,
         NESTED_SCOPE,
         DELETE,
+        RANGE,
 
         NUMBER_LITERAL,
         STRING_LITERAL,
@@ -661,6 +662,18 @@ namespace arco {
         TypeOf() : Expr(AstKind::TYPEOF) {}
 
         Type* TypeToGetTypeOf;
+    };
+
+    // TODO: Should this just be a binary operator?
+    // Ex.  '0..5'
+    struct Range : Expr {
+        Range() : Expr(AstKind::RANGE) {}
+
+        u16 Op;
+
+        Expr* LHS;
+        Expr* RHS;
+
     };
 }
 
