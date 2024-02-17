@@ -11,6 +11,7 @@ namespace arco {
 
     llvm::Type* GenType(ArcoContext& Context, Type* Ty);
     llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
+    llvm::IntegerType* GetSystemIntType(llvm::LLVMContext& LLContext, llvm::Module& LLModule);
 
     bool FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes);
     bool FuncUsesParamRetSlot(ArcoContext& Context, StructType* StructTy);
@@ -294,6 +295,47 @@ namespace arco {
         inline llvm::StructType* GenStructType(StructType* StructTy) {
             return arco::GenStructType(Context, StructTy->GetStruct());
         }
+
+        inline llvm::Constant* GetLLInt8(i32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt8Ty(LLContext), Value, true);
+        }
+        inline llvm::Constant* GetLLUInt8(u32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt8Ty(LLContext), Value, false);
+        }
+        inline llvm::Constant* GetLLInt16(i32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt16Ty(LLContext), Value, true);
+        }
+        inline llvm::Constant* GetLLUInt16(u32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt16Ty(LLContext), Value, false);
+        }
+        inline llvm::Constant* GetLLInt32(i32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt32Ty(LLContext), Value, true);
+        }
+        inline llvm::Constant* GetLLUInt32(u32 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt32Ty(LLContext), Value, false);
+        }
+        inline llvm::Constant* GetLLInt64(i64 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt64Ty(LLContext), Value, true);
+        }
+        inline llvm::Constant* GetLLUInt64(u64 Value) {
+            return llvm::ConstantInt::get(
+                llvm::IntegerType::getInt64Ty(LLContext), Value, false);
+        }
+        inline llvm::Constant* GetSystemUInt(u64 Value) {
+            return llvm::ConstantInt::get(GetSystemIntType(LLContext, LLModule), Value, false);
+        }
+
+        inline llvm::Constant* GetSystemInt(i64 Value) {
+            return llvm::ConstantInt::get(GetSystemIntType(LLContext, LLModule), Value, true);
+        }
+
     };
 
 }

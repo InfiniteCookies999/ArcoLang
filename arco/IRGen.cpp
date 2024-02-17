@@ -9,49 +9,8 @@
 // Helper Functions
 //===-------------------------------===//
 
-inline llvm::Constant* GetLLInt8(i32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt8Ty(LLContext), value, true);
-}
-inline llvm::Constant* GetLLUInt8(u32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt8Ty(LLContext), value, false);
-}
-inline llvm::Constant* GetLLInt16(i32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt16Ty(LLContext), value, true);
-}
-inline llvm::Constant* GetLLUInt16(u32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt16Ty(LLContext), value, false);
-}
-inline llvm::Constant* GetLLInt32(i32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt32Ty(LLContext), value, true);
-}
-inline llvm::Constant* GetLLUInt32(u32 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt32Ty(LLContext), value, false);
-}
-inline llvm::Constant* GetLLInt64(i64 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt64Ty(LLContext), value, true);
-}
-inline llvm::Constant* GetLLUInt64(u64 value, llvm::LLVMContext& LLContext) {
-    return llvm::ConstantInt::get(
-        llvm::IntegerType::getInt64Ty(LLContext), value, false);
-}
-
-inline llvm::IntegerType* GetSystemIntType(llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
+llvm::IntegerType* arco::GetSystemIntType(llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
     return llvm::IntegerType::getIntNTy(LLContext, LLModule.getDataLayout().getPointerSizeInBits());
-}
-
-inline llvm::Constant* GetSystemUInt(u64 value, llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
-    return llvm::ConstantInt::get(GetSystemIntType(LLContext, LLModule), value, false);
-}
-
-inline llvm::Constant* GetSystemInt(i64 value, llvm::LLVMContext& LLContext, llvm::Module& LLModule) {
-        return llvm::ConstantInt::get(GetSystemIntType(LLContext, LLModule), value, true);
 }
 
 struct LLValTypePrinter {
@@ -343,7 +302,7 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
                    Global->Ty->AsArrayTy()->GetBaseType()->GetKind() == TypeKind::Struct) {
                 ArrayType* ArrayTy = Global->Ty->AsArrayTy();
                 llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(Global->LLAddress, ArrayTy);
-                llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
+                llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
                 StructArrayCallDefaultConstructors(ArrayTy->GetBaseType(), LLArrStartPtr, LLTotalLinearLength);
             }
         }
@@ -614,7 +573,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
             CallDestructors(AlwaysInitializedDestroyedObjects);
             // Implicit void return.
             if (Func == Context.MainEntryFunc) {
-                LLRet = Builder.CreateRet(GetLLInt32(0, LLContext));
+                LLRet = Builder.CreateRet(GetLLInt32(0));
             } else {
                 LLRet = Builder.CreateRetVoid();
             }
@@ -710,9 +669,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
         return GenHeapAlloc(static_cast<HeapAlloc*>(Node));
     case AstKind::SIZEOF:
         return GetSystemInt(
-            SizeOfTypeInBytes(GenType(static_cast<SizeOf*>(Node)->TypeToGetSizeOf)),
-            LLContext,
-            LLModule);
+            SizeOfTypeInBytes(GenType(static_cast<SizeOf*>(Node)->TypeToGetSizeOf)));
     case AstKind::TYPEOF:
         return GenTypeOf(static_cast<TypeOf*>(Node));
     default:
@@ -886,7 +843,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             }
         } else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
             // Default to returning zero for the main function.
-            LLRetValue = GetLLInt32(0, LLContext);
+            LLRetValue = GetLLInt32(0);
         } else if (Ret->Value) {
             LLRetValue = GenRValue(Ret->Value);
         }
@@ -957,7 +914,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
                 GenReturnByStoreToElisionRetSlot(Ret->Value, LLToAddr);
             }
         } else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
-            Builder.CreateStore(GetLLInt32(0, LLContext), LLRetAddr);
+            Builder.CreateStore(GetLLInt32(0), LLRetAddr);
         } else if (Ret->Value) {
             Builder.CreateStore(GenRValue(Ret->Value), LLRetAddr);
         }
@@ -1193,7 +1150,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     llvm::Value* LLPtrToArrStart;
     llvm::Value* LLLength;
     if (ContainerTy->GetKind() == TypeKind::Array) {
-        LLLength = GetSystemUInt(ContainerTy->AsArrayTy()->GetLength(), LLContext, LLModule);
+        LLLength = GetSystemUInt(ContainerTy->AsArrayTy()->GetLength());
         LLPtrToArrStart = ArrayToPointer(LLIterOnExpr);
     } else {
         LLLength = CreateLoad(CreateStructGEP(LLIterOnExpr, 0));
@@ -1245,7 +1202,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     EMIT_DI(EmitDebugLocation(Loop->Scope.EndLoc));
 
     llvm::Value* LLArrItrPtr = CreateLoad(LLArrItrPtrAddr);
-    llvm::Value* LLNextPtr = CreateInBoundsGEP(LLArrItrPtr, { GetSystemUInt(1, LLContext, LLModule) });
+    llvm::Value* LLNextPtr = CreateInBoundsGEP(LLArrItrPtr, { GetSystemUInt(1) });
     Builder.CreateStore(LLNextPtr, LLArrItrPtrAddr);
 
     // Jumping directly into the loop condition
@@ -1810,7 +1767,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
         llvm::Value* IncRes;
         if (UniOp->Ty->IsPointer()) {
             // Pointer arithemtic
-            IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(1,  LLContext) });
+            IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(1) });
         } else {
             IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
@@ -1824,7 +1781,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
         llvm::Value* IncRes;
         if (UniOp->Ty->IsPointer()) {
             // Pointer arithemtic
-            IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(-1,  LLContext) });
+            IncRes = CreateInBoundsGEP(LLRVal, { GetLLInt64(-1) });
         } else {
             IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
@@ -1897,22 +1854,22 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
 llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
     switch (Number->Ty->GetKind()) {
     case TypeKind::Char:
-    case TypeKind::Int8:           return GetLLInt8(Number->SignedIntValue, LLContext);
-    case TypeKind::Int16:          return GetLLInt16(Number->SignedIntValue, LLContext);
-    case TypeKind::Int32:          return GetLLInt32(Number->SignedIntValue, LLContext);
-    case TypeKind::Int64:          return GetLLInt64(Number->SignedIntValue, LLContext);
-    case TypeKind::UInt8:   return GetLLUInt8(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UInt16:  return GetLLUInt16(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UInt32:  return GetLLUInt32(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UInt64:  return GetLLUInt64(Number->UnsignedIntValue, LLContext);
+    case TypeKind::Int8:           return GetLLInt8(Number->SignedIntValue);
+    case TypeKind::Int16:          return GetLLInt16(Number->SignedIntValue);
+    case TypeKind::Int32:          return GetLLInt32(Number->SignedIntValue);
+    case TypeKind::Int64:          return GetLLInt64(Number->SignedIntValue);
+    case TypeKind::UInt8:   return GetLLUInt8(Number->UnsignedIntValue);
+    case TypeKind::UInt16:  return GetLLUInt16(Number->UnsignedIntValue);
+    case TypeKind::UInt32:  return GetLLUInt32(Number->UnsignedIntValue);
+    case TypeKind::UInt64:  return GetLLUInt64(Number->UnsignedIntValue);
     case TypeKind::Float32:
         return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float32Value));
     case TypeKind::Float64:
         return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float64Value));
     case TypeKind::Int:
-        return GetSystemInt(Number->SignedIntValue, LLContext, LLModule);
+        return GetSystemInt(Number->SignedIntValue);
     case TypeKind::UInt:
-        return GetSystemUInt(Number->UnsignedIntValue, LLContext, LLModule);
+        return GetSystemUInt(Number->UnsignedIntValue);
     default:
         assert(!"Unimplemented GenNumberLiteral() case");
         return nullptr;
@@ -1929,10 +1886,10 @@ llvm::Value* arco::IRGenerator::GenStringLiteral(const char* String, ulen Length
     llvm::SmallVector<llvm::Constant*, 4> LLElements;
     LLElements.reserve(Length + 1);
     for (ulen i = 0; i < Length; i++) {
-        LLElements.push_back(GetLLUInt8(String[i], LLContext));
+        LLElements.push_back(GetLLUInt8(String[i]));
     }
     // Null termination
-    LLElements.push_back(GetLLUInt8('\0', LLContext));
+    LLElements.push_back(GetLLUInt8('\0'));
 
     llvm::ArrayType* LLArrType =
         llvm::ArrayType::get(llvm::Type::getInt8Ty(LLContext), LLElements.size());
@@ -1968,10 +1925,7 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
 llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
     if (FieldAcc->IsArrayLength) {
         return GetSystemInt(
-                FieldAcc->Site->Ty->AsArrayTy()->GetLength(),
-                LLContext,
-                LLModule
-            );
+                FieldAcc->Site->Ty->AsArrayTy()->GetLength());
     } else if (FieldAcc->IsSliceLength) {
         return CreateStructGEP(GenNode(FieldAcc->Site), 0);
     }
@@ -2137,13 +2091,13 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             llvm::Value* LLArray = CreateUnseenAlloca(GenType(ArrayTy), "tmp.varargs.arr");
             ulen ArrayIdx = 0;
             for (; i < Args.size(); i++, ArrayIdx++) {
-                llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx, LLContext, LLModule));
+                llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx));
                 Builder.CreateStore(GenCallArg(Args[i].E), LLElmAddr);
             }
         
             llvm::Value* LLVarArgs = CreateUnseenAlloca(GenType(LastParam->Ty), "tmp.varargs");
             llvm::Value* LLSliceLengthAddr = CreateStructGEP(LLVarArgs, 0);
-            Builder.CreateStore(GetSystemInt(NumVarArgs, LLContext, LLModule), LLSliceLengthAddr);
+            Builder.CreateStore(GetSystemInt(NumVarArgs), LLSliceLengthAddr);
             llvm::Value* LLSliceArrPtrAddr = CreateStructGEP(LLVarArgs, 1);
             Builder.CreateStore(DecayArray(LLArray), LLSliceArrPtrAddr);
         
@@ -2377,7 +2331,7 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
         // Because the address might come from a heap allocation it is possible
         // it refers to a pointer therefore it becomes necessary to check if it
         // is a pointer first.
-        llvm::Value* LLIndex = GetSystemUInt(i, LLContext, LLModule);
+        llvm::Value* LLIndex = GetSystemUInt(i);
         llvm::Value* LLAddrAtIndex;
         if (AddrIsPtr) {
             LLAddrAtIndex = CreateInBoundsGEP(LLAddr, { LLIndex });
@@ -2567,7 +2521,7 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
     llvm::StructType* LLArrayStructType   = GenStructType(Context.StdArrayTypeStruct);
     llvm::StructType* LLStructStructType  = GenStructType(Context.StdStructTypeStruct);
 
-    llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()), LLContext, LLModule);
+    llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()));
     llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo;
     if (GetTy->GetKind() == TypeKind::Pointer || GetTy->GetKind() == TypeKind::CStr) {
         LLPointerInfo = GenTypeOfGlobal(GetTy->GetPointerElementType(Context));
@@ -2590,7 +2544,7 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
     ulen SizeInBytes = GetTy->GetKind() == TypeKind::Void ? 0 : SizeOfTypeInBytes(GenType(GetTy));
     llvm::SmallVector<llvm::Constant*, 5> LLElements = {
         LLTypeId,
-        GetSystemInt(SizeInBytes, LLContext, LLModule),
+        GetSystemInt(SizeInBytes),
         LLPointerInfo,
         LLArrayInfo,
         LLStructInfo
@@ -2602,7 +2556,7 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
 llvm::GlobalVariable* arco::IRGenerator::GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy) {
     llvm::SmallVector<llvm::Constant*, 2> LLElements = {
         GenTypeOfGlobal(ArrayTy->GetElementType()),
-        GetSystemInt(ArrayTy->GetLength(), LLContext, LLModule)
+        GetSystemInt(ArrayTy->GetLength())
     };
     llvm::StructType* LLArrayStructType = GenStructType(Context.StdArrayTypeStruct);
     std::string LLGlobalTypeInfoName = "__global.typeinfo.arr." + std::to_string(Context.NumGeneratedGlobalVars++);
@@ -2629,7 +2583,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
         llvm::SmallVector<llvm::Constant*, 2> LLFieldElements = {
             llvm::cast<llvm::Constant>(GenStringLiteral(FieldName.Text.data(), FieldName.Text.size())),
             GenTypeOfGlobal(Field->Ty),
-            GetSystemInt(FieldOffset, LLContext, LLModule)
+            GetSystemInt(FieldOffset)
         };
 
         LLFields[Field->FieldIdx] = llvm::ConstantStruct::get(LLFieldStructType, LLFieldElements);
@@ -2642,7 +2596,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
     Identifier StructName = Struct->Name;
     llvm::SmallVector<llvm::Constant*, 2> LLElements = {
         llvm::cast<llvm::Constant>(GenStringLiteral(StructName.Text.data(), StructName.Text.size())),
-        GetSystemInt(Struct->Fields.size(), LLContext, LLModule),
+        GetSystemInt(Struct->Fields.size()),
         llvm::cast<llvm::Constant>(DecayArray(LLFieldsArrayGlobal))
     };
     llvm::StructType* LLStructStructType = GenStructType(Context.StdStructTypeStruct);
@@ -2875,7 +2829,7 @@ void arco::IRGenerator::GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArr
     ulen Length = ArrayTy->AsArrayTy()->GetLength();
 
     llvm::Value* LLLengthFieldAddr = CreateStructGEP(LLSlice, 0);
-    Builder.CreateStore(GetSystemInt(Length, LLContext, LLModule), LLLengthFieldAddr);
+    Builder.CreateStore(GetSystemInt(Length), LLLengthFieldAddr);
     llvm::Value* LLPtrFieldAddr = CreateStructGEP(LLSlice, 1);
     Builder.CreateStore(ArrayToPointer(LLArray), LLPtrFieldAddr);
 
@@ -2931,16 +2885,16 @@ llvm::Constant* arco::IRGenerator::GenConstValue(Type* Ty) {
 llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
     switch (Ty->GetKind()) {
     case TypeKind::Int8: case TypeKind::Char:
-        return GetLLInt8(0, LLContext);
-    case TypeKind::UInt8:    return GetLLUInt8(0, LLContext);
-    case TypeKind::Int16:           return GetLLInt16(0, LLContext);
-    case TypeKind::UInt16:   return GetLLUInt16(0, LLContext);
-    case TypeKind::Int32:           return GetLLInt32(0, LLContext);
-    case TypeKind::UInt32:   return GetLLUInt32(0, LLContext);
-    case TypeKind::Int64:           return GetLLInt64(0, LLContext);
-    case TypeKind::UInt64:   return GetLLUInt64(0, LLContext);
-    case TypeKind::Int:             return GetSystemInt(0, LLContext, LLModule);
-    case TypeKind::UInt:     return GetSystemUInt(0, LLContext, LLModule);
+        return GetLLInt8(0);
+    case TypeKind::UInt8:    return GetLLUInt8(0);
+    case TypeKind::Int16:           return GetLLInt16(0);
+    case TypeKind::UInt16:   return GetLLUInt16(0);
+    case TypeKind::Int32:           return GetLLInt32(0);
+    case TypeKind::UInt32:   return GetLLUInt32(0);
+    case TypeKind::Int64:           return GetLLInt64(0);
+    case TypeKind::UInt64:   return GetLLUInt64(0);
+    case TypeKind::Int:             return GetSystemInt(0);
+    case TypeKind::UInt:     return GetSystemUInt(0);
     case TypeKind::Bool:
         return llvm::ConstantInt::getFalse(LLContext);
     case TypeKind::Float32:
@@ -2964,10 +2918,10 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 llvm::Value* arco::IRGenerator::GenMalloc(llvm::Type* LLType, llvm::Value* LLArrayLength) {
     
     llvm::Value* LLMalloc = llvm::CallInst::CreateMalloc(
-        Builder.GetInsertBlock(),                                      // llvm::BasicBlock *InsertAtEnd
-        llvm::Type::getInt64Ty(LLContext),                             // llvm::Type* IntPtrTy
-        LLType,                                                        // llvm::Type* AllocTy
-        GetSystemUInt(SizeOfTypeInBytes(LLType), LLContext, LLModule), // llvm::Value* AllocSize
+        Builder.GetInsertBlock(),                   // llvm::BasicBlock *InsertAtEnd
+        llvm::Type::getInt64Ty(LLContext),          // llvm::Type* IntPtrTy
+        LLType,                                     // llvm::Type* AllocTy
+        GetSystemUInt(SizeOfTypeInBytes(LLType)),   // llvm::Value* AllocSize
         LLArrayLength,
         nullptr,
         ""
@@ -3009,7 +2963,7 @@ void arco::IRGenerator::GenInternalArrayLoop(Type* BaseTy,
     CodeGenCallback(LLArrPtr, BaseTy);
 
     // Move to the next element in the array
-    llvm::Value* LLNextElementPtr = CreateInBoundsGEP(LLArrPtr, { GetSystemUInt(1, LLContext, LLModule) });
+    llvm::Value* LLNextElementPtr = CreateInBoundsGEP(LLArrPtr, { GetSystemUInt(1) });
 
     // Checking if all objects have been looped over
     llvm::Value* LLLoopEndCond = Builder.CreateICmpEQ(LLNextElementPtr, LLEndOfArrPtr);
@@ -3056,7 +3010,7 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
 
 llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
     llvm::Value* LLValue = CreateInBoundsGEP(LLArray,
-                { GetSystemUInt(0, LLContext, LLModule), GetSystemUInt(0, LLContext, LLModule) });
+                { GetSystemUInt(0), GetSystemUInt(0) });
     LLValue->setName("array.decay");
     return LLValue;
 }
@@ -3090,7 +3044,7 @@ llvm::Value* arco::IRGenerator::MultiDimensionalArrayToPointerOnly(llvm::Value* 
     ulen Depth = ArrTy->GetDepthLevel();
     llvm::SmallVector<llvm::Value*, 4> LLIdxs;
     for (ulen i = 0; i < Depth + 1; i++) {
-        LLIdxs.push_back(GetSystemUInt(0, LLContext, LLModule));
+        LLIdxs.push_back(GetSystemUInt(0));
     }
     return CreateInBoundsGEP(LLArray, LLIdxs);
 }
@@ -3102,8 +3056,7 @@ inline llvm::Value* arco::IRGenerator::CreateInBoundsGEP(llvm::Value* LLAddr, ll
 }
 
 inline llvm::Value* arco::IRGenerator::GetArrayIndexAddress(llvm::Value* LLArray, llvm::Value* LLIndex) {
-    return CreateInBoundsGEP(
-        LLArray, { GetSystemUInt(0, LLContext, LLModule), LLIndex });
+    return CreateInBoundsGEP(LLArray, { GetSystemUInt(0), LLIndex });
 }
 
 inline llvm::Value* arco::IRGenerator::CreateStructGEP(llvm::Value* LLAddr, ulen Idx) {
@@ -3295,7 +3248,7 @@ void arco::IRGenerator::CallDestructors(Type* Ty, llvm::Value* LLAddr) {
         ArrayType* ArrayTy = Ty->AsArrayTy();
 
         llvm::Value* LLArrStartPtr       = MultiDimensionalArrayToPointerOnly(LLAddr, ArrayTy);
-        llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength(), LLContext, LLModule);
+        llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
         GenInternalArrayLoop(ArrayTy->GetBaseType(), LLArrStartPtr, LLTotalLinearLength,
             [this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
                 CallDestructors(BaseTy, LLElmAddr);
@@ -3361,34 +3314,34 @@ llvm::Value* arco::IRGenerator::GetOneValue(Type* Ty) {
     switch (Ty->GetKind()) {
     case TypeKind::Int8:
     case TypeKind::Char:
-        LLOne = GetLLInt8(1, LLContext);
+        LLOne = GetLLInt8(1);
         break;
     case TypeKind::UInt8:
-        LLOne = GetLLUInt8(1, LLContext);
+        LLOne = GetLLUInt8(1);
         break;
     case TypeKind::Int16:
-        LLOne = GetLLInt16(1, LLContext);
+        LLOne = GetLLInt16(1);
         break;
     case TypeKind::UInt16:
-        LLOne = GetLLUInt16(1, LLContext);
+        LLOne = GetLLUInt16(1);
         break;
     case TypeKind::Int32:
-        LLOne = GetLLInt32(1, LLContext);
+        LLOne = GetLLInt32(1);
         break;
     case TypeKind::UInt32:
-        LLOne = GetLLUInt32(1, LLContext);
+        LLOne = GetLLUInt32(1);
         break;
     case TypeKind::Int64:
-        LLOne = GetLLInt64(1, LLContext);
+        LLOne = GetLLInt64(1);
         break;
     case TypeKind::UInt64:
-        LLOne = GetLLUInt64(1, LLContext);
+        LLOne = GetLLUInt64(1);
         break;
     case TypeKind::Int:
-        LLOne = GetSystemInt(1, LLContext, LLModule);
+        LLOne = GetSystemInt(1);
         break;
     case TypeKind::UInt:
-        LLOne = GetSystemUInt(1, LLContext, LLModule);
+        LLOne = GetSystemUInt(1);
         break;
     default: assert(!"unimplementd!"); break;
     }
@@ -3522,8 +3475,8 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
             llvm::Align LLAlignment = llvm::Align();
             Builder.CreateMemSet(
                 LLAddr,
-                GetLLUInt8(0, LLContext),
-                GetLLUInt64(TotalLinearLength, LLContext),
+                GetLLUInt8(0),
+                GetLLUInt64(TotalLinearLength),
                 LLAlignment
             );
         }
@@ -3535,7 +3488,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
             if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
                 // Cannot simply memset the array to zero must call the default constructor.
                 llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(LLAddr, ArrTy);
-                llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrTy->GetTotalLinearLength(), LLContext, LLModule);
+                llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrTy->GetTotalLinearLength());
                 StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
                 return;
             }
@@ -3548,8 +3501,8 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         llvm::Align LLAlignment = llvm::Align();
         Builder.CreateMemSet(
             LLAddr,
-            GetLLUInt8(0, LLContext),
-            GetLLUInt64(TotalLinearLength, LLContext),
+            GetLLUInt8(0),
+            GetLLUInt64(TotalLinearLength),
             LLAlignment
         );
         
