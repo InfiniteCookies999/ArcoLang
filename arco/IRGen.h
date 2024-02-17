@@ -273,6 +273,10 @@ namespace arco {
         inline DebugInfoEmitter* GetDIEmitter(Decl* D) {
             return D->FScope->DIEmitter;
         }
+        inline DebugInfoEmitter* GetDIEmitter() {
+            assert(CFunc && "Cannot get emitter because not within function scope");
+            return GetDIEmitter(CFunc);
+        }
         void EmitDebugLocation(SourceLoc Loc);
         inline void EmitDebugLocation(AstNode* Node) {
             EmitDebugLocation(Node->Loc);

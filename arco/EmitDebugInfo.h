@@ -41,6 +41,7 @@ namespace arco {
 
         llvm::DIType* EmitType(Type* Ty);
         llvm::DIType* EmitFirstSeenType(Type* Ty);
+        llvm::DIType* EmitMemberFieldType(llvm::DIType* DIScope, VarDecl* Field, u64 BitsOffset);
 
     };
 }

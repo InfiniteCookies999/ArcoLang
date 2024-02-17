@@ -1,6 +1,7 @@
 #include "EmitDebugInfo.h"
 
 #include "Context.h"
+#include "IRGen.h"
 
 arco::DebugInfoEmitter::~DebugInfoEmitter() {
     delete DBuilder;
@@ -184,8 +185,199 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 	case TypeKind::Bool:    return DBuilder->createBasicType("bool"  , 8, llvm::dwarf::DW_ATE_boolean);
 	case TypeKind::Float32: return DBuilder->createBasicType("f32"   , 32, llvm::dwarf::DW_ATE_float);
 	case TypeKind::Float64: return DBuilder->createBasicType("f64"   , 32, llvm::dwarf::DW_ATE_float);
+	case TypeKind::Pointer:
+	case TypeKind::CStr: {
+		ulen PtrSizeInBits = Context.LLArcoModule
+			                        .getDataLayout()
+			                        .getPointerSizeInBits();
+		return DBuilder->createPointerType(
+			EmitType(Ty->GetPointerElementType(Context)), PtrSizeInBits);
+	}
+	case TypeKind::Slice: {
+		SliceType* SliceTy = Ty->AsSliceTy();
+		llvm::StructType* LLSliceTy = llvm::cast<llvm::StructType>(GenType(Context, SliceTy));
+
+		const llvm::StructLayout* LLLayout = Context.LLArcoModule
+			                                        .getDataLayout()
+			                                        .getStructLayout(LLSliceTy);
+
+		u64 SizeInBits = LLLayout->getSizeInBits();
+
+		llvm::DINode::DIFlags Flags = llvm::DINode::FlagZero;
+		llvm::DICompositeType* DIStructTy = DBuilder->createStructType(
+			nullptr,
+			LLSliceTy->getName(),
+			DebugUnit->getFile(),
+			0,
+			SizeInBits,
+			0,
+			Flags,
+			nullptr,
+			llvm::DINodeArray(),
+			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLSliceTy) * 8, // *8 because wants bits
+			nullptr,
+			LLSliceTy->getName()
+		);
+
+		llvm::SmallVector<llvm::Metadata*> DIFieldTys;
+
+		llvm::Type* LLLengthType = GenType(Context, Context.IntType);
+		SizeInBits = Context.LLArcoModule
+							.getDataLayout()
+							.getTypeSizeInBits(LLLengthType);
+		llvm::DIType* DIMemberLengthType = DBuilder->createMemberType(
+			DIStructTy,
+			"length",
+			DebugUnit->getFile(),
+			0,
+			SizeInBits,
+			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLLengthType) * 8, // *8 because wants bits
+			0,
+			llvm::DINode::DIFlags::FlagZero,
+			EmitType(Context.IntType)
+		);
+		DIFieldTys.push_back(DIMemberLengthType);
+
+		PointerType* ArrPtrType = PointerType::Create(SliceTy->GetElementType(), Context);
+		llvm::Type* LLArrPtrType = GenType(Context, ArrPtrType);
+		SizeInBits = Context.LLArcoModule
+							.getDataLayout()
+							.getTypeSizeInBits(LLArrPtrType);
+		llvm::DIType* DIMemberArrPtrType = DBuilder->createMemberType(
+			DIStructTy,
+			"arrptr",
+			DebugUnit->getFile(),
+			0,
+			SizeInBits,
+			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLArrPtrType) * 8, // *8 because wants bits
+			LLLayout->getElementOffsetInBits(1),
+			llvm::DINode::DIFlags::FlagZero,
+			EmitType(ArrPtrType)
+		);
+		DIFieldTys.push_back(DIMemberArrPtrType);
+
+		DBuilder->replaceArrays(DIStructTy, DBuilder->getOrCreateArray(DIFieldTys));
+		return DIStructTy;
+	}
+	case TypeKind::Array: {
+		ArrayType* ArrayTy = Ty->AsArrayTy();
+		llvm::DIType* DIBaseTy = EmitType(ArrayTy->GetBaseType());
+
+		ulen PtrSizeInBits = Context.LLArcoModule
+			                        .getDataLayout()
+			                        .getPointerSizeInBits();
+
+		ArrayType* ArrayTyPtr = ArrayTy;
+		llvm::SmallVector<llvm::Metadata*> DISubscriptSizes;
+		bool MoreSubscripts = true;
+		do {
+			auto DISubscriptLengthValue =
+				llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
+					llvm::Type::getIntNTy(Context.LLContext, PtrSizeInBits),
+					ArrayTy->GetLength()
+				));
+
+			DISubscriptSizes.push_back(DBuilder->getOrCreateSubrange(0, DISubscriptLengthValue));
+			MoreSubscripts = ArrayTy->GetElementType()->GetKind() == TypeKind::Array;
+			if (MoreSubscripts) {
+				ArrayTy = ArrayTy->GetElementType()->AsArrayTy();
+			}
+		} while (MoreSubscripts);
+
+		return DBuilder->createArrayType(
+			ArrayTy->GetTotalLinearLength() * Context.LLArcoModule
+			                                         .getDataLayout()
+			                                         .getTypeSizeInBits(
+														  GenType(Context, ArrayTy->GetBaseType())
+													 ),
+			0, // TODO: Alignment
+			DIBaseTy,
+			DBuilder->getOrCreateArray(DISubscriptSizes));
+	}
+	case TypeKind::Function: {
+		llvm::SmallVector<llvm::Metadata*, 4> DIFuncTys;
+		FunctionType* FuncTy = Ty->AsFunctionType();
+
+		llvm::Metadata* DIRetTy = EmitType(FuncTy->RetTyInfo.Ty);
+		DIFuncTys.push_back(DIRetTy);
+		for (TypeInfo ParamInfo : FuncTy->ParamTypes) {
+			DIFuncTys.push_back(EmitType(ParamInfo.Ty));
+		}
+
+		ulen PtrSizeInBits = Context.LLArcoModule
+			                        .getDataLayout()
+			                        .getPointerSizeInBits();
+		llvm::DIType* DIFuncTy = DBuilder->createSubroutineType(
+			                           DBuilder->getOrCreateTypeArray(DIFuncTys));
+		return DBuilder->createPointerType(DIFuncTy, PtrSizeInBits);
+	}
+	case TypeKind::Struct: {
+		StructDecl* Struct = Ty->AsStructType()->GetStruct();
+		
+		const llvm::StructLayout* LLLayout = Context.LLArcoModule
+			                                        .getDataLayout()
+			                                        .getStructLayout(Struct->LLStructTy);
+
+		u64 SizeInBits = LLLayout->getSizeInBits();
+
+		llvm::DINode::DIFlags Flags = llvm::DINode::FlagZero;
+		llvm::DICompositeType* DIStructTy = DBuilder->createStructType(
+			nullptr,
+			Struct->Name.Text,
+			DebugUnit->getFile(),
+			Struct->Loc.LineNumber,
+			SizeInBits,
+			0,
+			Flags,
+			nullptr, // TODO: Derived from?
+			llvm::DINodeArray(),
+			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(Struct->LLStructTy) * 8, // *8 because wants bits
+			nullptr,
+			Struct->LLStructTy->getName()
+		);
+
+		llvm::SmallVector<llvm::Metadata*, 16> DIFieldTys;
+		u64 BitsOffset = 0;
+		for (VarDecl* Field : Struct->Fields) {
+			u64 OffsetInBits = LLLayout->getElementOffsetInBits(Field->FieldIdx);
+			DIFieldTys.push_back(EmitMemberFieldType(DIStructTy, Field, OffsetInBits));
+		}
+		DBuilder->replaceArrays(DIStructTy, DBuilder->getOrCreateArray(DIFieldTys));
+
+		return DIStructTy;
+	}
+	case TypeKind::Enum: {
+		// TODO: Is there a way to also carray the name information around?
+		EnumDecl* Enum = Ty->AsStructType()->GetEnum();
+		Type* IndexType = Enum->IndexingInOrder ? Enum->ValuesType : Context.IntType;
+		return EmitType(IndexType);
+	}
 	default:
-		// This really should not happen
+		assert(!"Unimplement EmitFirstSeenType() for DI type");
 		return nullptr;
 	}
+}
+
+llvm::DIType* arco::DebugInfoEmitter::EmitMemberFieldType(llvm::DIType* DIScope, VarDecl* Field, u64 BitsOffset) {
+	
+	llvm::Type* LLType = GenType(Context, Field->Ty);
+
+	u64 SizeInBits = Context.LLArcoModule
+			                 .getDataLayout()
+			                 .getTypeSizeInBits(LLType);
+	
+
+	llvm::DIType* DIMemberType = DBuilder->createMemberType(
+		DIScope,
+		Field->Name.Text,
+		DebugUnit->getFile(),
+		Field->Loc.LineNumber,
+		SizeInBits,
+		Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLType) * 8, // *8 because wants bits
+		BitsOffset,
+		llvm::DINode::DIFlags::FlagZero,
+		EmitType(Field->Ty)
+	);
+	
+	return DIMemberType;
 }

@@ -997,6 +997,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     LoopContinueStack.push_back(LLCondBB);
 
     // Generating the condition block
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(Loop->Scope.StartLoc));
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
     GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);	
@@ -1013,6 +1014,8 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     // Finally continuing forward into a new block after the loop
     GenBranchIfNotTerm(LLEndBB);
     Builder.SetInsertPoint(LLEndBB);
+
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
     
     return nullptr;
 }
@@ -1036,6 +1039,7 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
     }
     Builder.CreateStore(GenRValue(Rg->LHS), LLIndex);
 
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(LScope.StartLoc));
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
     
@@ -1089,6 +1093,8 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
     GenBranchIfNotTerm(LLEndBB);
     Builder.SetInsertPoint(LLEndBB);
 
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
+
     return nullptr;
 }
 
@@ -1112,6 +1118,7 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
         GenNode(InitNode);
     }
 
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(Loop->Scope.StartLoc));
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
     // Generating the condition block
@@ -1142,6 +1149,8 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
 
     GenBranchIfNotTerm(LLEndBB);
     Builder.SetInsertPoint(LLEndBB);
+
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
 
     return nullptr;
 }
@@ -1188,6 +1197,8 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     llvm::Value* LLCond = Builder.CreateICmpNE(CreateLoad(LLArrItrPtrAddr), LLPtrToArrEnd);
     Builder.CreateCondBr(LLCond, LLBodyBB, LLEndBB);
     
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(Loop->Scope.StartLoc));
+
     GenBranchIfNotTerm(LLBodyBB);
     Builder.SetInsertPoint(LLBodyBB);
 
@@ -1227,6 +1238,8 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     // Finally continuing forward into a new block after the loop
     GenBranchIfNotTerm(LLEndBB);
     Builder.SetInsertPoint(LLEndBB);
+
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
 
     return nullptr;
 }
@@ -1272,6 +1285,7 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
         LLElseBB = llvm::BasicBlock::Create(LLContext, "if.else", LLFunc);
     }
 
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(CFunc->Scope.StartLoc));
     PUSH_SCOPE();
     GenBranchOnCond(If->Cond, LLThenBB, LLElseBB);
 
@@ -1280,6 +1294,7 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
 
     // Jump out of the body of the if statement
     GenBranchIfNotTerm(LLEndBB);
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
 
     // Generating the else statement if it exist
     if (AstNode* Else = If->Else) {
@@ -1295,9 +1310,11 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
 }
 
 llvm::Value* arco::IRGenerator::GenNestedScope(NestedScopeStmt* NestedScope) {
+    EMIT_DI(GetDIEmitter()->EmitScopeStart(CFunc->Loc));
     PUSH_SCOPE();
     GenBlock(nullptr, NestedScope->Scope.Stmts);
     POP_SCOPE();
+    EMIT_DI(GetDIEmitter()->EmitScopeEnd());
     return nullptr;
 }
 
@@ -1312,6 +1329,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         CallDestructors(BinOp->LHS->Ty, LLAddress);
         
         GenAssignment(LLAddress, BinOp->LHS->Ty, BinOp->RHS, BinOp->RHS->HasConstAddress);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return LLAddress;
     }
     //
@@ -2010,6 +2028,8 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
         GenType(Call->Site->Ty)->getPointerElementType());
     llvm::Value* LLCallee = GenRValue(Call->Site);
 
+    EMIT_DI(EmitDebugLocation(Call));
+
     llvm::Value* LLRetValue = Builder.CreateCall(LLFuncTy, LLCallee, LLArgs);
     if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
         LLRetValue->setName("ret.val");
@@ -2120,6 +2140,8 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     //	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
     //}
     //llvm::outs() << "\n";
+
+    EMIT_DI(EmitDebugLocation(CallNode));
 
     llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
     if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
