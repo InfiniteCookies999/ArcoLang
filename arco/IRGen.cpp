@@ -2511,6 +2511,9 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
         // Set before calling GenTypeOfType to not end up with duplicates.
         Context.LLTypeInfoMap.insert({ GetTy->GetUniqueId(), LLGlobal });
         LLGlobal->setInitializer(GenTypeOfType(GetTy));
+
+        LLGlobal->setConstant(true);
+        LLGlobal->setDSOLocal(true);
         return LLGlobal;
     }
 }
@@ -3001,9 +3004,9 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
     llvm::Constant* LLConstEnumArray = llvm::ConstantArray::get(LLArrType, LLElements);
     LLGlobalArray->setInitializer(LLConstEnumArray);
 
-    // TODO: dso_local
-    // const memory..
-
+    LLGlobalArray->setConstant(true);
+    LLGlobalArray->setDSOLocal(true);
+    
     Enum->LLGlobalArray = LLGlobalArray;
     return LLGlobalArray;
 }
