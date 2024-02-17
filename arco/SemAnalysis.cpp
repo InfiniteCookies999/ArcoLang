@@ -2886,6 +2886,11 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
         if (FromTy == Context.NullType)
             return true;
         else if (FromTy->GetKind() == TypeKind::Array) {
+            if (ToTy->Equals(Context.VoidPtrType)) {
+                // Even multi-dimensional arrays are assignable to void*.
+                return true;
+            }
+
             PointerType* ToPtrTy     = ToTy->AsPointerTy();
             ArrayType*   FromArrayTy = FromTy->AsArrayTy();
             if (FromArrayTy->GetDepthLevel() == 1) {

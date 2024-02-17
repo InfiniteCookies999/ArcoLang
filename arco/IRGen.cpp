@@ -2772,12 +2772,12 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
         if (FromType->GetKind() == TypeKind::Null) {
             return LLValue; // Already handled during generation
         } else if (FromType->GetKind() == TypeKind::Array) {
-            llvm::Value* LLPtrValue = ArrayToPointer(LLValue);
             if (ToType->Equals(Context.VoidPtrType)) {
-                LLPtrValue = Builder.CreateBitCast(LLPtrValue,
-                                                   llvm::Type::getInt8PtrTy(LLContext));
+                llvm::Value* LLPtrValue = MultiDimensionalArrayToPointerOnly(LLValue, FromType->AsArrayTy());
+                return Builder.CreateBitCast(LLPtrValue, llvm::Type::getInt8PtrTy(LLContext));
+            } else {
+                return ArrayToPointer(LLValue);
             }
-            return LLPtrValue;
         } else if (FromType->IsPointer()) {
             // Pointer to Pointer
             return Builder.CreateBitCast(LLValue, LLCastType);
