@@ -2794,10 +2794,10 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
     case TypeKind::Int16:
     case TypeKind::Int32:
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt8:
-    case TypeKind::UnsignedInt16:
-    case TypeKind::UnsignedInt32:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt8:
+    case TypeKind::UInt16:
+    case TypeKind::UInt32:
+    case TypeKind::UInt64:
     case TypeKind::Char: {
         if (FromTy->IsInt()) {
             if (FromTy->IsSystemInt()) {
@@ -2830,10 +2830,10 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
                     case TypeKind::Int16:         return RANGE(i16, Num->SignedIntValue);
                     case TypeKind::Int32:         return RANGE(i32, Num->SignedIntValue);
                     case TypeKind::Int64:         return RANGE(i64, Num->SignedIntValue);
-                    case TypeKind::UnsignedInt8:  return POS_RANGE(u8, Num->SignedIntValue);
-                    case TypeKind::UnsignedInt16: return POS_RANGE(u16, Num->SignedIntValue);
-                    case TypeKind::UnsignedInt32: return POS_RANGE(u32, Num->SignedIntValue);
-                    case TypeKind::UnsignedInt64: return POS_RANGE(u64, Num->SignedIntValue);
+                    case TypeKind::UInt8:  return POS_RANGE(u8, Num->SignedIntValue);
+                    case TypeKind::UInt16: return POS_RANGE(u16, Num->SignedIntValue);
+                    case TypeKind::UInt32: return POS_RANGE(u32, Num->SignedIntValue);
+                    case TypeKind::UInt64: return POS_RANGE(u64, Num->SignedIntValue);
                     case TypeKind::Char:	      return RANGE(i8, Num->SignedIntValue);
                     }
                 } else {
@@ -2842,10 +2842,10 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
                     case TypeKind::Int16:         return RANGE(i16, Num->UnsignedIntValue);
                     case TypeKind::Int32:         return RANGE(i32, Num->UnsignedIntValue);
                     case TypeKind::Int64:         return RANGE(i64, Num->UnsignedIntValue);
-                    case TypeKind::UnsignedInt8:  return POS_RANGE(u8, Num->UnsignedIntValue);
-                    case TypeKind::UnsignedInt16: return POS_RANGE(u16, Num->UnsignedIntValue);
-                    case TypeKind::UnsignedInt32: return POS_RANGE(u32, Num->UnsignedIntValue);
-                    case TypeKind::UnsignedInt64: return POS_RANGE(u64, Num->UnsignedIntValue);
+                    case TypeKind::UInt8:  return POS_RANGE(u8, Num->UnsignedIntValue);
+                    case TypeKind::UInt16: return POS_RANGE(u16, Num->UnsignedIntValue);
+                    case TypeKind::UInt32: return POS_RANGE(u32, Num->UnsignedIntValue);
+                    case TypeKind::UInt64: return POS_RANGE(u64, Num->UnsignedIntValue);
                     case TypeKind::Char:	      return RANGE(i8, Num->UnsignedIntValue);
                     }
                 }
@@ -2857,7 +2857,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 #undef POS_RANGE
     }
     case TypeKind::Int:
-    case TypeKind::UnsignedInt: {
+    case TypeKind::UInt: {
         if (FromTy->IsSystemInt()) return true;
         if (!FromTy->IsInt()) return false;
         return FromTy->GetTrivialTypeSizeInBytes() <= 4;
@@ -2999,12 +2999,12 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
     case TypeKind::Int16:
     case TypeKind::Int32:
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt8:
-    case TypeKind::UnsignedInt16:
-    case TypeKind::UnsignedInt32:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt8:
+    case TypeKind::UInt16:
+    case TypeKind::UInt32:
+    case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
     case TypeKind::Char:
         if (FromTy->IsNumber() || FromTy->IsPointer() || FromTy->GetKind() == TypeKind::Bool) {
             // Allow pointers/numbers/bools to cast to integers.

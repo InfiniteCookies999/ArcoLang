@@ -16,6 +16,7 @@ int main() {
 
     arco::Compiler Compiler;
     Compiler.StandAlone = true;
+    Compiler.EmitDebugInfo = true;
     Compiler.DisplayLLVMIR = true;
     //Compiler.SetOutputDirectory("abc");
     Compiler.DisplayTimes = true;

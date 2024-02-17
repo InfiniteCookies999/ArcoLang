@@ -1400,11 +1400,11 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
                 case TypeKind::Int:
                     Num->SignedIntValue = -Num->SignedIntValue;
                     break;
-                case TypeKind::UnsignedInt8:
-                case TypeKind::UnsignedInt16:
-                case TypeKind::UnsignedInt32:
-                case TypeKind::UnsignedInt64:
-                case TypeKind::UnsignedInt:
+                case TypeKind::UInt8:
+                case TypeKind::UInt16:
+                case TypeKind::UInt32:
+                case TypeKind::UInt64:
+                case TypeKind::UInt:
                     Num->UnsignedIntValue = -Num->UnsignedIntValue;
                     break;
                 case TypeKind::Float32:

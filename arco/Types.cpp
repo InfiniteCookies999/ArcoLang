@@ -22,12 +22,12 @@ bool arco::Type::IsNumber() const {
     case TypeKind::Int16:
     case TypeKind::Int32:
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt8:
-    case TypeKind::UnsignedInt16:
-    case TypeKind::UnsignedInt32:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt8:
+    case TypeKind::UInt16:
+    case TypeKind::UInt32:
+    case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
     case TypeKind::Char:
     case TypeKind::Float32:
     case TypeKind::Float64:
@@ -43,12 +43,12 @@ bool arco::Type::IsInt() const {
     case TypeKind::Int16:
     case TypeKind::Int32:
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt8:
-    case TypeKind::UnsignedInt16:
-    case TypeKind::UnsignedInt32:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt8:
+    case TypeKind::UInt16:
+    case TypeKind::UInt32:
+    case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
     case TypeKind::Char:
         return true;
     default:
@@ -79,7 +79,7 @@ bool arco::Type::IsSigned() const {
 
 bool arco::Type::IsSystemInt() const {
     TypeKind Kind = GetKind();
-    return Kind == TypeKind::Int || Kind == TypeKind::UnsignedInt;
+    return Kind == TypeKind::Int || Kind == TypeKind::UInt;
 }
 
 bool arco::Type::IsPointer() const {
@@ -192,18 +192,18 @@ arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
 ulen arco::Type::GetTrivialTypeSizeInBytes() const {
     switch (GetKind()) {
     case TypeKind::Int8:
-    case TypeKind::UnsignedInt8:
+    case TypeKind::UInt8:
     case TypeKind::Char:
         return 1;
     case TypeKind::Int16:
-    case TypeKind::UnsignedInt16:
+    case TypeKind::UInt16:
         return 2;
     case TypeKind::Int32:
-    case TypeKind::UnsignedInt32:
+    case TypeKind::UInt32:
     case TypeKind::Float32:
         return 4;
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt64:
     case TypeKind::Float64:
         return 8;
     default:
@@ -215,22 +215,22 @@ ulen arco::Type::GetTrivialTypeSizeInBytes() const {
 ulen arco::Type::GetSizeInBytes(llvm::Module& LLModule) const {
     switch (GetKind()) {
     case TypeKind::Int8:
-    case TypeKind::UnsignedInt8:
+    case TypeKind::UInt8:
     case TypeKind::Char:
         return 1;
     case TypeKind::Int16:
-    case TypeKind::UnsignedInt16:
+    case TypeKind::UInt16:
         return 2;
     case TypeKind::Int32:
-    case TypeKind::UnsignedInt32:
+    case TypeKind::UInt32:
     case TypeKind::Float32:
         return 4;
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt64:
     case TypeKind::Float64:
         return 8;
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
         return LLModule.getDataLayout().getPointerSize();
     default:
         assert(!"unreachable!");
@@ -266,15 +266,15 @@ std::string arco::Type::ToString() const {
     case TypeKind::Int16:		    return "int16";
     case TypeKind::Int32:		    return "int32";
     case TypeKind::Int64:		    return "int64";
-    case TypeKind::UnsignedInt8:    return "uint8";
-    case TypeKind::UnsignedInt16:   return "uint16";
-    case TypeKind::UnsignedInt32:   return "uint32";
-    case TypeKind::UnsignedInt64:   return "uint64";
+    case TypeKind::UInt8:    return "uint8";
+    case TypeKind::UInt16:   return "uint16";
+    case TypeKind::UInt32:   return "uint32";
+    case TypeKind::UInt64:   return "uint64";
     case TypeKind::Float32:         return "f32";
     case TypeKind::Float64:         return "f64";
     case TypeKind::Char:            return "char";
     case TypeKind::Int:             return "int";
-    case TypeKind::UnsignedInt:     return "uint";
+    case TypeKind::UInt:     return "uint";
     case TypeKind::Void:            return "void";
     case TypeKind::Null:            return "null";
     case TypeKind::CStr:            return "cstr";

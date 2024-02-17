@@ -14,6 +14,7 @@ namespace llvm {
     class Type;
     class GlobalVariable;
     class StructType;
+    class DIType;
     namespace CallingConv {
         using ID = unsigned;
     }
@@ -64,6 +65,8 @@ namespace arco {
         }
 
         void RequestGen(Decl* D);
+
+        bool EmitDebugInfo;
 
         llvm::StringMap<Module*> ModNamesToMods;
 
@@ -156,6 +159,7 @@ namespace arco {
         llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
         llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
         llvm::DenseMap<u32, llvm::StructType*>     LLSliceTypes;
+        llvm::DenseMap<u32, llvm::DIType*>         LLDITypeCache;
 
         llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
         llvm::DenseMap<u32, SliceType*>                       SliceTyCache;

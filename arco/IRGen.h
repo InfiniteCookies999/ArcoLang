@@ -87,6 +87,8 @@ namespace arco {
 
         bool EncounteredReturn = false;
 
+        bool EmitDebugInfo;
+
         void GenFuncDecl(FuncDecl* Func);
         void GenFuncBody(FuncDecl* Func);
 
@@ -267,6 +269,14 @@ namespace arco {
 
         llvm::Value* GenLLVMIntrinsicCall(FuncDecl* CalledFunc,
                                           const llvm::SmallVector<NonNamedValue, 2>& Args);
+
+        inline DebugInfoEmitter* GetDIEmitter(Decl* D) {
+            return D->FScope->DIEmitter;
+        }
+        void EmitDebugLocation(SourceLoc Loc);
+        inline void EmitDebugLocation(AstNode* Node) {
+            EmitDebugLocation(Node->Loc);
+        }
 
         inline llvm::Type* GenType(Type* Ty) {
             return arco::GenType(Context, Ty);

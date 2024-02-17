@@ -1,6 +1,8 @@
 #include "IRGen.h"
 
 #include "Context.h"
+#include "EmitDebugInfo.h"
+
 #include <unordered_set>
 
 //===-------------------------------===//
@@ -116,19 +118,19 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
     switch (Ty->GetKind()) {
     case TypeKind::Char:
     case TypeKind::Int8:
-    case TypeKind::UnsignedInt8:
+    case TypeKind::UInt8:
         return llvm::Type::getInt8Ty(LLContext);
     case TypeKind::Int16:
-    case TypeKind::UnsignedInt16:
+    case TypeKind::UInt16:
         return llvm::Type::getInt16Ty(LLContext);
     case TypeKind::Int32:
-    case TypeKind::UnsignedInt32:
+    case TypeKind::UInt32:
         return llvm::Type::getInt32Ty(LLContext);
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt64:
         return llvm::Type::getInt64Ty(LLContext);
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
         return GetSystemIntType(LLContext, Context.LLArcoModule);
     case TypeKind::Bool:
         return llvm::Type::getInt1Ty(LLContext);
@@ -258,11 +260,14 @@ LocScope = &NewScope;
 DestroyLocScopeInitializedObjects(); \
 LocScope = LocScope->Parent;
 
+#define EMIT_DI(S) if (EmitDebugInfo) { S; }
+
 arco::IRGenerator::IRGenerator(ArcoContext& Context)
     : Context(Context),
       LLContext(Context.LLContext),
       LLModule(Context.LLArcoModule),
-      Builder(Context.LLContext)
+      Builder(Context.LLContext),
+      EmitDebugInfo(Context.EmitDebugInfo)
 {
 }
 
@@ -480,6 +485,8 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", Func->LLFunction);
     Builder.SetInsertPoint(LLEntryBlock);
 
+    EMIT_DI(GetDIEmitter(Func)->EmitFunc(Func));
+
     if (Func->NumReturns > 1) {
         LLFuncEndBB = llvm::BasicBlock::Create(LLContext, "func.return");
         if (Func == Context.MainEntryFunc) {
@@ -609,6 +616,10 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
                 Builder.CreateRetVoid();
             }
         }
+    }
+
+    if (EmitDebugInfo) {
+        GetDIEmitter(Func)->EmitFuncEnd(Func);
     }
 }
 
@@ -819,10 +830,17 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
         AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
     }
 
+    EMIT_DI(GetDIEmitter(Var)->EmitLocalVar(Var, Builder));
+
     if (Var->Assignment) {
         GenAssignment(Var->LLAddress, Var->Ty, Var->Assignment, Var->HasConstAddress);
     } else {
         GenDefaultValue(Var->Ty, Var->LLAddress);
+    }
+    // Emit the location for the generated assignment.
+    if (EmitDebugInfo) {
+        llvm::Instruction& LLAssignmentInst = Builder.GetInsertBlock()->back();
+        GetDIEmitter(CFunc)->EmitDebugLocation(&LLAssignmentInst, Var->Loc);
     }
     return Var->LLAddress;
 }
@@ -1833,17 +1851,17 @@ llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
     case TypeKind::Int16:          return GetLLInt16(Number->SignedIntValue, LLContext);
     case TypeKind::Int32:          return GetLLInt32(Number->SignedIntValue, LLContext);
     case TypeKind::Int64:          return GetLLInt64(Number->SignedIntValue, LLContext);
-    case TypeKind::UnsignedInt8:   return GetLLUInt8(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UnsignedInt16:  return GetLLUInt16(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UnsignedInt32:  return GetLLUInt32(Number->UnsignedIntValue, LLContext);
-    case TypeKind::UnsignedInt64:  return GetLLUInt64(Number->UnsignedIntValue, LLContext);
+    case TypeKind::UInt8:   return GetLLUInt8(Number->UnsignedIntValue, LLContext);
+    case TypeKind::UInt16:  return GetLLUInt16(Number->UnsignedIntValue, LLContext);
+    case TypeKind::UInt32:  return GetLLUInt32(Number->UnsignedIntValue, LLContext);
+    case TypeKind::UInt64:  return GetLLUInt64(Number->UnsignedIntValue, LLContext);
     case TypeKind::Float32:
         return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float32Value));
     case TypeKind::Float64:
         return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float64Value));
     case TypeKind::Int:
         return GetSystemInt(Number->SignedIntValue, LLContext, LLModule);
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
         return GetSystemUInt(Number->UnsignedIntValue, LLContext, LLModule);
     default:
         assert(!"Unimplemented GenNumberLiteral() case");
@@ -2669,12 +2687,12 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
     case TypeKind::Int16:
     case TypeKind::Int32:
     case TypeKind::Int64:
-    case TypeKind::UnsignedInt8:
-    case TypeKind::UnsignedInt16:
-    case TypeKind::UnsignedInt32:
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt8:
+    case TypeKind::UInt16:
+    case TypeKind::UInt32:
+    case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
     case TypeKind::Char:
         //  --- TO Integers ---
         if (FromType->IsInt()) {
@@ -2859,15 +2877,15 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
     switch (Ty->GetKind()) {
     case TypeKind::Int8: case TypeKind::Char:
         return GetLLInt8(0, LLContext);
-    case TypeKind::UnsignedInt8:    return GetLLUInt8(0, LLContext);
+    case TypeKind::UInt8:    return GetLLUInt8(0, LLContext);
     case TypeKind::Int16:           return GetLLInt16(0, LLContext);
-    case TypeKind::UnsignedInt16:   return GetLLUInt16(0, LLContext);
+    case TypeKind::UInt16:   return GetLLUInt16(0, LLContext);
     case TypeKind::Int32:           return GetLLInt32(0, LLContext);
-    case TypeKind::UnsignedInt32:   return GetLLUInt32(0, LLContext);
+    case TypeKind::UInt32:   return GetLLUInt32(0, LLContext);
     case TypeKind::Int64:           return GetLLInt64(0, LLContext);
-    case TypeKind::UnsignedInt64:   return GetLLUInt64(0, LLContext);
+    case TypeKind::UInt64:   return GetLLUInt64(0, LLContext);
     case TypeKind::Int:             return GetSystemInt(0, LLContext, LLModule);
-    case TypeKind::UnsignedInt:     return GetSystemUInt(0, LLContext, LLModule);
+    case TypeKind::UInt:     return GetSystemUInt(0, LLContext, LLModule);
     case TypeKind::Bool:
         return llvm::ConstantInt::getFalse(LLContext);
     case TypeKind::Float32:
@@ -3290,31 +3308,31 @@ llvm::Value* arco::IRGenerator::GetOneValue(Type* Ty) {
     case TypeKind::Char:
         LLOne = GetLLInt8(1, LLContext);
         break;
-    case TypeKind::UnsignedInt8:
+    case TypeKind::UInt8:
         LLOne = GetLLUInt8(1, LLContext);
         break;
     case TypeKind::Int16:
         LLOne = GetLLInt16(1, LLContext);
         break;
-    case TypeKind::UnsignedInt16:
+    case TypeKind::UInt16:
         LLOne = GetLLUInt16(1, LLContext);
         break;
     case TypeKind::Int32:
         LLOne = GetLLInt32(1, LLContext);
         break;
-    case TypeKind::UnsignedInt32:
+    case TypeKind::UInt32:
         LLOne = GetLLUInt32(1, LLContext);
         break;
     case TypeKind::Int64:
         LLOne = GetLLInt64(1, LLContext);
         break;
-    case TypeKind::UnsignedInt64:
+    case TypeKind::UInt64:
         LLOne = GetLLUInt64(1, LLContext);
         break;
     case TypeKind::Int:
         LLOne = GetSystemInt(1, LLContext, LLModule);
         break;
-    case TypeKind::UnsignedInt:
+    case TypeKind::UInt:
         LLOne = GetSystemUInt(1, LLContext, LLModule);
         break;
     default: assert(!"unimplementd!"); break;
@@ -3628,4 +3646,10 @@ return Builder.CreateCall(LLFunc, { Arg0, Arg1 });
 #undef CALL_GET_DECL1
 #undef CALL_GET_DECL2
     return nullptr;
+}
+
+void arco::IRGenerator::EmitDebugLocation(SourceLoc Loc) {
+    if (CFunc) {
+        CFunc->FScope->DIEmitter->EmitDebugLocation(Loc, Builder);
+    }    
 }

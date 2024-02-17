@@ -26,11 +26,11 @@ namespace arco {
 
     enum class TypeKind {
 
-        UnsignedInt,
-        UnsignedInt8,
-        UnsignedInt16,
-        UnsignedInt32,
-        UnsignedInt64,
+        UInt,
+        UInt8,
+        UInt16,
+        UInt32,
+        UInt64,
 
         Int,
         Int8,

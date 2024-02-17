@@ -11,6 +11,7 @@
 #include "IRGen.h"
 #include "CodeGen.h"
 #include "FloatConversions.h"
+#include "EmitDebugInfo.h"
 
 static bool ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
     std::ifstream Stream(Path, std::ios::binary | std::ios::in);
@@ -75,6 +76,8 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     Context.Initialize();
     FD::InitializeCache();
 
+    Context.EmitDebugInfo = EmitDebugInfo;
+
     if (!StandAlone) {
         if (auto StdLibPath = GetStdLibPath()) {
             Sources.push_back(Source{ false, "std", StdLibPath });
@@ -96,48 +99,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         }
     }
 
-    // Creating FileUnits for the .eris files
-    namespace fs = std::filesystem;
-    for (const Source& Source : Sources) {
-        const char* FLPath = Source.Path.data();
-        fs::path Path = fs::path(FLPath);
-
-        std::error_code EC;
-        if (!fs::exists(Path, EC) || EC) {
-            if (EC) {
-                Logger::GlobalError(llvm::errs(),
-                    "Could not check if source \"%s\" exist. Please check permissions", FLPath);
-            } else {
-                Logger::GlobalError(llvm::errs(),
-                    "Source \"%s\" does not exist", FLPath);
-            }
-            continue;
-        }
-
-        Module* Mod = Context.ModNamesToMods[Source.ModName];
-
-        if (fs::is_directory(FLPath)) {
-            if (Source.PartOfMainProject) {
-                std::string PathS = Path.generic_string();
-                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
-            } else {
-                std::string PathS = Path.has_parent_path() ? Path.parent_path().generic_string()
-                                                           : Path.generic_string();
-                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
-            }
-        } else {
-            // The user specified an absolute path to a file.
-            if (Path.extension() != ".arco") {
-                Logger::GlobalError(llvm::errs(),
-                        "Expected source file with extension type .arco for file: \"%s\"", FLPath);
-                continue;
-            }
-
-            ParseFile(Mod,
-                      Path.filename().generic_string(),
-                      fs::absolute(Path).generic_string());
-        }
-    }
+    ParseAllFiles(Sources);
 
     i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
     i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
@@ -161,72 +123,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     
     SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
 
-    // Mapping the imports to the structs within different files.
-    for (FileScope* FScope : FileScopes) {
-        SemAnalyzer::ResolveImports(FScope, Context);
-    }
-
-    if (Context.MainEntryFunc) {
-        Context.RequestGen(Context.MainEntryFunc);
-    } else {
-        Logger::GlobalError(llvm::errs(), "Could not find entry point function");
-        return 1;
-    }
-
-    while (!Context.QueuedDeclsToGen.empty()) {
-        Decl* D = Context.QueuedDeclsToGen.front();
-        Context.QueuedDeclsToGen.pop();
-
-        SemAnalyzer Analyzer(Context, D);
-        if (D->Is(AstKind::FUNC_DECL)) {
-            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
-        }
-    
-        if (FoundCompileError) {
-            continue;
-        }
-
-        IRGenerator IRGen(Context);	
-        if (D->Is(AstKind::FUNC_DECL)) {
-            IRGen.GenFunc(static_cast<FuncDecl*>(D));
-        } else if (D->Is(AstKind::VAR_DECL)) {
-            IRGen.GenGlobalVar(static_cast<VarDecl*>(D));
-        }
-    }
-
-    if (FoundCompileError) {
-        return 1;
-    }
-
-    IRGenerator IRGen(Context);
-    IRGen.GenGlobalInitFuncBody();
-
-    while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
-        StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
-        Context.DefaultConstrucorsNeedingCreated.pop();
-        IRGen.GenImplicitDefaultConstructorBody(Struct);
-    }
-
-    IRGen.GenGlobalDestroyFuncBody();
-
-    // Checking any code that was not generated.
-    while (!Context.UncheckedDecls.empty()) {
-        Decl* D = *Context.UncheckedDecls.begin();
-        SemAnalyzer Analyzer(Context, D);
-        if (D->Is(AstKind::FUNC_DECL)) {
-            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
-        } else if (D->Is(AstKind::VAR_DECL)) {
-            Analyzer.CheckVarDecl(static_cast<VarDecl*>(D));
-        } else if (D->Is(AstKind::STRUCT_DECL)) {
-            Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
-        } else if (D->Is(AstKind::ENUM_DECL)) {
-            Analyzer.CheckEnumDecl(static_cast<EnumDecl*>(D));
-        }
-    }
-
-    for (Module* Mod : Modules) {
-        SemAnalyzer::CheckForDuplicateFuncDeclarations(Mod);
-    }
+    CheckAndGenIR();
 
     i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
@@ -248,13 +145,9 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     }
 
     std::string ObjFileName = OutputName + ".o";
-    if (!WriteObjFile(ObjFileName.c_str(), Context.LLArcoModule, LLMachineTarget)) {
-        FoundCompileError = true;
-        return 1;
-    }
+    GenCode(ObjFileName);
 
     i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
-    
     i64 LinkTimeBegin = GetTimeInMilliseconds();
 
     std::string ExecutableName = OutputName;
@@ -262,27 +155,8 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     ExecutableName += ".exe";
 #endif
 
-    std::string Libs = "";
-    for (const char* Lib : Libraries) {
-        Libs += std::string("-l") + std::string(Lib) + " ";
-    }
-    std::string LibPaths = "";
-    for (const char* LibPath : LibrarySearchPaths) {
-        LibPaths += std::string("-L") + std::string(LibPath) + " ";
-    }
-
-    std::string ClangCommand = "clang ";
-    ClangCommand += LibPaths + Libs + ObjFileName;
-    ClangCommand += " -o ";
-    ClangCommand += ExecutableName;
-    
-    llvm::outs() << ClangCommand << "\n";
-
-    std::string Ignored;
-    i32 ExitCode = ExeProcess(ClangCommand.c_str(), NULL, false);
-    if (ExitCode) {
-        // Failed to link
-        FoundCompileError = true;
+    Linking(ObjFileName, ExecutableName);
+    if (FoundCompileError) {
         return 1;
     }
 
@@ -358,6 +232,175 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     return 0;
 }
 
+void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
+    namespace fs = std::filesystem;
+    for (const Source& Source : Sources) {
+        const char* FLPath = Source.Path.data();
+        fs::path Path = fs::path(FLPath);
+
+        std::error_code EC;
+        if (!fs::exists(Path, EC) || EC) {
+            if (EC) {
+                Logger::GlobalError(llvm::errs(),
+                    "Could not check if source \"%s\" exist. Please check permissions", FLPath);
+            } else {
+                Logger::GlobalError(llvm::errs(),
+                    "Source \"%s\" does not exist", FLPath);
+            }
+            continue;
+        }
+
+        Module* Mod = Context.ModNamesToMods[Source.ModName];
+
+        if (fs::is_directory(FLPath)) {
+            if (Source.PartOfMainProject) {
+                std::string PathS = Path.generic_string();
+                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+            } else {
+                std::string PathS = Path.has_parent_path() ? Path.parent_path().generic_string()
+                                                           : Path.generic_string();
+                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+            }
+        } else {
+            // The user specified an absolute path to a file.
+            if (Path.extension() != ".arco") {
+                Logger::GlobalError(llvm::errs(),
+                        "Expected source file with extension type .arco for file: \"%s\"", FLPath);
+                continue;
+            }
+
+            ParseFile(Mod,
+                      Path.filename().generic_string(),
+                      fs::absolute(Path).generic_string());
+        }
+    }
+}
+
+void arco::Compiler::CheckAndGenIR() {
+    // Mapping the imports to the structs within different files.
+    for (FileScope* FScope : FileScopes) {
+        SemAnalyzer::ResolveImports(FScope, Context);
+    }
+
+    if (Context.MainEntryFunc) {
+        Context.RequestGen(Context.MainEntryFunc);
+    } else {
+        Logger::GlobalError(llvm::errs(), "Could not find entry point function");
+        return;
+    }
+
+    // Creating debug units for each file.
+    if (EmitDebugInfo) {
+        for (FileScope* FScope : FileScopes) {
+            FScope->DIEmitter = new DebugInfoEmitter(Context);
+            FScope->DIEmitter->EmitFile(FScope);
+        }
+    }
+
+    while (!Context.QueuedDeclsToGen.empty()) {
+        Decl* D = Context.QueuedDeclsToGen.front();
+        Context.QueuedDeclsToGen.pop();
+
+        SemAnalyzer Analyzer(Context, D);
+        if (D->Is(AstKind::FUNC_DECL)) {
+            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
+        }
+    
+        if (FoundCompileError) {
+            continue;
+        }
+
+        IRGenerator IRGen(Context);	
+        if (D->Is(AstKind::FUNC_DECL)) {
+            IRGen.GenFunc(static_cast<FuncDecl*>(D));
+        } else if (D->Is(AstKind::VAR_DECL)) {
+            IRGen.GenGlobalVar(static_cast<VarDecl*>(D));
+        }
+    }
+
+    if (FoundCompileError) {
+        return;
+    }
+
+    IRGenerator IRGen(Context);
+    IRGen.GenGlobalInitFuncBody();
+
+    while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
+        StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
+        Context.DefaultConstrucorsNeedingCreated.pop();
+        IRGen.GenImplicitDefaultConstructorBody(Struct);
+    }
+
+    IRGen.GenGlobalDestroyFuncBody();
+
+    // Checking any code that was not generated.
+    while (!Context.UncheckedDecls.empty()) {
+        Decl* D = *Context.UncheckedDecls.begin();
+        SemAnalyzer Analyzer(Context, D);
+        if (D->Is(AstKind::FUNC_DECL)) {
+            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
+        } else if (D->Is(AstKind::VAR_DECL)) {
+            Analyzer.CheckVarDecl(static_cast<VarDecl*>(D));
+        } else if (D->Is(AstKind::STRUCT_DECL)) {
+            Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
+        } else if (D->Is(AstKind::ENUM_DECL)) {
+            Analyzer.CheckEnumDecl(static_cast<EnumDecl*>(D));
+        }
+    }
+
+    for (Module* Mod : Modules) {
+        SemAnalyzer::CheckForDuplicateFuncDeclarations(Mod);
+    }
+
+    if (EmitDebugInfo) {
+#ifdef _WIN32
+        Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+#endif
+        Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+        llvm::NamedMDNode* LLVMIdentMD = Context.LLArcoModule.getOrInsertNamedMetadata("llvm.ident");
+		LLVMIdentMD->addOperand(llvm::MDNode::get(Context.LLContext, { llvm::MDString::get(Context.LLContext, "Eris Compiler")}));
+    
+        // Finalizing all files for debug.
+        for (FileScope* FScope : FileScopes) {
+            FScope->DIEmitter->Finalize();
+        }
+    }
+}
+
+void arco::Compiler::GenCode(const std::string& ObjFileName) {
+    if (!WriteObjFile(ObjFileName.c_str(), Context.LLArcoModule, LLMachineTarget)) {
+        FoundCompileError = true;
+    }
+}
+
+void arco::Compiler::Linking(const std::string& ObjFileName, const std::string& ExecutableName) {
+    std::string Libs = "";
+    for (const char* Lib : Libraries) {
+        Libs += std::string("-l") + std::string(Lib) + " ";
+    }
+    std::string LibPaths = "";
+    for (const char* LibPath : LibrarySearchPaths) {
+        LibPaths += std::string("-L") + std::string(LibPath) + " ";
+    }
+
+    std::string ClangCommand = "clang ";
+    if (EmitDebugInfo)
+        ClangCommand += "-g ";
+    ClangCommand += LibPaths + Libs + ObjFileName;
+    ClangCommand += " -o ";
+    ClangCommand += ExecutableName;
+    
+    llvm::outs() << ClangCommand << "\n";
+
+    std::string Ignored;
+    i32 ExitCode = ExeProcess(ClangCommand.c_str(), NULL, false);
+    if (ExitCode) {
+        // Failed to link
+        FoundCompileError = true;
+        return;
+    }
+}
+
 void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen) {
     for (const auto& Entry : std::filesystem::directory_iterator(DirectoryPath)) {
         if (Entry.is_regular_file()) {
@@ -384,6 +427,7 @@ void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, con
 
     Parser Parser(Context, Mod, RelativePath.c_str(), Buffer);
     FileScope* FScope = Parser.Parse();
+    FScope->FullPath = AbsolutePath;
     TotalLinesParsed += Parser.GetLinesParsed();
 
     if (!FScope->ParsingErrors) {

@@ -27,6 +27,7 @@ namespace arco {
     struct Decl;
     using ScopeStmts = llvm::SmallVector<AstNode*>;
     using FuncsList  = llvm::SmallVector<FuncDecl*>;
+    class DebugInfoEmitter;
 
     enum class AstKind {
         
@@ -110,6 +111,7 @@ namespace arco {
         };
 
         std::string                                         Path;
+        std::string                                         FullPath;
         SourceBuf                                           Buffer;
         llvm::DenseMap<Identifier, StructOrNamespaceImport> Imports;
         llvm::SmallVector<StaticImport>                     StaticImports;
@@ -123,6 +125,8 @@ namespace arco {
             GLOBAL,
             STRUCT
         };
+
+        DebugInfoEmitter* DIEmitter;
 
         // When encountering statements it is possible
         // that the statement is not considered valid in the
