@@ -538,9 +538,11 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
         ++LLParamIndex;
     }
     for (VarDecl* Param : Func->Params) {
-        if (Param->IsComptime()) continue;
+        if (Param->IsComptime()) continue; // TODO: This should not be needed parameters should not be comptime.
         Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
         AddObjectToDestroyOpt(Param->Ty, Param->LLAddress);
+
+        EMIT_DI(GetDIEmitter(Func)->EmitParam(Func, Param, Builder));
     }
 
     if (Func->IsConstructor) {
@@ -597,28 +599,31 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
         }
     }
 
+    llvm::Instruction* LLRet = nullptr;
     if (Func->NumReturns > 1) {
         CallDestructors(AlwaysInitializedDestroyedObjects);
         if (Func->UsesOptimizedIntRet) {
-            Builder.CreateRet(GenReturnValueForOptimizedStructAsInt(LLRetAddr));
+            LLRet = Builder.CreateRet(GenReturnValueForOptimizedStructAsInt(LLRetAddr));
         } else if (LLRetAddr) {
-            Builder.CreateRet(CreateLoad(LLRetAddr));
+            LLRet = Builder.CreateRet(CreateLoad(LLRetAddr));
         } else {
-            Builder.CreateRetVoid();
+            LLRet = Builder.CreateRetVoid();
         }
     } else if (Func->NumReturns == 1 && Func->RetTy == Context.VoidType) {
         if (!EncounteredReturn) {
             CallDestructors(AlwaysInitializedDestroyedObjects);
             // Implicit void return.
             if (Func == Context.MainEntryFunc) {
-                Builder.CreateRet(GetLLInt32(0, LLContext));
+                LLRet = Builder.CreateRet(GetLLInt32(0, LLContext));
             } else {
-                Builder.CreateRetVoid();
+                LLRet = Builder.CreateRetVoid();
             }
         }
     }
 
     if (EmitDebugInfo) {
+        if (LLRet)
+            GetDIEmitter(Func)->EmitDebugLocation(LLRet, Func->Scope.EndLoc);
         GetDIEmitter(Func)->EmitFuncEnd(Func);
     }
 }
@@ -750,6 +755,8 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
         Global->HasConstAddress) {
         LLGVar->setConstant(true);
     }
+
+    EMIT_DI(GetDIEmitter(Global)->EmitGlobalVar(Global, Builder));
 }
 
 llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
@@ -899,6 +906,9 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
         } else {
             Builder.CreateRetVoid();
         }
+
+        EMIT_DI(EmitDebugLocation(Ret));
+
     } else {
 
         // Multiple returns exists. All returns jump to the LLFuncEndBB.
@@ -980,6 +990,7 @@ llvm::Value* arco::IRGenerator::GenLoopControl(LoopControlStmt* LoopControl) {
         llvm::BasicBlock* LoopRestart = LoopContinueStack[LoopBreakStack.size() - 1 - (LoopControl->LoopCount-1)];
         Builder.CreateBr(LoopRestart);
     }
+    EMIT_DI(EmitDebugLocation(LoopControl));
     return nullptr;
 }
 
@@ -1001,6 +1012,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
     GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);	
+    EMIT_DI(EmitDebugLocation(Loop));
 
     GenBlock(LLBodyBB, Loop->Scope.Stmts);
     POP_SCOPE();
@@ -1065,6 +1077,7 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
     }
 
     Builder.CreateCondBr(LLCond, LLBodyBB, LLEndBB);
+    EMIT_DI(EmitDebugLocation(Rg));
 
     GenBlock(LLBodyBB, LScope.Stmts);
     POP_SCOPE();
@@ -1123,6 +1136,7 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
     LocScope->IsLoopScope = true;
     // Generating the condition block
     GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);
+    EMIT_DI(EmitDebugLocation(Loop));
 
     GenBlock(LLBodyBB, Loop->Scope.Stmts);
     POP_SCOPE();
@@ -1133,6 +1147,7 @@ llvm::Value* arco::IRGenerator::GenRangeLoop(RangeLoopStmt* Loop) {
     // Unconditionally branch back to the condition or inc. block
     // to restart the loop.
     GenBranchIfNotTerm(LLContinueBB);
+    EMIT_DI(EmitDebugLocation(Loop->Scope.EndLoc));
 
     // Creating the code for the inc. block if needed
     if (LLIncBB) {
@@ -1196,7 +1211,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     // Keep going until end of array
     llvm::Value* LLCond = Builder.CreateICmpNE(CreateLoad(LLArrItrPtrAddr), LLPtrToArrEnd);
     Builder.CreateCondBr(LLCond, LLBodyBB, LLEndBB);
-    
+    EMIT_DI(EmitDebugLocation(Loop));
     EMIT_DI(GetDIEmitter()->EmitScopeStart(Loop->Scope.StartLoc));
 
     GenBranchIfNotTerm(LLBodyBB);
@@ -1227,6 +1242,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
 
     // Incrementing the array pointer
     Builder.SetInsertPoint(LLIncBB);
+    EMIT_DI(EmitDebugLocation(Loop->Scope.EndLoc));
 
     llvm::Value* LLArrItrPtr = CreateLoad(LLArrItrPtrAddr);
     llvm::Value* LLNextPtr = CreateInBoundsGEP(LLArrItrPtr, { GetSystemUInt(1, LLContext, LLModule) });
@@ -1274,6 +1290,7 @@ llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
 
     llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
     Builder.Insert(LLFree);
+    EMIT_DI(EmitDebugLocation(Delete));
     return nullptr;
 }
 
@@ -1288,6 +1305,7 @@ llvm::Value* arco::IRGenerator::GenIf(IfStmt* If) {
     EMIT_DI(GetDIEmitter()->EmitScopeStart(CFunc->Scope.StartLoc));
     PUSH_SCOPE();
     GenBranchOnCond(If->Cond, LLThenBB, LLElseBB);
+    EMIT_DI(EmitDebugLocation(If));
 
     GenBlock(LLThenBB, If->Scope.Stmts);
     POP_SCOPE();
@@ -1404,12 +1422,14 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
             // Pointer arithmetic
             llvm::Value* V = CreateInBoundsGEP(CreateLoad(LLLHS), { LLRHS });
             Builder.CreateStore(V, LLLHS);
+            EMIT_DI(EmitDebugLocation(BinOp));
             return V;
         } else {
             llvm::Value* LLLHSRV = CreateLoad(LLLHS);
             llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateAdd(LLLHSRV, LLRHS)
                                                 : Builder.CreateFAdd(LLLHSRV, LLRHS);
             Builder.CreateStore(V, LLLHS);
+            EMIT_DI(EmitDebugLocation(BinOp));
             return V;
         }
     }
@@ -1420,12 +1440,14 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         if (BinOp->Ty->IsPointer()) {
             llvm::Value* V = CreateInBoundsGEP(CreateLoad(LLLHS), { Builder.CreateNeg(LLRHS) });
             Builder.CreateStore(V, LLLHS);
+            EMIT_DI(EmitDebugLocation(BinOp));
             return V;
         } else {
             llvm::Value* LLLHSRV = CreateLoad(LLLHS);
             llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateSub(LLLHSRV, LLRHS)
                                                 : Builder.CreateFSub(LLLHSRV, LLRHS);
             Builder.CreateStore(V, LLLHS);
+            EMIT_DI(EmitDebugLocation(BinOp));
             return V;
         }
     }
@@ -1436,6 +1458,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* V = BinOp->Ty->IsInt() ? Builder.CreateMul(LLLHSRV, LLRHS)
                                             : Builder.CreateFMul(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::SLASH_EQ: { // /=
@@ -1450,6 +1473,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
             V = Builder.CreateFDiv(LLLHSRV, LLRHS);
         }
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::MOD_EQ: { // %=
@@ -1459,6 +1483,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* V = BinOp->Ty->IsSigned() ? Builder.CreateSRem(LLLHSRV, LLRHS)
                                                : Builder.CreateURem(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     //
@@ -1503,6 +1528,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* LLLHSRV = CreateLoad(LLLHS);
         llvm::Value* V = Builder.CreateAnd(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::CRT_EQ: { // ^=
@@ -1511,6 +1537,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* LLLHSRV = CreateLoad(LLLHS);
         llvm::Value* V = Builder.CreateXor(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::BAR_EQ: { // |=
@@ -1519,6 +1546,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* LLLHSRV = CreateLoad(LLLHS);
         llvm::Value* V = Builder.CreateOr(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::LT_LT_EQ: { // <<=
@@ -1527,6 +1555,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* LLLHSRV = CreateLoad(LLLHS);
         llvm::Value* V = Builder.CreateShl(LLLHSRV, LLRHS);
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     case TokenKind::GT_GT_EQ: { // >>=
@@ -1543,6 +1572,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
             V = Builder.CreateLShr(LLLHSRV, LLRHS);
         }
         Builder.CreateStore(V, LLLHS);
+        EMIT_DI(EmitDebugLocation(BinOp));
         return V;
     }
     //
@@ -1785,6 +1815,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
             IncRes = Builder.CreateAdd(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
         Builder.CreateStore(IncRes, LLVal);
+        EMIT_DI(EmitDebugLocation(UniOp));
         return UniOp->Op == TokenKind::PLUS_PLUS ? IncRes : LLRVal;
     }
     case TokenKind::MINUS_MINUS: case TokenKind::POST_MINUS_MINUS: {
@@ -1798,6 +1829,7 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
             IncRes = Builder.CreateSub(LLRVal, GetOneValue(UniOp->Value->Ty), "inc");
         }
         Builder.CreateStore(IncRes, LLVal);
+        EMIT_DI(EmitDebugLocation(UniOp));
         return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
     }
     case '&': {
@@ -2028,9 +2060,9 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
         GenType(Call->Site->Ty)->getPointerElementType());
     llvm::Value* LLCallee = GenRValue(Call->Site);
 
+    llvm::Value* LLRetValue = Builder.CreateCall(LLFuncTy, LLCallee, LLArgs);
     EMIT_DI(EmitDebugLocation(Call));
 
-    llvm::Value* LLRetValue = Builder.CreateCall(LLFuncTy, LLCallee, LLArgs);
     if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
         LLRetValue->setName("ret.val");
     }
@@ -2141,9 +2173,9 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     //}
     //llvm::outs() << "\n";
 
+    llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
     EMIT_DI(EmitDebugLocation(CallNode));
 
-    llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
     if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
         LLRetValue->setName("ret.val");
     }
@@ -2658,6 +2690,7 @@ void arco::IRGenerator::GenLoopCondJump(llvm::BasicBlock* LLCondBB,
                                         Expr* Cond) {
     // Jumping directly into the loop condition
     Builder.CreateBr(LLCondBB);
+    EMIT_DI(EmitDebugLocation(Cond));
     Builder.SetInsertPoint(LLCondBB);
 
     llvm::Value* LLCond = Cond ? GenCond(Cond) : llvm::ConstantInt::getTrue(LLContext);

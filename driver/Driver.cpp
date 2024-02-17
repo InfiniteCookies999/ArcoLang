@@ -14,9 +14,12 @@ Basic Options (for more options use -more-options):
     -out=<name>
         Sets the name of the executable. -out-dir for directories.
 
+    -emit-debug
+        Emits debug information.
+
     -run
         Executes the program after it is compiled and linked.
-        Or use -run-seperate to run in a seperate window.
+        Or use -run-seperate to run in a seperate terminal.
 
     -more-options
         Show more options that can be ran with arco.
@@ -40,6 +43,9 @@ Possible options:
     -out=<name>
         Sets the name of the executable.
  
+    -emit-debug
+        Emits debug information.
+
     -out-dir=<name>
         The directory to put the output files such as
         the executable. Will create the needed directories
@@ -50,7 +56,7 @@ Possible options:
 
     -run-seperate
         Executes the program after it is compiled and linked
-        within a seperate window.
+        within a seperate termainl.
 
     -show-times
         Display how long different stages took.
@@ -202,6 +208,7 @@ int main(int argc, char* argv[]) {
     OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
     OptManager.AddOption("short-errors"  , &arco::ShortErrors);
     OptManager.AddOption("disable-colors", &arco::DisableTerminalColors);
+    OptManager.AddOption("emit-debug"    , &Compiler.EmitDebugInfo);
     OptManager.AddOption("max-errors", [](int ArgNum, llvm::StringRef ValPart) {
         ValPart = GetOptValue(ArgNum, ValPart, "max-errors");
         if (ValPart.empty()) return;

@@ -85,7 +85,7 @@ namespace arco {
         void ParseAllFiles(llvm::SmallVector<Source>& Sources);
         void CheckAndGenIR();
         void GenCode(const std::string& ObjFileName);
-        void Linking(const std::string& ObjFileName, const std::string& ExecutableName);
+        void Linking(const std::string& AbsoluteObjPath, const std::string& AbsoluteExePath);
 
         void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 

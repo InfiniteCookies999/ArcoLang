@@ -20,8 +20,11 @@ namespace arco {
         void EmitFile(FileScope* FScope);
 
         void EmitFunc(FuncDecl* Func);
+        void EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder);
         void EmitFuncEnd(FuncDecl* Func);
         void EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBuilder);
+
+        void EmitGlobalVar(VarDecl* Global, llvm::IRBuilder<>& IRBuilder);
 
         void EmitScopeStart(SourceLoc Loc);
         void EmitScopeEnd();

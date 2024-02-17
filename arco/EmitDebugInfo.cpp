@@ -84,6 +84,33 @@ void arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func) {
 	DILexicalScopes.push_back(DIFunc);
 }
 
+void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder) {
+	
+	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
+
+	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
+		DIScope,
+		Param->Name.Text,
+		Param->ParamIdx + 1,
+		DebugUnit->getFile(),
+		Param->Loc.LineNumber,
+		EmitType(Param->Ty),
+		true
+	);
+
+	DBuilder->insertDeclare(
+		Param->LLAddress,
+		DIVariable,
+		DBuilder->createExpression(),
+		llvm::DILocation::get(
+			Context.LLContext,
+			Param->Loc.LineNumber,
+			0, // TODO: column
+			DIScope),
+		IRBuilder.GetInsertBlock()
+	);
+}
+
 void arco::DebugInfoEmitter::EmitFuncEnd(FuncDecl* Func) {
 	DILexicalScopes.clear();
 	DBuilder->finalizeSubprogram(Func->LLFunction->getSubprogram());
@@ -112,6 +139,22 @@ void arco::DebugInfoEmitter::EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBui
 			DIScope),
 		IRBuilder.GetInsertBlock()
 	);
+}
+
+void arco::DebugInfoEmitter::EmitGlobalVar(VarDecl* Global, llvm::IRBuilder<>& IRBuilder) {
+	llvm::DIGlobalVariableExpression* DIGVE = DBuilder->createGlobalVariableExpression(
+		DebugUnit,
+		Global->Name.Text,
+		Global->LLAddress->getName(), // Linkage name
+		DebugUnit->getFile(),
+		Global->Loc.LineNumber,
+		EmitType(Global->Ty),
+		false, // TODO: Is local to unit?
+		true
+	);
+
+	llvm::GlobalVariable* LLGlobal = llvm::cast<llvm::GlobalVariable>(Global->LLAddress);
+	LLGlobal->addDebugInfo(DIGVE);
 }
 
 void arco::DebugInfoEmitter::EmitScopeStart(SourceLoc Loc) {
@@ -153,45 +196,50 @@ llvm::DIType* arco::DebugInfoEmitter::EmitType(Type* Ty) {
 	if (Itr != Context.LLDITypeCache.end()) {
 		return Itr->second;
 	}
-	llvm::DIType* LLDITy = EmitFirstSeenType(Ty);
-	Context.LLDITypeCache.insert({ Ty->GetUniqueId(), LLDITy });
-	return LLDITy;
+	return EmitFirstSeenType(Ty);
 }
 
 llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
+#define MAKE_BASIC_TY(Name, BitSize, DT) {                             \
+	llvm::DIType* DITy = DBuilder->createBasicType(Name, BitSize, DT); \
+	Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DITy });         \
+	return DITy;                                                       \
+}
 	switch (Ty->GetKind()) {
 	case TypeKind::Void:   return nullptr; // Yes this is correct it expects nullptr.
 	case TypeKind::Int: {
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                         .getDataLayout()
 			                         .getPointerSizeInBits();
-		return DBuilder->createBasicType("int", PtrSizeInBits, llvm::dwarf::DW_ATE_signed);
+		MAKE_BASIC_TY("int", PtrSizeInBits, llvm::dwarf::DW_ATE_signed);
 	}
 	case TypeKind::UInt: {
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                         .getDataLayout()
 			                         .getPointerSizeInBits();
-		return DBuilder->createBasicType("int", PtrSizeInBits, llvm::dwarf::DW_ATE_unsigned);
+		MAKE_BASIC_TY("uint", PtrSizeInBits, llvm::dwarf::DW_ATE_unsigned);
 	}
-	case TypeKind::Int8:    return DBuilder->createBasicType("int8"  , 8 , llvm::dwarf::DW_ATE_signed);
-	case TypeKind::Int16:   return DBuilder->createBasicType("int16" , 16, llvm::dwarf::DW_ATE_signed);
-	case TypeKind::Int32:   return DBuilder->createBasicType("int32" , 32, llvm::dwarf::DW_ATE_signed);
-	case TypeKind::Int64:   return DBuilder->createBasicType("int64" , 64, llvm::dwarf::DW_ATE_signed);
-	case TypeKind::UInt8:   return DBuilder->createBasicType("uint8" , 8 , llvm::dwarf::DW_ATE_unsigned);
-	case TypeKind::UInt16:  return DBuilder->createBasicType("uint16", 16, llvm::dwarf::DW_ATE_unsigned);
-	case TypeKind::UInt32:  return DBuilder->createBasicType("uint32", 32, llvm::dwarf::DW_ATE_unsigned);
-	case TypeKind::UInt64:  return DBuilder->createBasicType("uint64", 64, llvm::dwarf::DW_ATE_unsigned);
-	case TypeKind::Char:    return DBuilder->createBasicType("char"  , 8,  llvm::dwarf::DW_ATE_signed_char);
-	case TypeKind::Bool:    return DBuilder->createBasicType("bool"  , 8, llvm::dwarf::DW_ATE_boolean);
-	case TypeKind::Float32: return DBuilder->createBasicType("f32"   , 32, llvm::dwarf::DW_ATE_float);
-	case TypeKind::Float64: return DBuilder->createBasicType("f64"   , 32, llvm::dwarf::DW_ATE_float);
+	case TypeKind::Int8:    MAKE_BASIC_TY("int8"  , 8 , llvm::dwarf::DW_ATE_signed);
+	case TypeKind::Int16:   MAKE_BASIC_TY("int16" , 16, llvm::dwarf::DW_ATE_signed);
+	case TypeKind::Int32:   MAKE_BASIC_TY("int32" , 32, llvm::dwarf::DW_ATE_signed);
+	case TypeKind::Int64:   MAKE_BASIC_TY("int64" , 64, llvm::dwarf::DW_ATE_signed);
+	case TypeKind::UInt8:   MAKE_BASIC_TY("uint8" , 8 , llvm::dwarf::DW_ATE_unsigned);
+	case TypeKind::UInt16:  MAKE_BASIC_TY("uint16", 16, llvm::dwarf::DW_ATE_unsigned);
+	case TypeKind::UInt32:  MAKE_BASIC_TY("uint32", 32, llvm::dwarf::DW_ATE_unsigned);
+	case TypeKind::UInt64:  MAKE_BASIC_TY("uint64", 64, llvm::dwarf::DW_ATE_unsigned);
+	case TypeKind::Char:    MAKE_BASIC_TY("char"  , 8,  llvm::dwarf::DW_ATE_signed_char);
+	case TypeKind::Bool:    MAKE_BASIC_TY("bool"  , 8, llvm::dwarf::DW_ATE_boolean);
+	case TypeKind::Float32: MAKE_BASIC_TY("f32"   , 32, llvm::dwarf::DW_ATE_float);
+	case TypeKind::Float64: MAKE_BASIC_TY("f64"   , 32, llvm::dwarf::DW_ATE_float);
 	case TypeKind::Pointer:
 	case TypeKind::CStr: {
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                        .getDataLayout()
 			                        .getPointerSizeInBits();
-		return DBuilder->createPointerType(
+		llvm::DIType* DITy = DBuilder->createPointerType(
 			EmitType(Ty->GetPointerElementType(Context)), PtrSizeInBits);
+		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DITy });
+		return DITy;
 	}
 	case TypeKind::Slice: {
 		SliceType* SliceTy = Ty->AsSliceTy();
@@ -218,6 +266,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			nullptr,
 			LLSliceTy->getName()
 		);
+		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DIStructTy });
 
 		llvm::SmallVector<llvm::Metadata*> DIFieldTys;
 
@@ -284,7 +333,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			}
 		} while (MoreSubscripts);
 
-		return DBuilder->createArrayType(
+		llvm::DIType* DIArrayTy = DBuilder->createArrayType(
 			ArrayTy->GetTotalLinearLength() * Context.LLArcoModule
 			                                         .getDataLayout()
 			                                         .getTypeSizeInBits(
@@ -293,6 +342,8 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			0, // TODO: Alignment
 			DIBaseTy,
 			DBuilder->getOrCreateArray(DISubscriptSizes));
+		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DIArrayTy });
+		return DIArrayTy;
 	}
 	case TypeKind::Function: {
 		llvm::SmallVector<llvm::Metadata*, 4> DIFuncTys;
@@ -304,12 +355,16 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			DIFuncTys.push_back(EmitType(ParamInfo.Ty));
 		}
 
+		// Confusing but this shouldnt be able to have circular dependency even since you
+		// cannot nest one's own function type within itself.
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                        .getDataLayout()
 			                        .getPointerSizeInBits();
 		llvm::DIType* DIFuncTy = DBuilder->createSubroutineType(
 			                           DBuilder->getOrCreateTypeArray(DIFuncTys));
-		return DBuilder->createPointerType(DIFuncTy, PtrSizeInBits);
+		DIFuncTy = DBuilder->createPointerType(DIFuncTy, PtrSizeInBits);
+		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DIFuncTy });
+		return DIFuncTy;
 	}
 	case TypeKind::Struct: {
 		StructDecl* Struct = Ty->AsStructType()->GetStruct();
@@ -335,6 +390,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			nullptr,
 			Struct->LLStructTy->getName()
 		);
+		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DIStructTy });
 
 		llvm::SmallVector<llvm::Metadata*, 16> DIFieldTys;
 		u64 BitsOffset = 0;

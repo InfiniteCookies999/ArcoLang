@@ -143,22 +143,12 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     if (OutputName.ends_with(".exe")) {
         OutputName = OutputName.substr(0, OutputName.length() - 4);
     }
-
     std::string ObjFileName = OutputName + ".o";
-    GenCode(ObjFileName);
-
-    i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
-    i64 LinkTimeBegin = GetTimeInMilliseconds();
 
     std::string ExecutableName = OutputName;
 #ifdef _WIN32
     ExecutableName += ".exe";
 #endif
-
-    Linking(ObjFileName, ExecutableName);
-    if (FoundCompileError) {
-        return 1;
-    }
 
     std::string AbsOutputDirectory, AbsoluteExePath, AbsoluteObjPath;
     if (!OutputDirectory.empty()) {
@@ -172,19 +162,18 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     AbsoluteExePath = AbsOutputDirectory + ExecutableName;
     AbsoluteObjPath = AbsOutputDirectory + ObjFileName;
 
-    // Moving the files.
-    if (!OutputDirectory.empty()) {
-        std::error_code EC;
-        std::filesystem::rename(ExecutableName, AbsoluteExePath, EC);
-        if (EC) {
-            Logger::GlobalError(llvm::errs(), "Failed to move the executable to the output directory");
-            return 1;
-        }
-        std::filesystem::rename(ObjFileName, AbsoluteObjPath, EC);
-        if (EC) {
-            Logger::GlobalError(llvm::errs(), "Failed to move the object file to the output directory");
-            return 1;
-        }
+    GenCode(AbsoluteObjPath);
+
+    i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
+    i64 LinkTimeBegin = GetTimeInMilliseconds();
+
+    Linking(AbsoluteObjPath, AbsoluteExePath);
+    if (FoundCompileError) {
+        return 1;
+    }
+
+    if (ShouldDeleteObjectFiles) {
+        std::remove(AbsoluteObjPath.c_str());
     }
 
     i64 LinkedIn = GetTimeInMilliseconds() - LinkTimeBegin;
@@ -218,10 +207,6 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         std::cout << "-------------------" << std::string(MaxCount, '-') << "------|--" << std::string(MaxCount+2, '-') << "---" << '\n';
         std::cout << "Total time:        " << std::setw(MaxCount) << std::left << TotalTime << " ms.  |  " << std::fixed << std::setprecision(3) << (TotalTime / 1000.0f) << " s." << '\n';
         std::cout << '\n';
-    }
-
-    if (ShouldDeleteObjectFiles) {
-        std::remove(AbsoluteObjPath.c_str());
     }
 
     llvm::outs() << "Wrote program to: " << AbsoluteExePath << '\n';
@@ -373,7 +358,7 @@ void arco::Compiler::GenCode(const std::string& ObjFileName) {
     }
 }
 
-void arco::Compiler::Linking(const std::string& ObjFileName, const std::string& ExecutableName) {
+void arco::Compiler::Linking(const std::string& AbsoluteObjPath, const std::string& AbsoluteExePath) {
     std::string Libs = "";
     for (const char* Lib : Libraries) {
         Libs += std::string("-l") + std::string(Lib) + " ";
@@ -386,9 +371,9 @@ void arco::Compiler::Linking(const std::string& ObjFileName, const std::string& 
     std::string ClangCommand = "clang ";
     if (EmitDebugInfo)
         ClangCommand += "-g ";
-    ClangCommand += LibPaths + Libs + ObjFileName;
+    ClangCommand += LibPaths + Libs + AbsoluteObjPath;
     ClangCommand += " -o ";
-    ClangCommand += ExecutableName;
+    ClangCommand +=  AbsoluteExePath;
     
     llvm::outs() << ClangCommand << "\n";
 
