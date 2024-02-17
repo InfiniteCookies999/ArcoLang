@@ -98,6 +98,7 @@ namespace arco {
                                const llvm::SmallVector<NonNamedValue, 2>& Args,
                                ulen& NumConflicts,
                                ulen& EnumImplicitConflicts,
+                               ulen& NumSignConflicts,
                                bool& CanidateVarArgPassAlong);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
@@ -122,7 +123,8 @@ namespace arco {
         void CheckStructInitializer(StructInitializer* StructInit);
         FuncDecl* CheckStructInitArgs(StructDecl* Struct,
                                       SourceLoc ErrorLoc,
-                                      llvm::SmallVector<NonNamedValue, 2>& Args);
+                                      llvm::SmallVector<NonNamedValue, 2>& Args,
+                                      bool& VarArgPassAlong);
         void CheckHeapAlloc(HeapAlloc* Alloc);
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);

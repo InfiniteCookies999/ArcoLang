@@ -1,0 +1,92 @@
+import files;
+import files.IOFlag;
+import files.FileHandle;
+
+
+BufferedStream struct {
+    
+    // TODO: This handle should eventually be more abstract
+    //       and be a any readable handle instead.
+    handle FileHandle;
+    
+    buffer      char*;
+    // Maximum number of bytes the buffer can store. The amount
+    // of bytes actuall read from the handle may be less than this.
+    //
+    // buffer_length reflects the amount actually read from handle.
+    buffer_size int;
+    
+    buffer_length := 0;
+    // Position offset into the buffer.
+    pos           := 0;
+    
+    fn BufferedStream(path cstr, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
+        : handle(files.open(path, io_flags)) {
+        if buffer_size < 0 {
+            panic("buffer_size < 0");
+        }
+        this.buffer_size = buffer_size;
+        buffer = new char[buffer_size];
+    }
+    
+    /*
+     * When at the end of the current buffer_length read the next bytes
+     * into the buffer. Will try and read buffer_size but may read less.
+     */
+    fn fill() {
+        // TODO: should make sure the stream is still open.
+        if pos >= buffer_length {
+            buffer_length = handle.read(buffer, buffer_size);
+        }
+    }
+    
+    /*
+     * Reads a single character from the stream. If the end
+     * of stream is reached this function returns -1 instead.
+     */
+    fn read() int {
+        fill();
+        if pos >= buffer_length {
+            return -1; // End of stream.
+        }
+    
+        return buffer[pos++];
+    }
+    
+    /*
+     * Tries to read length bytes into a the pre-allocated buffer
+     * and returns the amount of bytes read.
+     */
+    fn read(buffer char*, length int) int {
+        available := buffer_length - pos;
+        if available >= length {
+            // TODO: ensure stream is still open?
+            // There is already enough bytes read from the handle
+            // to be returned to the user.
+            memcpy(buffer, this.buffer + pos, length);
+            pos += length;
+            return length;
+        }
+        
+        amount_read := 0;
+        if available > 0 {
+            memcpy(buffer, this.buffer + pos, available);
+            amount_read += available;
+            pos = available;
+        }
+        
+        // No reason to continually fill our buffer just have
+        // the handle do the work of reading the remaining bytes.
+        amount_read += handle.read(buffer + amount_read, length - amount_read);
+        
+        return amount_read;
+    }
+    
+    fn ~BufferedStream() {
+        delete buffer;
+    }
+    
+    fn close() {
+        handle.close();
+    }
+}

@@ -355,14 +355,33 @@ fn to_string(any Any) String {
 fn any_to_string(value void*, type const Type*) String {
     if type.id == TypeId.CSTR {
         return String{ cast(cstr) value };
+    } 
+    // Annoying but have to cast specitly to the right integer
+    // size otherwise it won't be able to interpret the size right.
+    else if type.id == TypeId.INT {
+        return to_string(*cast(int*) value);
+    } else if type.id == TypeId.UINT {
+        return to_string(*cast(uint*) value);
+    } else if type.id == TypeId.UINT8 {
+        return to_string(*cast(uint8*) value);
+    } else if type.id == TypeId.UINT16 {
+        return to_string(*cast(uint16*) value);
+    } else if type.id == TypeId.UINT32 {
+        return to_string(*cast(uint32*) value);
+    } else if type.id == TypeId.UINT64 {
+        return to_string(*cast(uint64*) value);
+    } else if type.id == TypeId.INT8 {
+        return to_string(*cast(int8*) value);
+    } else if type.id == TypeId.INT16 {
+        return to_string(*cast(int16*) value);
+    } else if type.id == TypeId.INT32 {
+        return to_string(*cast(int32*) value);
+    } else if type.id == TypeId.INT64 {
+        return to_string(*cast(int64*) value);
     } else if type.id == TypeId.CHAR {
         return to_string(*cast(char*) value);
-    } else if type.is_int() {
-        if type.is_signed() {
-            return to_string(*cast(int64*) value);
-        } else {
-            return to_string(*cast(uint64*) value);
-        }
+    } else if type.id == TypeId.CHAR {
+        return to_string(*cast(char*) value);
     } else if type.is_pointer() {
         // TODO: abstract pointer printing out?
         // TODO: pad 0s.

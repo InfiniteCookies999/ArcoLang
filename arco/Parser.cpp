@@ -354,8 +354,11 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
     FuncDecl* Func = NewNode<FuncDecl>(CTok);
     if (CTok.Is(TokenKind::KW_COPYOBJ)) {
-        NextToken(); // Consuming 'copy' keyword.
+        NextToken(); // Consuming 'copyobj' keyword.
         Func->IsCopyConstructor = true;
+    } else if (CTok.Is(TokenKind::KW_MOVEOBJ)) {
+        NextToken(); // Consuming 'moveobj' keyword.
+        Func->IsMoveConstructor = true;
     }
 
     if (CTok.Is('(')) {
@@ -688,6 +691,11 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
                             Error(Func->Loc, "Duplicate copy constructor");
                         }
                         Struct->CopyConstructor = Func;
+                    } else if (Func->IsMoveConstructor) {
+                        if (Struct->MoveConstructor) {
+                            Error(Func->Loc, "Duplicate move constructor");
+                        }
+                        Struct->MoveConstructor = Func;
                     } else {
                         Struct->Constructors.push_back(Func);
                     }

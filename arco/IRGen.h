@@ -205,6 +205,7 @@ namespace arco {
         void GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Value* LLSlot);
 
         void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
+        void MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 
         void GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct);
 

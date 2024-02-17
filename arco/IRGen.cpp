@@ -267,7 +267,7 @@ arco::IRGenerator::IRGenerator(ArcoContext& Context)
 }
 
 void arco::IRGenerator::GenFunc(FuncDecl* Func) {
-
+    
     // -- DEBUG
     // llvm::outs() << "generating function: " << Func->Name << '\n';
 
@@ -581,6 +581,15 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
         }
     }
 
+    // If this function is a destructor then we still need to destroy the fields.
+    if (Func->IsDestructor) {
+        for (VarDecl* Field : Func->Struct->Fields) {
+            if (Field->Ty->TypeNeedsDestruction()) {
+                CallDestructors(Field->Ty, CreateStructGEP(LLThis, Field->FieldIdx));
+            }
+        }
+    }
+
     if (Func->NumReturns > 1) {
         CallDestructors(AlwaysInitializedDestroyedObjects);
         if (Func->UsesOptimizedIntRet) {
@@ -831,7 +840,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             if (CFunc->UsesOptimizedIntRet) {
                 LLRetValue = GenReturnValueForOptimizedStructAsInt(GenNode(Ret->Value));
             }
-            // Check for cases in which the value needs to be copied into the elision
+            // Check for cases in which the value needs to be copied/moved into the elision
             // return address.
             else if (
                 (Ret->Value->Is(AstKind::IDENT_REF) &&
@@ -841,10 +850,12 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
                 llvm::Value* LLToAddr   = GetElisionRetSlotAddr(CFunc);
                 llvm::Value* LLFromAddr = GenNode(Ret->Value);
 
-                // TODO: In the future if the object has a move constructor that would
-                // need to be called instead of copying.
-                CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
-
+                StructDecl* Struct = CFunc->RetTy->AsStructType()->GetStruct();
+                if (Struct->MoveConstructor) {
+                    MoveStructObject(LLToAddr, LLFromAddr, Struct);
+                } else {
+                    CopyStructObject(LLToAddr, LLFromAddr, Struct);
+                }
             } else {
                 GenReturnByStoreToElisionRetSlot(Ret->Value, GetElisionRetSlotAddr(CFunc));
             }
@@ -904,10 +915,16 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             // return address.
             else if (
                 Ret->Value->Is(AstKind::IDENT_REF) ||
-                Ret->Value->Is(AstKind::UNARY_OP)  // dereferencing another object need to copy.
+                Ret->Value->Is(AstKind::UNARY_OP)  // dereferencing another object need to copy/move.
                     ) {
                 llvm::Value* LLFromAddr = GenNode(Ret->Value);
-                CopyStructObject(LLToAddr, LLFromAddr, CFunc->RetTy->AsStructType()->GetStruct());
+
+                StructDecl* Struct = CFunc->RetTy->AsStructType()->GetStruct();
+                if (Struct->MoveConstructor) {
+                    MoveStructObject(LLToAddr, LLFromAddr, Struct);
+                } else {
+                    CopyStructObject(LLToAddr, LLFromAddr, Struct);
+                }
             } else {
                 GenReturnByStoreToElisionRetSlot(Ret->Value, LLToAddr);
             }
@@ -2320,7 +2337,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
             StructInit->CalledConstructor,
             StructInit->Args,
             LLAddr,
-            false // TODO!!
+            StructInit->VarArgsPassAlong
         );
         return LLAddr;
     }
@@ -2385,7 +2402,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
             StructType* StructTy = TypeToAlloc->AsStructType();
             StructDecl* Struct = StructTy->GetStruct();
             if (Alloc->CalledConstructor) {
-                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc, false /* TODO!! */);
+                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc, Alloc->VarArgsPassAlong);
             } else {
                 if (!Alloc->Values.empty()) {
                     GenStructInitArgs(LLMalloc, Struct, Alloc->Values);
@@ -2448,9 +2465,10 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
         LLStructInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLStructStructType, 0));
     }
 
+    ulen SizeInBytes = GetTy->GetKind() == TypeKind::Void ? 0 : SizeOfTypeInBytes(GenType(GetTy));
     llvm::SmallVector<llvm::Constant*, 5> LLElements = {
         LLTypeId,
-        GetSystemInt(SizeOfTypeInBytes(GenType(GetTy)), LLContext, LLModule),
+        GetSystemInt(SizeInBytes, LLContext, LLModule),
         LLPointerInfo,
         LLArrayInfo,
         LLStructInfo
@@ -3042,6 +3060,11 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
             SizeOfTypeInBytes(LLStructType)
         );
     }
+}
+
+void arco::IRGenerator::MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct) {
+    GenFuncDecl(Struct->MoveConstructor);
+    Builder.CreateCall(Struct->CopyConstructor->LLFunction, { LLFromAddr, LLToAddr });
 }
 
 void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct) {

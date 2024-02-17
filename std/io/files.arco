@@ -13,6 +13,7 @@ import win32;
  * reading and writing.
  */
 IOFlag enum : uint32 {
+
     IN     :: 0x0001;
     OUT    :: 0x0002;	
 
@@ -25,6 +26,7 @@ IOFlag enum : uint32 {
     
     /* Creates the file if it does not exist. */
     CREATE :: 0x0008;
+    
 }
 
 /*
@@ -42,6 +44,11 @@ FileHandle struct {
         this.auto_close = auto_close;
     }
     
+    fn moveobj FileHandle(fhandle FileHandle*) {
+        this.handle = fhandle.handle;
+        fhandle.handle = null;
+    }
+    
     fn ~FileHandle() {
         if auto_close {
             close();
@@ -49,18 +56,22 @@ FileHandle struct {
     }
     
     fn read(buffer char*, length int) int {
-        // TODO: make sure the stream is still open.
-        
+        // TODO: proper error handling.
+    
         number_of_bytes_read uint32;
-        win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null);
+        if win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null) == 0 {
+            panic("Failed to read from FileHandle");
+        }
         return cast(int) number_of_bytes_read;
     }
     
     fn write(buffer cstr, length int) int {
-        // TODO: make sure the stream is still open.
+        // TODO: proper error handling.
     
         number_of_bytes_written uint32;
-        win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null);
+        if win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null) == 0 {
+            panic("Failed to write to FileHandle");
+        }
         return cast(int) number_of_bytes_written;
     }
     

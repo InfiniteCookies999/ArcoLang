@@ -219,7 +219,10 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         Error(Func, "Only constructors can have initializer values");
     }
     if (!Func->IsConstructor && Func->IsCopyConstructor) {
-        Error(Func, "Only constructors can use keyword copy to indicate it is a copy constructor");
+        Error(Func, "Only constructors can use keyword copyobj to indicate it is a copy constructor");
+    }
+    if (!Func->IsConstructor && Func->IsMoveConstructor) {
+        Error(Func, "Only constructors can use keyword moveobj to indicate it is a move constructor");
     }
 
     CheckFuncParams(Func);
@@ -227,22 +230,28 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         Error(Func, "Functions cannot return arrays");
     }
     
-    if (Func->IsConstructor && Func->IsCopyConstructor) {
+    auto CheckMoveOrCopyConstructor = [=](const char* ConstructorType) {
         if (Func->IsVariadic) {
-            Error(Func->Loc, "Copy constructors cannot be variadic");
+            Error(Func->Loc, "%s constructors cannot be variadic", ConstructorType);
         }
         if (Func->Params.empty()) {
-            Error(Func->Loc, "Copy constructor must have argument for struct to copy");
+            Error(Func->Loc, "%s constructor must have argument for struct to copy", ConstructorType);
         } else if (Func->Params.size() > 1) {
-            Error(Func->Loc, "Copy constructor must have only one argument for the struct to copy");
+            Error(Func->Loc, "%s constructor must have only one argument for the struct to copy", ConstructorType);
         } else {
             Type* ParamTy = Func->Params[0]->Ty;
             Type* ExpectedType = PointerType::Create(StructType::Create(Func->Struct, Context), Context);
             if (!ParamTy->Equals(ExpectedType)) {
-                Error(Func->Loc, "Copy constructor must have type '%s' but found type '%s'",
-                    ExpectedType->ToString(), ParamTy->ToString());
+                Error(Func->Loc, "%s constructor must have type '%s' but found type '%s'",
+                    ConstructorType, ExpectedType->ToString(), ParamTy->ToString());
             }
         }
+    };
+
+    if (Func->IsConstructor && Func->IsCopyConstructor) {
+        CheckMoveOrCopyConstructor("Copy");
+    } else if (Func->IsConstructor && Func->IsMoveConstructor) {
+        CheckMoveOrCopyConstructor("Copy");
     }
 
     if (Func->IsConstructor) {
@@ -411,6 +420,11 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         SemAnalyzer A(Context, Struct->CopyConstructor);
         A.CheckFuncDecl(Struct->CopyConstructor);
         Context.RequestGen(Struct->CopyConstructor);
+    }
+    if (Struct->MoveConstructor) {
+        SemAnalyzer A(Context, Struct->MoveConstructor);
+        A.CheckFuncDecl(Struct->MoveConstructor);
+        Context.RequestGen(Struct->MoveConstructor);
     }
 }
 
@@ -1157,7 +1171,7 @@ Error(BinOp, "Operator '%s' cannot apply to type '%s'   ('%s' %s '%s')", \
 YIELD_ERROR(BinOp)
 
 #define TYPE_MISMATCH()                                                  \
-Error(BinOp, "Operator '%s' had mismatched types   ('%s' '%s' '%s')",    \
+Error(BinOp, "Operator '%s' had mismatched types   ('%s' %s '%s')",      \
     Token::TokenKindToString(BinOp->Op, Context),                        \
     LTy->ToString(),                                                     \
     Token::TokenKindToString(BinOp->Op, Context),		                 \
@@ -1366,9 +1380,15 @@ YIELD_ERROR(BinOp)
         
         if (BinOp->Op == '%' && BinOp->RHS->IsFoldable) {
             IRGenerator IRGen(Context);
-            llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
+            llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
             if (LLInt->isZeroValue()) {
                 Error(BinOp, "Division by zero");
+            }
+        } else if (BinOp->RHS->IsFoldable) { // << or >>
+            IRGenerator IRGen(Context);
+            llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
+            if (LLInt->getZExtValue()-1 > LTy->GetTrivialTypeSizeInBytes() * 8) {
+                Error(BinOp, "Shifting bits larger than bit size of type");
             }
         }
 
@@ -1961,7 +1981,19 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         return;
     } else if (SiteTy->GetKind() != TypeKind::FuncRef) {
         // Invalid call.
-        Error(Call, "cannot call type '%s'", SiteTy->ToString());
+        Log.BeginError(Call->Loc, "cannot call type '%s'", SiteTy->ToString());
+        if (SiteTy->GetKind() == TypeKind::StructRef) {
+            IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
+            StructDecl* Struct = IRef->Struct;
+            // TODO: Should this validate that there is a constructor first?
+            Log.AddNoteLine([Struct](auto& OS) {
+                OS << "Tried to call a constructor? Use: ";
+                OS << Struct->Name;
+                OS << "{ <your args> } instead.";
+            });
+        }
+        Log.EndError();
+
         YIELD_ERROR(Call);
     }
 
@@ -2026,11 +2058,11 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 
     FuncDecl* Selection = nullptr;
 
-    // TODO: Should select canidates based on if signs match or not?
     // TODO: make calls to functions with Any absolute last to consider.
 
     ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
-         LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max();
+         LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max(),
+         LeastSignConflicts         = std::numeric_limits<ulen>::max();
     for (ulen i = 0; i < Canidates->size(); i++) {
         FuncDecl* Canidate = (*Canidates)[i];
         if (!Canidate->ParamTypesChecked) {
@@ -2038,23 +2070,29 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
             Analyzer.CheckFuncParams(Canidate);
         }
 
-        ulen NumConflicts = 0, EnumImplicitConflicts = 0;
+        ulen NumConflicts = 0, EnumImplicitConflicts = 0, NumSignConflicts = 0;
         bool VarArgsPassAlong = false;
-        if (!CompareAsCanidate(Canidate, Args, NumConflicts, EnumImplicitConflicts, VarArgsPassAlong)) {
+        if (!CompareAsCanidate(Canidate, Args, NumConflicts, EnumImplicitConflicts, NumSignConflicts, VarArgsPassAlong)) {
             continue;
         }
 
+#define SET_BEST                                    \
+ Selection                  = Canidate;             \
+LeastConflicts             = NumConflicts;          \
+LeastEnumImplicitConflicts = EnumImplicitConflicts; \
+LeastSignConflicts         = NumSignConflicts;      \
+SelectedVarArgsPassAlong   = VarArgsPassAlong;
+
+        // TODO: What will be the performance on all this?
         if (NumConflicts < LeastConflicts) {
-            Selection                  = Canidate;
-            LeastConflicts             = NumConflicts;
-            LeastEnumImplicitConflicts = EnumImplicitConflicts;
-            SelectedVarArgsPassAlong   = VarArgsPassAlong;
+            SET_BEST;
         } else if (NumConflicts == LeastConflicts &&
+                   NumSignConflicts < LeastSignConflicts) {
+            SET_BEST;
+        } else if (NumConflicts == LeastConflicts &&
+                   NumSignConflicts == LeastSignConflicts && // TODO: do we care about num sign over enum in this case?
                    EnumImplicitConflicts < LeastEnumImplicitConflicts) {
-            Selection                  = Canidate;
-            LeastConflicts             = NumConflicts;
-            LeastEnumImplicitConflicts = EnumImplicitConflicts;
-            SelectedVarArgsPassAlong = VarArgsPassAlong;
+            SET_BEST;
         }
     }
     return Selection;
@@ -2064,6 +2102,7 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
                                           const llvm::SmallVector<NonNamedValue, 2>& Args,
                                           ulen& NumConflicts,
                                           ulen& EnumImplicitConflicts,
+                                          ulen& NumSignConflicts,
                                           bool& CanidateVarArgPassAlong) {
     // TODO: performance: all this awful variadic stuff can be optimized out by
     // using templating.
@@ -2139,6 +2178,10 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
                 EnumDecl* Enum = static_cast<StructType*>(Arg->Ty)->GetEnum();
                 if (!Enum->ValuesType->Equals(ParamType)) {
                     ++EnumImplicitConflicts;
+                }
+            } else if (Arg->Ty->IsNumber()) {
+                if (Arg->Ty->IsSigned() != ParamType->IsSigned()) {
+                    ++NumSignConflicts;
                 }
             }
         }
@@ -2510,13 +2553,14 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 
     // TODO: May want to allow if the fields are foldable!
     StructInit->IsFoldable = false;
-    StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args);
+    StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args, StructInit->VarArgsPassAlong);
 
 }
 
 arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                                                        SourceLoc ErrorLoc,
-                                                       llvm::SmallVector<NonNamedValue, 2>& Args) {
+                                                       llvm::SmallVector<NonNamedValue, 2>& Args,
+                                                       bool& VarArgPassAlong) {
 
     bool ArgsHaveErrors = false;
     for (ulen i = 0; i < Args.size(); i++) {
@@ -2535,12 +2579,11 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
         }
 
         // TODO: don't ignore VarArgsPassAlong value
-        bool VarArgsPassAlong;
         return CheckCallToCanidates(
                 ErrorLoc,
                 &Struct->Constructors,
                 Args,
-                VarArgsPassAlong);
+                VarArgPassAlong);
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
@@ -2590,7 +2633,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 
     if (TypeToAlloc->GetKind() == TypeKind::Struct) {
         StructType* StructTy = TypeToAlloc->AsStructType();
-        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values);
+        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values, Alloc->VarArgsPassAlong);
     } else if (!Alloc->Values.empty()) {
         if (Alloc->Values.size() > 1) {
             Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc->ToString());

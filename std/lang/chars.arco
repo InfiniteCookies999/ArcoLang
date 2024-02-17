@@ -144,6 +144,14 @@ fn isascii(c char) bool {
     return c <= 127;
 }
 
+/*
+ * Checks if the character is an ascii character that is easily
+ * printable. This includes tabs and spaces but not line feeds.
+ */
+fn is_printable_ascii(c char) bool {
+    return (c >= ' ' && c <= '~') || c == '\t';
+}
+
 // TODO: come back to this once explicit array index
 // initialization works.
 /*

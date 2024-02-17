@@ -75,16 +75,34 @@ OutStream struct {
     }
 
     fn write_any(value void*, type const Type*) {
+        // TODO: replace with a switch statement once supported.
         if type.id == TypeId.CSTR {
             write(cast(cstr) value);
+        }
+        // Annoying but have to cast specitly to the right integer
+        // size otherwise it won't be able to interpret the size right.
+        else if type.id == TypeId.INT {
+            write(*cast(int*) value);
+        } else if type.id == TypeId.UINT {
+            write(*cast(uint*) value);
+        } else if type.id == TypeId.UINT8 {
+            write(*cast(uint8*) value);
+        } else if type.id == TypeId.UINT16 {
+            write(*cast(uint16*) value);
+        } else if type.id == TypeId.UINT32 {
+            write(*cast(uint32*) value);
+        } else if type.id == TypeId.UINT64 {
+            write(*cast(uint64*) value);
+        } else if type.id == TypeId.INT8 {
+            write(*cast(int8*) value);
+        } else if type.id == TypeId.INT16 {
+            write(*cast(int16*) value);
+        } else if type.id == TypeId.INT32 {
+            write(*cast(int32*) value);
+        } else if type.id == TypeId.INT64 {
+            write(*cast(int64*) value);
         } else if type.id == TypeId.CHAR {
             write(*cast(char*) value);
-        } else if type.is_int() {
-            if type.is_signed() {
-                write(*cast(int64*) value);
-            } else {
-                write(*cast(uint64*) value);
-            }
         } else if type.is_pointer() {
             // TODO: abstract pointer printing out?
             // TODO: pad 0s.

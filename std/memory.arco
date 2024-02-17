@@ -15,6 +15,31 @@ native fn memcpy(dest void*, src const void*, count uint) void;
 native fn memset(dest void*, c int8, n uint) void*;
 
 /*
+ * Compares two blocks of memory lhs and rhs.
+ *
+ * @count  the number of bytes to compare.
+ * @return 0 if equal, 1 if (unsigned) byte in lhs greater
+           than (unsigned) byte in rhs, and -1 if the reverse.
+ */
+fn memcmp(lhs const void*, rhs const void*, count int) int {
+    if count <= 0 {
+        panic("count <= 0");
+    }
+    return cast(int) _memcmp(lhs, rhs, cast(uint) count);
+}
+native("memcmp") fn(cdecl) _memcmp(lhs const void*, rhs const void*, count uint) int32;
+
+/*
+ * Compares two blocks of memory lhs and rhs.
+ *
+ * Returns true if all the bytes in lhs equal the bytes in rhs
+ * for count bytes.
+ */
+fn memeq(lhs const void*, rhs const void*, count int) bool {
+    return memcmp(lhs, rhs, count) == 0;
+}
+
+/*
  * Counts the number of characters until
  * it finds a null terminator in the c-string.
  *
@@ -22,9 +47,6 @@ native fn memset(dest void*, c int8, n uint) void*;
  *          c-string.
  */
 fn strlen(s cstr) int {
-    length := 0;
-    loop ptr := s; *ptr != '\0'; ++ptr {
-        ++length;
-    }
-    return length;
+    return cast(int) _strlen(s);
 }
+native("strlen") fn(cdecl) _strlen(s cstr) uint;

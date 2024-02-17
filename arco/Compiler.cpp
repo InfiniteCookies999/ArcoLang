@@ -243,9 +243,6 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         llvm::outs() << "\n\n";
     }
 
-    i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
-    i64 LinkTimeBegin = GetTimeInMilliseconds();
-
     if (OutputName.ends_with(".exe")) {
         OutputName = OutputName.substr(0, OutputName.length() - 4);
     }
@@ -255,6 +252,10 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         FoundCompileError = true;
         return 1;
     }
+
+    i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
+    
+    i64 LinkTimeBegin = GetTimeInMilliseconds();
 
     std::string ExecutableName = OutputName;
 #ifdef _WIN32
@@ -274,7 +275,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     ClangCommand += LibPaths + Libs + ObjFileName;
     ClangCommand += " -o ";
     ClangCommand += ExecutableName;
-
+    
     llvm::outs() << ClangCommand << "\n";
 
     std::string Ignored;

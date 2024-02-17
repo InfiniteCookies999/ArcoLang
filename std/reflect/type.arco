@@ -85,11 +85,10 @@ Type struct {
     struct_info  Struct*;
     
     /*
-     * Tells if the type is an integer. This includes
-     * characters.
+     * Tells if the type is an integer.
      */
     fn is_int() bool {
-        return id <= TypeId.CHAR;
+        return id < TypeId.CHAR;
     }
     
     /*

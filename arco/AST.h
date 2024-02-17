@@ -177,7 +177,8 @@ namespace arco {
         llvm::SmallVector<VarDecl*>           Fields;
         FuncsList                             Constructors;
         FuncDecl*                             DefaultConstructor = nullptr;
-        FuncDecl*                             CopyConstructor = nullptr;
+        FuncDecl*                             CopyConstructor    = nullptr;
+        FuncDecl*                             MoveConstructor    = nullptr;
         FuncDecl*                             Destructor         = nullptr;
         llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
@@ -242,6 +243,7 @@ namespace arco {
         bool ReturnsConstAddress = false;
         bool IsDestructor        = false;
         bool IsCopyConstructor   = false;
+        bool IsMoveConstructor   = false;
         bool IsVariadic          = false;
 
         // Non-nullptr if the function is a member function.
@@ -627,6 +629,7 @@ namespace arco {
         // If not nullptr then it initializes by calling the
         // a constructor
         FuncDecl* CalledConstructor = nullptr;
+        bool VarArgsPassAlong = false;
 
         llvm::SmallVector<NonNamedValue, 2> Args;
 
@@ -639,6 +642,7 @@ namespace arco {
         Type* TypeToAlloc;
 
         FuncDecl* CalledConstructor = nullptr;
+        bool VarArgsPassAlong = false;
 
         llvm::SmallVector<NonNamedValue, 2> Values;
 
