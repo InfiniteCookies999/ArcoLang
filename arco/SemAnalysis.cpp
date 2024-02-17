@@ -572,8 +572,6 @@ void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
     FScope  = Enum->FScope;
     
     
-    // TODO: check to make sure there is not duplicate values
-
     Type* ValuesType = Enum->ValuesType;
     if (ValuesType) {
         FixupType(ValuesType);

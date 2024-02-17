@@ -209,7 +209,9 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         std::cout << '\n';
     }
 
-    llvm::outs() << "Wrote program to: " << AbsoluteExePath << '\n';
+    if (!NoWroteToDispaly) {
+        llvm::outs() << "Wrote program to: " << AbsoluteExePath << '\n';
+    }
 
     if (RunProgram || RunInSeperateWindow) {
         return ExeProcess(AbsoluteExePath.c_str(), AbsOutputDirectory.c_str(), RunInSeperateWindow);
@@ -375,7 +377,9 @@ void arco::Compiler::Linking(const std::string& AbsoluteObjPath, const std::stri
     ClangCommand += " -o ";
     ClangCommand +=  AbsoluteExePath;
     
-    llvm::outs() << ClangCommand << "\n";
+    if (ShowLinkCommand) {
+        llvm::outs() << ClangCommand << "\n";
+    }
 
     std::string Ignored;
     i32 ExitCode = ExeProcess(ClangCommand.c_str(), NULL, false);

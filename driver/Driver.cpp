@@ -58,6 +58,13 @@ Possible options:
         Executes the program after it is compiled and linked
         within a seperate termainl.
 
+    -show-link-command
+        Displays the command executed for linking the program.
+
+    -no-wroteto-display
+        Turns off showing the message for where the program wrote
+        files to.
+
     -show-times
         Display how long different stages took.
 
@@ -199,16 +206,18 @@ int main(int argc, char* argv[]) {
     arco::Compiler Compiler;
 
     OptionManager OptManager;
-    OptManager.AddOption("show-times"    , &Compiler.DisplayTimes);
-    OptManager.AddOption("show-llvm"     , &Compiler.DisplayLLVMIR);
-    OptManager.AddOption("stand-alone"   , &Compiler.StandAlone);
-    OptManager.AddOption("run"           , &Compiler.RunProgram);
-    OptManager.AddOption("run-seperate"  , &Compiler.RunInSeperateWindow);
-    OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
-    OptManager.AddOption("keep-obj-files", &Compiler.ShouldDeleteObjectFiles);
-    OptManager.AddOption("short-errors"  , &arco::ShortErrors);
-    OptManager.AddOption("disable-colors", &arco::DisableTerminalColors);
-    OptManager.AddOption("emit-debug"    , &Compiler.EmitDebugInfo);
+    OptManager.AddOption("show-times"        , &Compiler.DisplayTimes);
+    OptManager.AddOption("show-llvm"         , &Compiler.DisplayLLVMIR);
+    OptManager.AddOption("stand-alone"       , &Compiler.StandAlone);
+    OptManager.AddOption("run"               , &Compiler.RunProgram);
+    OptManager.AddOption("run-seperate"      , &Compiler.RunInSeperateWindow);
+    OptManager.AddOption("keep-obj-files"    , &Compiler.ShouldDeleteObjectFiles);
+    OptManager.AddOption("keep-obj-files"    , &Compiler.ShouldDeleteObjectFiles);
+    OptManager.AddOption("short-errors"      , &arco::ShortErrors);
+    OptManager.AddOption("disable-colors"    , &arco::DisableTerminalColors);
+    OptManager.AddOption("emit-debug"        , &Compiler.EmitDebugInfo);
+    OptManager.AddOption("show-link-command" , &Compiler.ShowLinkCommand);
+    OptManager.AddOption("no-wroteto-display", &Compiler.NoWroteToDispaly);
     OptManager.AddOption("max-errors", [](int ArgNum, llvm::StringRef ValPart) {
         ValPart = GetOptValue(ArgNum, ValPart, "max-errors");
         if (ValPart.empty()) return;

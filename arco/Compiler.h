@@ -48,9 +48,13 @@ namespace arco {
         // Creates debug information that debuggers like gdb
         // can use to place breakpoints and examine variables
         // in the source code as the program executes.
-        bool EmitDebugInfo = false;
+        bool EmitDebugInfo           = false;
         // Deletes the object files after linking.
         bool ShouldDeleteObjectFiles = true;
+        // Turns off showing the command for linking.
+        bool ShowLinkCommand         = false;
+        // Turns off showing message "Wrote program to: <path>"
+        bool NoWroteToDispaly        = false;
 
         Compiler();
 
