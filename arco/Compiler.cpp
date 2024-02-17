@@ -102,30 +102,10 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     ParseAllFiles(Sources);
 
     i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
-    i64 CheckAndIRGenTimeBegin = GetTimeInMilliseconds();
+    i64 SemCheckIn = 0, IRGenIn = 0;
+    CheckAndGenIR(SemCheckIn, IRGenIn);
 
-    if (!StandAlone) {
-        if (!FindStdLibStructs()) {
-            return 1;
-        }
-    }
 
-    // Must do this early so that LLVM can correctly determine information for types
-    // during generating.
-    if (!InitLLVMNativeTarget()) {
-        Logger::GlobalError(llvm::errs(), "Failed to initialized LLVM native target");
-        return 1;
-    }
-
-    if (!LLMachineTarget) {
-        LLMachineTarget = CreateLLVMTargetMache();
-    }
-    
-    SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
-
-    CheckAndGenIR();
-
-    i64 CheckAndIRGenIn = GetTimeInMilliseconds() - CheckAndIRGenTimeBegin;
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
     // -- DEBUG
@@ -189,23 +169,25 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
             return Count;
         };
 
-        i64 TotalTime = ParsedIn + CheckAndIRGenIn + EmiteMachineCodeIn + LinkedIn;
+        i64 TotalTime = ParsedIn + SemCheckIn + IRGenIn + EmiteMachineCodeIn + LinkedIn;
 
         llvm::SmallVector<std::streamsize> Counts;
         Counts.push_back(CountDigits(ParsedIn));
-        Counts.push_back(CountDigits(CheckAndIRGenIn));
+        Counts.push_back(CountDigits(SemCheckIn));
+        Counts.push_back(CountDigits(IRGenIn));
         Counts.push_back(CountDigits(EmiteMachineCodeIn));
         Counts.push_back(CountDigits(LinkedIn));
         Counts.push_back(CountDigits(TotalTime));
         std::streamsize MaxCount = *std::max_element(std::begin(Counts), std::end(Counts));
 
-        std::cout << "Total Lines Parsed: " << TotalLinesParsed << '.' << '\n';
-        std::cout << "Parsed Time:       "  << std::setw(MaxCount) << std::left << ParsedIn           << " ms.  |  " << std::fixed << std::setprecision(3) << (ParsedIn           / 1000.0f) << " s." << '\n';
-        std::cout << "Checks/IRGen Time: "  << std::setw(MaxCount) << std::left << CheckAndIRGenIn    << " ms.  |  " << std::fixed << std::setprecision(3) << (CheckAndIRGenIn    / 1000.0f) << " s." << '\n';
-        std::cout << "Code Emit Time:    "  << std::setw(MaxCount) << std::left << EmiteMachineCodeIn << " ms.  |  " << std::fixed << std::setprecision(3) << (EmiteMachineCodeIn / 1000.0f) << " s." << '\n';
-        std::cout << "Link Time:         "  << std::setw(MaxCount) << std::left << LinkedIn           << " ms.  |  " << std::fixed << std::setprecision(3) << (LinkedIn           / 1000.0f) << " s." << '\n';
-        std::cout << "-------------------" << std::string(MaxCount, '-') << "------|--" << std::string(MaxCount+2, '-') << "---" << '\n';
-        std::cout << "Total time:        " << std::setw(MaxCount) << std::left << TotalTime << " ms.  |  " << std::fixed << std::setprecision(3) << (TotalTime / 1000.0f) << " s." << '\n';
+        std::cout << "Total Lines Parsed:  " << TotalLinesParsed << '.' << '\n';
+        std::cout << "Parsed Time:         " << std::setw(MaxCount) << std::left << ParsedIn           << " ms.  |  " << std::fixed << std::setprecision(3) << (ParsedIn           / 1000.0f) << " s." << '\n';
+        std::cout << "Semantic Check Time: " << std::setw(MaxCount) << std::left << SemCheckIn         << " ms.  |  " << std::fixed << std::setprecision(3) << (SemCheckIn         / 1000.0f) << " s." << '\n';
+        std::cout << "LLVM IR Gen Time:    " << std::setw(MaxCount) << std::left << IRGenIn            << " ms.  |  " << std::fixed << std::setprecision(3) << (IRGenIn            / 1000.0f) << " s." << '\n';
+        std::cout << "Code Emit Time:      " << std::setw(MaxCount) << std::left << EmiteMachineCodeIn << " ms.  |  " << std::fixed << std::setprecision(3) << (EmiteMachineCodeIn / 1000.0f) << " s." << '\n';
+        std::cout << "Link Time:           " << std::setw(MaxCount) << std::left << LinkedIn           << " ms.  |  " << std::fixed << std::setprecision(3) << (LinkedIn           / 1000.0f) << " s." << '\n';
+        std::cout << "---------------------" << std::string(MaxCount, '-') << "------|--" << std::string(MaxCount+2, '-') << "---" << '\n';
+        std::cout << "Total time:          " << std::setw(MaxCount) << std::left << TotalTime << " ms.  |  " << std::fixed << std::setprecision(3) << (TotalTime / 1000.0f) << " s." << '\n';
         std::cout << '\n';
     }
 
@@ -263,7 +245,34 @@ void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
     }
 }
 
-void arco::Compiler::CheckAndGenIR() {
+void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
+
+    i64 SemCheckBegin, IRGenBegin;
+
+    SemCheckBegin = GetTimeInMilliseconds();
+    if (!StandAlone) {
+        if (!FindStdLibStructs()) {
+            return;
+        }
+    }
+    SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
+
+    IRGenBegin = GetTimeInMilliseconds();
+    // Must do this early so that LLVM can correctly determine information for types
+    // during generating.
+    if (!InitLLVMNativeTarget()) {
+        Logger::GlobalError(llvm::errs(), "Failed to initialized LLVM native target");
+        return;
+    }
+
+    if (!LLMachineTarget) {
+        LLMachineTarget = CreateLLVMTargetMache();
+    }
+    
+    SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
+    IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
+
+    SemCheckBegin = GetTimeInMilliseconds();
     // Mapping the imports to the structs within different files.
     for (FileScope* FScope : FileScopes) {
         SemAnalyzer::ResolveImports(FScope, Context);
@@ -275,7 +284,9 @@ void arco::Compiler::CheckAndGenIR() {
         Logger::GlobalError(llvm::errs(), "Could not find entry point function");
         return;
     }
+    SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
 
+    IRGenBegin = GetTimeInMilliseconds();
     // Creating debug units for each file.
     if (EmitDebugInfo) {
         for (FileScope* FScope : FileScopes) {
@@ -283,8 +294,10 @@ void arco::Compiler::CheckAndGenIR() {
             FScope->DIEmitter->EmitFile(FScope);
         }
     }
+    IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
     while (!Context.QueuedDeclsToGen.empty()) {
+        SemCheckBegin = GetTimeInMilliseconds();
         Decl* D = Context.QueuedDeclsToGen.front();
         Context.QueuedDeclsToGen.pop();
 
@@ -292,7 +305,9 @@ void arco::Compiler::CheckAndGenIR() {
         if (D->Is(AstKind::FUNC_DECL)) {
             Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
         }
+        SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
     
+        IRGenBegin = GetTimeInMilliseconds();
         if (FoundCompileError) {
             continue;
         }
@@ -303,8 +318,10 @@ void arco::Compiler::CheckAndGenIR() {
         } else if (D->Is(AstKind::VAR_DECL)) {
             IRGen.GenGlobalVar(static_cast<VarDecl*>(D));
         }
+        IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
     }
 
+    IRGenBegin = GetTimeInMilliseconds();
     if (FoundCompileError) {
         return;
     }
@@ -319,7 +336,9 @@ void arco::Compiler::CheckAndGenIR() {
     }
 
     IRGen.GenGlobalDestroyFuncBody();
+    IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
+    SemCheckBegin = GetTimeInMilliseconds();
     // Checking any code that was not generated.
     while (!Context.UncheckedDecls.empty()) {
         Decl* D = *Context.UncheckedDecls.begin();
@@ -338,7 +357,9 @@ void arco::Compiler::CheckAndGenIR() {
     for (Module* Mod : Modules) {
         SemAnalyzer::CheckForDuplicateFuncDeclarations(Mod);
     }
+    SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
 
+    IRGenBegin = GetTimeInMilliseconds();
     if (EmitDebugInfo) {
 #ifdef _WIN32
         Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "CodeView", 1);
@@ -352,6 +373,7 @@ void arco::Compiler::CheckAndGenIR() {
             FScope->DIEmitter->Finalize();
         }
     }
+    IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 }
 
 void arco::Compiler::GenCode(const std::string& ObjFileName) {
