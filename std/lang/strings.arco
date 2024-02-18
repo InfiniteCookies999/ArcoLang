@@ -6,8 +6,8 @@ import reflect.TypeId;
 
 String struct {
 
-    length int;
-    buffer char*;
+    readonly length int;
+    readonly buffer char*;
 
     ~String() {
         delete buffer;
@@ -278,7 +278,7 @@ String struct {
             return false;
         }
         end_idx := length - s_length;
-        loop i : 0..s_length {
+        loop i : 0..<s_length {
             c1 := buffer[length - 1 - i]; // Index this buffer from end.
             c2 := s[s_length - 1 - i];
             if c1 != c2 {
@@ -571,7 +571,7 @@ fn to_string(any Any) String {
     return any_to_string(any.value, any.type);
 }
 
-fn any_to_string(value void*, type const Type*) String {
+private fn any_to_string(value void*, type const Type*) String {
     if type.id == TypeId.CSTR {
         return String{ cast(cstr) value };
     } 
@@ -670,7 +670,7 @@ fn any_to_string(value void*, type const Type*) String {
     }
 }
 
-fn array_like_type_to_string(array void*, elm_type Type*, length int) String {
+private fn array_like_type_to_string(array void*, elm_type Type*, length int) String {
     string := String{ "[ " };
         
     elm_byte_size := elm_type.size_in_bytes;

@@ -27,7 +27,7 @@ fn panic(msg cstr, args Any...) {
 }
 
 // Used to keep track of time.
-performance_freq int64;
+private performance_freq int64;
 
 fn time_in_nanosecs() int64 {
     if performance_freq == 0 {

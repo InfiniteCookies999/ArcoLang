@@ -11,7 +11,7 @@ OutStream struct {
     
     // TODO: This handle should eventually be more abstract
     //       and be a any writable handle instead.
-    handle FileHandle;
+    private handle FileHandle;
 
     OutStream(handle void*, auto_close := true)
         : handle(FileHandle{handle, auto_close}) {
@@ -169,7 +169,7 @@ OutStream struct {
         }
     }
     
-    fn write_array_like_type(array void*, elm_type Type*, length int) {
+    private fn write_array_like_type(array void*, elm_type Type*, length int) {
         write("[ ");
             
         elm_byte_size := elm_type.size_in_bytes;

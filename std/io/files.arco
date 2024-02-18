@@ -1,4 +1,5 @@
 namespace files;
+
 import win32;
 
 // TODO: should support a Path struct for minipulating file
@@ -36,8 +37,8 @@ IOFlag enum : uint32 {
  */
 FileHandle struct {
     
-    handle     void*;
-    auto_close bool;
+    private handle     void*;
+    private auto_close bool;
     
     FileHandle(handle void*, auto_close := true) {
         this.handle     = handle;

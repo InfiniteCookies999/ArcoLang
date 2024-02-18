@@ -40,6 +40,8 @@ namespace arco {
         KW_NATIVE,
         KW_CONST,
         KW_PRIVATE,
+        KW_READONLY,
+        KW_WRITEONLY,
         KW_DLLIMPORT,
         
         KW_TRUE,

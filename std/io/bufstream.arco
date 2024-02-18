@@ -7,18 +7,18 @@ BufferedStream struct {
     
     // TODO: This handle should eventually be more abstract
     //       and be a any readable handle instead.
-    handle FileHandle;
+    private handle FileHandle;
     
-    buffer      char*;
+    private buffer      char*;
     // Maximum number of bytes the buffer can store. The amount
     // of bytes actuall read from the handle may be less than this.
     //
     // buffer_length reflects the amount actually read from handle.
-    buffer_size int;
+    private buffer_size int;
     
-    buffer_length := 0;
+    private buffer_length := 0;
     // Position offset into the buffer.
-    pos           := 0;
+    private pos           := 0;
     
     BufferedStream(path cstr, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
         : handle(files.open(path, io_flags)) {
@@ -33,7 +33,7 @@ BufferedStream struct {
      * When at the end of the current buffer_length read the next bytes
      * into the buffer. Will try and read buffer_size but may read less.
      */
-    fn fill() {
+    private fn fill() {
         // TODO: should make sure the stream is still open.
         if pos >= buffer_length {
             buffer_length = handle.read(buffer, buffer_size);

@@ -9,15 +9,15 @@ LineStream struct {
     
     // TODO: This handle should eventually be more abstract
     //       and be a any readable handle instead.
-    handle FileHandle;
+    private handle FileHandle;
     
-    BUFFER_SIZE :: 1024;
-    buffer char[BUFFER_SIZE];
+    private BUFFER_SIZE :: 1024;
+    private buffer char[BUFFER_SIZE];
     
     // How long the currently read in line is.
-    line_length := 0;
+    private line_length := 0;
     // Position offset into the buffer.
-    pos         := 0;
+    private pos         := 0;
 
     // TODO: Do not support move operators yet to implement this
     // correctly. fn LineStream(in InStream) {}
@@ -30,7 +30,7 @@ LineStream struct {
      * When at the end of the current line read the next line into
      * the buffer.
      */
-    fn fill_line() {
+    private fn fill_line() {
         if pos == line_length {
             // TODO: should probably verify that there is a line.
             // -2 because of \r\n is read when calling Windows ReadFile.

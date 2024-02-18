@@ -73,7 +73,9 @@ namespace arco {
     enum ModKinds {
         NATIVE    = 0x01,
         PRIVATE   = 0x02,
-        DLLIMPORT = 0x04,
+        READONLY  = 0x04,
+        WRITEONLY = 0x08,
+        DLLIMPORT = 0x10,
     };
     using Modifiers = u16;
 
@@ -134,6 +136,14 @@ namespace arco {
         // given context. If it is not, it is placed here and
         // reported about after parsing is completed.
         llvm::SmallVector<std::tuple<InvalidScopeKind, AstNode*>, 8> InvalidStmts;
+
+        // TODO: May be better for performance to just store them in the default namespace
+        // and to instead have a linked list to the next declaration.
+        llvm::SmallVector<FuncsList> PrivateFuncs;
+        llvm::SmallVector<Decl*>     PrivateDecls;
+
+        FuncsList* FindFuncsList(Identifier Name);
+        Decl* FindDecl(Identifier Name);
 
         FileScope(std::string Path, SourceBuf Buffer)
             : Path(Path), Buffer(Buffer) {}

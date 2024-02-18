@@ -171,6 +171,8 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "native"   , TokenKind::KW_NATIVE    });
     TokenKeywordMap.insert({ "const"    , TokenKind::KW_CONST     });
     TokenKeywordMap.insert({ "private"  , TokenKind::KW_PRIVATE   });
+    TokenKeywordMap.insert({ "readonly" , TokenKind::KW_READONLY  });
+    TokenKeywordMap.insert({ "writeonly", TokenKind::KW_WRITEONLY });
     TokenKeywordMap.insert({ "dllimport", TokenKind::KW_DLLIMPORT });
 
     for (const auto& [Text, Kind] : TokenKeywordMap) {

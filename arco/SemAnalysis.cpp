@@ -1355,6 +1355,15 @@ YIELD_ERROR(BinOp)
             break;
         }
 
+        if (BinOp->LHS->Is(AstKind::FIELD_ACCESSOR) ||
+            BinOp->LHS->Is(AstKind::IDENT_REF)) {
+            IdentRef* IRef = static_cast<IdentRef*>(BinOp->LHS);
+            if (IRef->RefKind == IdentRef::RK::Var && (IRef->Var->Mods & ModKinds::READONLY)) {
+                if (IRef->Var->FScope != FScope) {
+                    Error(BinOp, "Cannot modify variable marked readonly");
+                }
+            }
+        }
 
         if (BinOp->Op == TokenKind::SLASH_EQ || BinOp->Op == TokenKind::MOD_EQ) {
             if (BinOp->RHS->IsFoldable) {
@@ -1767,6 +1776,15 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 }
             }
 
+            // Search for private functions.
+            if (LocalNamespace) {
+                if (FuncsList* Funcs = FScope->FindFuncsList(IRef->Ident)) {
+                    IRef->Funcs   = Funcs;
+                    IRef->RefKind = IdentRef::RK::Funcs;
+                    return;
+                }
+            }
+
             if (LocalNamespace && FScope->UniqueNSpace) {
                 // File marked with a namespace need to search the namespace the file belongs to as well.
                 Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
@@ -1825,6 +1843,25 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             
             if (SearchNamespace(NamespaceToLookup)) {
                 return;
+            }
+
+            // Search for private declarations.
+            if (LocalNamespace) {
+                if (Decl* Dec = FScope->FindDecl(IRef->Ident)) {
+                    if (Dec->Is(AstKind::VAR_DECL)) {
+                        IRef->Var     = static_cast<VarDecl*>(Dec);
+                        IRef->RefKind = IdentRef::RK::Var;
+                        return;
+                    } else if (Dec->Is(AstKind::STRUCT_DECL)) {
+                        IRef->Struct  = static_cast<StructDecl*>(Dec);
+                        IRef->RefKind = IdentRef::RK::Struct;
+                        return;
+                    } else if (Dec->Is(AstKind::ENUM_DECL)) {
+                        IRef->Enum    = static_cast<EnumDecl*>(Dec);
+                        IRef->RefKind = IdentRef::RK::Enum;
+                        return;
+                    }
+                }
             }
 
             if (LocalNamespace && FScope->UniqueNSpace) {
@@ -2015,6 +2052,13 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
         YIELD_ERROR(FieldAcc);
     } else {
         CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
+        if (FieldAcc->Ty != Context.ErrorType) {
+            if (FieldAcc->RefKind == IdentRef::RK::Var && (FieldAcc->Var->Mods & ModKinds::PRIVATE)) {
+                if (FieldAcc->Var->FScope != FScope) {
+                    Error(FieldAcc, "Field not visible, it is private");
+                }
+            }
+        }
     }
 }
 
@@ -2119,6 +2163,12 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
+    if (Call->CalledFunc->Mods & ModKinds::PRIVATE) {
+        if (Call->CalledFunc->FScope != FScope) {
+            Error(Call, "Function not visible, it is private");
+        }
+    }
+
     Call->VarArgsPassAlong = VarArgsPassAlong;
 
     Call->IsFoldable = false;
@@ -3333,6 +3383,14 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
     auto Itr = FScope->Imports.find(StructName);
     if (Itr != FScope->Imports.end() && Itr->second.Decl) {
         FoundDecl = Itr->second.Decl;
+    }
+
+    if (!FoundDecl) {
+        if (Decl* Dec = FScope->FindDecl(StructName)) {
+            if (Dec->IsStructLike()) {
+                FoundDecl = Dec;
+            }
+        }
     }
 
     if (!FoundDecl) {

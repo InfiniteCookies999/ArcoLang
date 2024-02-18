@@ -27,7 +27,7 @@ fn memcmp(lhs const void*, rhs const void*, count int) int {
     }
     return cast(int) _memcmp(lhs, rhs, cast(uint) count);
 }
-native("memcmp") fn(cdecl) _memcmp(lhs const void*, rhs const void*, count uint) int32;
+private native("memcmp") fn(cdecl) _memcmp(lhs const void*, rhs const void*, count uint) int32;
 
 /*
  * Compares two blocks of memory lhs and rhs.
@@ -49,4 +49,4 @@ fn memeq(lhs const void*, rhs const void*, count int) bool {
 fn strlen(s cstr) int {
     return cast(int) _strlen(s);
 }
-native("strlen") fn(cdecl) _strlen(s cstr) uint;
+private native("strlen") fn(cdecl) _strlen(s cstr) uint;

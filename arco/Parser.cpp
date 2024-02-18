@@ -148,7 +148,7 @@ arco::FileScope* arco::Parser::Parse() {
 
         if (Stmt->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
-            if (Func->Name == Context.MainIdentifier) {
+            if (Func->Name == Context.MainIdentifier && !(Func->Mods & ModKinds::PRIVATE)) {
                 if (!Context.MainEntryFunc) {
                     Context.MainEntryFunc = Func;
                 } else {
@@ -160,18 +160,41 @@ arco::FileScope* arco::Parser::Parse() {
                 }
             }
 
-            NSpace->Funcs[Func->Name].push_back(Func);
+            if (Func->Mods & ModKinds::PRIVATE) {
+                FuncsList* List = FScope->FindFuncsList(Func->Name);
+                if (List) {
+                    List->push_back(Func);
+                } else {
+                    FScope->PrivateFuncs.push_back({ Func });
+                }
+            } else {
+                NSpace->Funcs[Func->Name].push_back(Func);
+            }
         } else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL)) {
             Decl* Dec = static_cast<Decl*>(Stmt);
-            
+            auto Itr = FScope->Imports.find(Dec->Name);
+            if (Itr != FScope->Imports.end()) {
+                Error(Dec->Loc, "Declaration conflicts with import");
+            }
+
             if (!Dec->Name.IsNull()) {
-                auto Itr = NSpace->Decls.find(Dec->Name);
-                if (Itr != NSpace->Decls.end()) {
-                    Decl* FirstDec = Itr->second;
-                    Error(Dec->Loc, "Duplicate declaration of identifier '%s'. First declared at: %s:%s",
-                        Dec->Name, FirstDec->FScope->Path, FirstDec->Loc.LineNumber);
-                } else {	
-                    NSpace->Decls[Dec->Name] = Dec;
+                if (Dec->Mods & ModKinds::PRIVATE) {
+                    Decl* FirstDec = FScope->FindDecl(Dec->Name);
+                    if (!FirstDec) {
+                        FScope->PrivateDecls.push_back(Dec);
+                    } else {
+                        Error(Dec->Loc, "Duplicate declaration of identifier '%s'. First declared at: %s:%s",
+                            Dec->Name, FirstDec->FScope->Path, FirstDec->Loc.LineNumber);
+                    }
+                } else {
+                    auto Itr = NSpace->Decls.find(Dec->Name);
+                    if (Itr == NSpace->Decls.end()) {
+                        NSpace->Decls[Dec->Name] = Dec;
+                    } else {	
+                        Decl* FirstDec = Itr->second;
+                        Error(Dec->Loc, "Duplicate declaration of identifier '%s'. First declared at: %s:%s",
+                            Dec->Name, FirstDec->FScope->Path, FirstDec->Loc.LineNumber);
+                    }
                 }
             }
         } else if (Stmt->Is(AstKind::VAR_DECL)) {
@@ -283,18 +306,26 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:
+    case TokenKind::KW_READONLY:
+    case TokenKind::KW_WRITEONLY:
     case TokenKind::KW_DLLIMPORT: {
         // TODO: constructors!
         Modifiers Mods = ParseModifiers();
         if (CTok.Is(TokenKind::KW_FN)) {
             return ParseFuncDecl(Mods);
         } else if (CTok.Is(TokenKind::IDENT)) {
-            if (PeekToken(1).Is(',')) {
+            Token PeekTok = PeekToken(1);
+            if (PeekTok.Is(',')) {
                 Stmt = ParseVarDeclList(Mods);
+                Match(';');
+            } else if (PeekTok.Is(TokenKind::KW_STRUCT)) {
+                Stmt = ParseStructDecl(Mods);
+            } else if (PeekTok.Is(TokenKind::KW_ENUM)) {
+                Stmt = ParseEnumDecl(Mods);
             } else {
                 Stmt = ParseVarDecl(Mods);
+                Match(';');
             }
-            Match(';');
         } else {
             Error(CTok, "Expected declaration");
             SkipRecovery();
@@ -1060,6 +1091,20 @@ arco::Modifiers arco::Parser::ParseModifiers() {
             if (Mods & ModKinds::PRIVATE)
                 Error(CTok, "Duplicate modifier");
             Mods |= ModKinds::PRIVATE;
+            NextToken();
+            break;
+        }
+        case TokenKind::KW_READONLY: {
+            if (Mods & ModKinds::READONLY)
+                Error(CTok, "Duplicate modifier");
+            Mods |= ModKinds::READONLY;
+            NextToken();
+            break;
+        }
+        case TokenKind::KW_WRITEONLY: {
+            if (Mods & ModKinds::WRITEONLY)
+                Error(CTok, "Duplicate modifier");
+            Mods |= ModKinds::WRITEONLY;
             NextToken();
             break;
         }
@@ -2104,6 +2149,10 @@ void arco::Parser::SkipRecovery() {
     case TokenKind::KW_BREAK:
     case TokenKind::KW_CONTINUE:
     case TokenKind::KW_DELETE:
+    case TokenKind::KW_NATIVE:
+    case TokenKind::KW_PRIVATE:
+    case TokenKind::KW_READONLY:
+    case TokenKind::KW_WRITEONLY:
     case '{':
         return;
     case ';':
