@@ -1,0 +1,19 @@
+
+Bar struct {
+    a int;
+    b int;
+}
+
+fn foo(bar Bar^) {
+    print(bar.a);
+    print(" ", 1);
+    print(bar.b);
+}
+
+fn make_bar() Bar {
+    return Bar{ 65, 72 };
+}
+
+fn main() {
+    foo(make_bar());
+}

@@ -1683,7 +1683,7 @@ YIELD_ERROR(UniOp);
             UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
                                              std::move(ParamTypes), Context);
         } else {
-            if (!IsLValue(UniOp->Value) && UniOp->Value->Ty->GetKind() != TypeKind::Struct) {
+            if (!IsLValue(UniOp->Value)) {
                 Error(UniOp, "Operator '%s' requires the value to be modifiable",
                     Token::TokenKindToString(UniOp->Op, Context));
             }
@@ -2280,7 +2280,19 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
         }
         
         if (!IsAssignableTo(ParamType, Arg)) {
-            return false;
+            // May be an implicit pointer type.
+            if (Param->ImplicitPtr) {
+                if (!Param->Ty->AsPointerTy()->GetElementType()->Equals(Arg->Ty)) {
+                    return false;
+                }
+                if (!IsLValue(Arg) && Arg->Ty->GetKind() != TypeKind::Struct) {
+                    // Must be an l-value or a struct in which case an unseen allocation
+                    // will occure and the address will be takne.
+                    return false;
+                }
+            } else {
+                return false;
+            }
         }
         if (ViolatesConstAssignment(Param, Arg)) {
             return false;

@@ -135,7 +135,7 @@ namespace arco {
                                         llvm::Value* LLAddr,
                                         bool VarArgsPassAlong);
         llvm::Value* GenFuncCallParamRetSlot(Type* RetTy, llvm::Value* LLAddr);
-        llvm::Value* GenCallArg(Expr* Arg);
+        llvm::Value* GenCallArg(Expr* Arg, bool ImplictPtr);
         llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
         ArrayType* GetGenArrayDestType(Array* Arr);
         llvm::Constant* GenConstArray(Array* Arr, ArrayType* DestTy);

@@ -1,0 +1,15 @@
+
+Bar struct {
+    a int;
+    b int;
+}
+
+fn foo(bar Bar^) {
+    print(bar.a);
+    print(" ", 1);
+    print(bar.b);
+}
+
+fn main() {
+    foo(Bar{ 65, 72 });
+}

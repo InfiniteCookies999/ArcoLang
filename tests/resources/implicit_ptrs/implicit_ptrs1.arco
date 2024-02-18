@@ -1,0 +1,10 @@
+
+fn foo(a int^) {
+    *a = 55;
+}
+
+fn main() {
+    a int = 7;
+    foo(a);
+    print(a);
+}

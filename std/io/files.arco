@@ -109,7 +109,7 @@ fn read(path cstr) String {
 /*
  * Reads an entire file into a string.
  */
-fn read(path String*) String {
+fn read(path String^) String {
     return read(path.buffer);
 }
 
@@ -126,7 +126,7 @@ fn exists(path cstr) bool {
  * Returns true if the file system has a file or
  * folder at the given path.
  */
-fn exists(path String*) bool {
+fn exists(path String^) bool {
     return exists(path.buffer);
 }
 
@@ -144,7 +144,7 @@ fn file_exists(path cstr) bool {
  * Returns true if the file system has a file but
  * is not a directory at the given path.
  */
-fn file_exists(path String*) bool {
+fn file_exists(path String^) bool {
     return file_exists(path.buffer);
 }
 
@@ -162,7 +162,7 @@ fn directory_exists(path cstr) bool {
  * Returns true if the file system has a directory
  * at the given path.
  */
-fn directory_exists(path String*) bool {
+fn directory_exists(path String^) bool {
     return directory_exists(path.buffer);
 }
 
@@ -185,7 +185,7 @@ fn mkdir(path cstr, mkparents := false) bool {
  * @Param mkparents if true it will also make the
  *                  necessary parent directories.
  */
-fn mkdir(path String*, mkparents := false) bool {
+fn mkdir(path String^, mkparents := false) bool {
     return mkdir(path.buffer);
 }
 
@@ -214,7 +214,7 @@ fn remove(path cstr) bool {
  * If deleting a directory the directory must be
  * empty.
  */
-fn remove(path String*) bool {
+fn remove(path String^) bool {
     return remove(path.buffer);
 }
 

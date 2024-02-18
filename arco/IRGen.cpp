@@ -1790,17 +1790,6 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
         return UniOp->Op == TokenKind::MINUS_MINUS ? IncRes : LLRVal;
     }
     case '&': {
-        if (UniOp->Value->Is(AstKind::FUNC_CALL) &&
-            UniOp->Value->Ty->GetKind() == TypeKind::Struct) {
-            // Need a temporary struct to get the address of it.
-            llvm::Value* LLReturnedStruct = GenNode(UniOp->Value);
-            llvm::Value* LLAddr = CreateUnseenAlloca(GenType(UniOp->Value->Ty), "tmp.struct");
-            // TODO: use move constructor if available.
-            AddObjectToDestroyOpt(UniOp->Value->Ty, LLAddr);
-            
-            GenStoreStructRetFromCall(static_cast<FuncCall*>(UniOp->Value), LLAddr);
-            return LLAddr;
-        }
         // When GenRValue is called it makes sure
         // not to shave off the pointer value for
         // this operator. Because of that all this
@@ -2007,7 +1996,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
     }
     
     for (ulen i = 0; i < Call->Args.size(); i++) {
-        LLArgs[ArgIdx++] = GenCallArg(Call->Args[i].E);
+        LLArgs[ArgIdx++] = GenCallArg(Call->Args[i].E, false);
     }
     
     llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(
@@ -2070,18 +2059,21 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
 
     if (!CalledFunc->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
-            LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
+            VarDecl* Param = CalledFunc->Params[i];
+            LLArgs[ArgIdx++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
         }
     } else {
         ulen i = 0;
         for (; i < CalledFunc->Params.size() - 1; i++) {
-            LLArgs[ArgIdx++] = GenCallArg(Args[i].E);
+            VarDecl* Param = CalledFunc->Params[i];
+            LLArgs[ArgIdx++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
         }
         if (VarArgsPassAlong) {
-            LLArgs[ArgIdx++] = GenRValue(Args[i].E);
+            LLArgs[ArgIdx++] = GenRValue(Args[i].E); // TODO: implicit pointer here?
         } else {
             ulen NumVarArgs = Args.size() - (CalledFunc->Params.size() - 1);
             VarDecl* LastParam = CalledFunc->Params[CalledFunc->Params.size() - 1];
+            bool ImplicitPtr = LastParam->ImplicitPtr;
 
             // Creating the array that the slice points to.
             // TODO: could optimize this in case the arguments are constant...
@@ -2092,7 +2084,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             ulen ArrayIdx = 0;
             for (; i < Args.size(); i++, ArrayIdx++) {
                 llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx));
-                Builder.CreateStore(GenCallArg(Args[i].E), LLElmAddr);
+                Builder.CreateStore(GenCallArg(Args[i].E, ImplicitPtr), LLElmAddr);
             }
         
             llvm::Value* LLVarArgs = CreateUnseenAlloca(GenType(LastParam->Ty), "tmp.varargs");
@@ -2108,7 +2100,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     if (CalledFunc->NumDefaultArgs) {
         for (ulen i = 0; i < CalledFunc->Params.size() - Args.size(); i++) {
             VarDecl* Param = CalledFunc->Params[Args.size() + i];
-            LLArgs[ArgIdx++] = GenCallArg(Param->Assignment);
+            LLArgs[ArgIdx++] = GenCallArg(Param->Assignment, false);
         }
     }
     
@@ -2148,7 +2140,29 @@ llvm::Value* arco::IRGenerator::GenFuncCallParamRetSlot(Type* RetTy, llvm::Value
     return LLAddr;
 }
 
-llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
+llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
+    if (ImplictPtr) {
+        if (Arg->CastTy) {
+            Arg->CastTy = nullptr; // TODO: hacky fix to make sure it does not cast.
+            if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
+                // Doesn't have an address so need to create one.
+                llvm::Value* LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
+                GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
+                
+                // It is passed as a pointer so the current function has ownership over the memory.
+                AddObjectToDestroyOpt(Arg->Ty, LLArg);
+
+                // No need to load because we want the struct's address.
+                return LLArg;
+            } else {
+                return GenNode(Arg);
+            }
+        } else {
+            // Great it is already the pointer.
+            return GenRValue(Arg);
+        }
+    }
+
     if (Context.StdAnyStruct) {
         if (Arg->Ty->Equals(Context.AnyType)) {
             // Any type is the argument so the destination type
@@ -2173,7 +2187,7 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg) {
 
         LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
         GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
-
+        
         // TODO: If there ends up being further optimizations such that parameters
         // take into account similar constraints to return values where structs
         // get passed as integers/pointers depending on memory size then this will

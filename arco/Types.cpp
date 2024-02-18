@@ -186,7 +186,7 @@ arco::Type* arco::Type::GetPointerElementType(ArcoContext& Context) const {
     if (GetKind() == TypeKind::CStr) {
         return Context.CharType;
     }
-    return static_cast<const PointerType*>(this)->GetElementType();
+    return AsContainerType()->GetElementType();
 }
 
 ulen arco::Type::GetTrivialTypeSizeInBytes() const {

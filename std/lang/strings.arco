@@ -236,7 +236,8 @@ String struct {
         return buffer[0];
     }
 
-    fn append(s String*) String* {
+      // Note: leave as non-pointer so user may chose to move the string.
+    fn append(s String) String* {
         return append(s.buffer, s.length);
     }
 
@@ -261,7 +262,7 @@ String struct {
         return this;
     }
 
-    fn equals(s String*) bool {
+    fn equals(s String^) bool {
         return equals(s.buffer, s.length);
     }
 
@@ -390,7 +391,7 @@ fn any_to_string(value void*, type const Type*) String {
         // TODO: abstract pointer printing out?
         // TODO: pad 0s.
         string := String{ "0x" };
-        string.append(&to_string(cast(uint) cast(uint*) value, 16));
+        string.append(to_string(cast(uint) cast(uint*) value, 16));
         return string;
     } else if type.id == TypeId.ARRAY {
         array_info := type.array_info;
@@ -437,7 +438,7 @@ fn any_to_string(value void*, type const Type*) String {
                 ptr_addr := cast(void**) field_value;
                 field_value = *ptr_addr;
             }
-            string.append(&any_to_string(field_value, field.type));
+            string.append(any_to_string(field_value, field.type));
             
             if field.type.is_string() {
                 string.append("\"");
@@ -471,7 +472,7 @@ fn array_like_type_to_string(array void*, elm_type Type*, length int) String {
             ptr_addr := cast(void**) offset_into_array;
             offset_into_array = *ptr_addr;
         }
-        string.append(&any_to_string(offset_into_array, elm_type));
+        string.append(any_to_string(offset_into_array, elm_type));
         if elm_type.is_string() {
             string.append("\"");
         }

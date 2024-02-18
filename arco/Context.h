@@ -162,6 +162,7 @@ namespace arco {
         llvm::DenseMap<u32, llvm::DIType*>         LLDITypeCache;
 
         llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
+        llvm::DenseMap<u32, ImplPointerType*>                 ImplPointerTyCache;
         llvm::DenseMap<u32, SliceType*>                       SliceTyCache;
         llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
         llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;

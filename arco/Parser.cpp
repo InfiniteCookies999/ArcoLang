@@ -431,6 +431,13 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
         ulen ParamCount = 0;
         do {
             VarDecl* Param = ParseVarDecl(0);
+            if (Param->Ty && CTok.Is('^')) {
+                if (Param->Ty->GetKind() != TypeKind::Array) {
+                    NextToken(); // Implicit pointer type.
+                    Param->Ty = PointerType::Create(Param->Ty, Context);
+                    Param->ImplicitPtr = true;
+                }
+            }
             Param->ParamIdx = ParamCount++;
             Func->Params.push_back(Param);
 

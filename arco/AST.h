@@ -293,10 +293,11 @@ namespace arco {
 
         // If the variable is declared inside a function
         // and returned.
-        bool IsLocalRetValue = false;
-        bool IsGlobal        = false;
-        bool HasConstAddress = false;
-        bool TyIsInfered     = false;
+        bool IsLocalRetValue    = false;
+        bool IsGlobal           = false;
+        bool HasConstAddress    = false;
+        bool TyIsInfered        = false;
+        bool ImplicitPtr        = false;
 
         // One variable may depend on another variable in its
         // declaration.

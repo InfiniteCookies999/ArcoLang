@@ -18,6 +18,7 @@ namespace arco {
     struct StructDecl;
     struct EnumDecl;
     class ContainerType;
+    class ImplPointerType;
     class PointerType;
     class SliceType;
     class ArrayType;
