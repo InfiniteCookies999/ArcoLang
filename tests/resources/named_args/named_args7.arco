@@ -1,0 +1,16 @@
+
+fn foo(a int, b int, c int, d int, e int) {
+    print(a);
+    print(" ", 1);
+    print(b);
+    print(" ", 1);
+    print(c);
+    print(" ", 1);
+    print(d);
+    print(" ", 1);
+    print(e);
+}
+
+fn main() {
+    foo(e=342, a=42, c=83, b=11, d=61);
+}

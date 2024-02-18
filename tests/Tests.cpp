@@ -85,9 +85,6 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 int main() {
 
-    std::string s;
-    
-
     RunTest(SRC("hello_world.arco"), "Hello World!");
     RunTest(SRC("binary_operators.arco"), "464");
     RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
@@ -216,6 +213,14 @@ int main() {
     RunTest(SRC("implicit_ptrs/implicit_ptrs1.arco"), "55");
     RunTest(SRC("implicit_ptrs/implicit_ptrs2.arco"), "65 72");
     RunTest(SRC("implicit_ptrs/implicit_ptrs3.arco"), "65 72");
+
+    RunTest(SRC("named_args/named_args1.arco"), "314 14");
+    RunTest(SRC("named_args/named_args2.arco"), "314 14");
+    RunTest(SRC("named_args/named_args3.arco"), "314 14");
+    RunTest(SRC("named_args/named_args4.arco"), "314 14");
+    RunTest(SRC("named_args/named_args5.arco"), "314 14");
+    RunTest(SRC("named_args/named_args6.arco"), "314 14");
+    RunTest(SRC("named_args/named_args7.arco"), "42 11 83 61 342");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

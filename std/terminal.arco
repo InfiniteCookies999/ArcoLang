@@ -1,10 +1,10 @@
 import win32;
 import reflect.Any;
 
-out := OutStream{ win32.GetStdHandle(win32.STD_OUTPUT_HANDLE), false };
-err := OutStream{ win32.GetStdHandle(win32.STD_ERROR_HANDLE) , false };
+out := OutStream{ win32.GetStdHandle(win32.STD_OUTPUT_HANDLE), auto_close=false };
+err := OutStream{ win32.GetStdHandle(win32.STD_ERROR_HANDLE) , auto_close=false };
 
-in  := LineStream{ win32.GetStdHandle(win32.STD_INPUT_HANDLE), false };
+in  := LineStream{ win32.GetStdHandle(win32.STD_INPUT_HANDLE), auto_close=false };
 
 
 // TODO: Functions are redundent because there is no support for

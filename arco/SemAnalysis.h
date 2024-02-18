@@ -89,31 +89,43 @@ namespace arco {
         void CheckFuncCall(FuncCall* Call);
         FuncDecl* CheckCallToCanidates(SourceLoc ErrorLoc,
                                        FuncsList* Canidates,
-                                       llvm::SmallVector<NonNamedValue, 2>& Args,
+                                       llvm::SmallVector<NonNamedValue>& Args,
+                                       llvm::SmallVector<NamedValue>& NamedArgs,
                                        bool& VarArgsPassAlong);
         FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
-                                           const llvm::SmallVector<NonNamedValue, 2>& Args,
+                                           llvm::SmallVector<NonNamedValue>& Args,
+                                           llvm::SmallVector<NamedValue>& NamedArgs,
                                            bool& SelectedVarArgsPassAlong);
+        
         bool CompareAsCanidate(FuncDecl* Canidate,
-                               const llvm::SmallVector<NonNamedValue, 2>& Args,
+                               llvm::SmallVector<NonNamedValue>& Args,
+                               llvm::SmallVector<NamedValue>& NamedArgs,
                                ulen& NumConflicts,
                                ulen& EnumImplicitConflicts,
                                ulen& NumSignConflicts,
                                bool& CanidateVarArgPassAlong);
+        bool CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
+                          ulen& NumConflicts,
+                          ulen& EnumImplicitConflicts,
+                          ulen& NumSignConflicts);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
-                                               const llvm::SmallVector<NonNamedValue, 2>& Args);
+                                               const llvm::SmallVector<NonNamedValue>& Args,
+                                               const llvm::SmallVector<NamedValue>& NamedArgs);
         void DisplayErrorForSingleFuncForFuncCall(
             const char* CallType,
             SourceLoc Loc,
             const llvm::SmallVector<TypeInfo>& ParamTypes,
-            const llvm::SmallVector<NonNamedValue, 2>& Args,
+            const llvm::SmallVector<NonNamedValue>& Args,
+            const llvm::SmallVector<NamedValue>& NamedArgs,
             ulen NumDefaultArgs = 0,
             FuncDecl* CalledFunc = nullptr
         );
         std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
-        std::string GetCallMismatchInfo(const llvm::SmallVector<TypeInfo>& ParamTypes,
-                                        const llvm::SmallVector<NonNamedValue, 2>& Args,
+        std::string GetCallMismatchInfo(const char* CallType,
+                                        const llvm::SmallVector<TypeInfo>& ParamTypes,
+                                        const llvm::SmallVector<NonNamedValue>& Args,
+                                        const llvm::SmallVector<NamedValue>& NamedArgs,
                                         ulen NumDefaultArgs,
                                         bool IsVariadic);
         
@@ -123,7 +135,8 @@ namespace arco {
         void CheckStructInitializer(StructInitializer* StructInit);
         FuncDecl* CheckStructInitArgs(StructDecl* Struct,
                                       SourceLoc ErrorLoc,
-                                      llvm::SmallVector<NonNamedValue, 2>& Args,
+                                      llvm::SmallVector<NonNamedValue>& Args,
+                                      llvm::SmallVector<NamedValue>& NamedArgs,
                                       bool& VarArgPassAlong);
         void CheckHeapAlloc(HeapAlloc* Alloc);
         void CheckSizeOf(SizeOf* SOf);

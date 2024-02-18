@@ -1,0 +1,10 @@
+
+fn foo(a int, b int) {
+    print(a);
+    print(" ", 1);
+    print(b);
+}
+
+fn main() {
+    foo(a=314, b=14);
+}

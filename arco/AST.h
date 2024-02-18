@@ -578,10 +578,23 @@ namespace arco {
         Expr*     E;
     };
 
+    // This structure represents when calling a function
+    // or initializing a struct by including explicitly
+    // which parameter/field the value is to be associated
+    // with by the name of the parameter/field.
+    struct NamedValue {
+        SourceLoc  ExpandedLoc;
+        SourceLoc  NameLoc;
+        Identifier Name;
+        Expr*      AssignValue;
+        VarDecl*   VarRef = nullptr;
+    };
+
     struct FuncCall : Expr {
         FuncCall() : Expr(AstKind::FUNC_CALL) {}
     
-        llvm::SmallVector<NonNamedValue, 2> Args;
+        llvm::SmallVector<NonNamedValue> Args;
+        llvm::SmallVector<NamedValue>    NamedArgs;
 
         // What is being "called". For example,
         // "func(4)" is a call on the site "func"
@@ -648,7 +661,8 @@ namespace arco {
         FuncDecl* CalledConstructor = nullptr;
         bool VarArgsPassAlong = false;
 
-        llvm::SmallVector<NonNamedValue, 2> Args;
+        llvm::SmallVector<NonNamedValue> Args;
+        llvm::SmallVector<NamedValue>    NamedArgs;
 
     };
 
@@ -661,7 +675,8 @@ namespace arco {
         FuncDecl* CalledConstructor = nullptr;
         bool VarArgsPassAlong = false;
 
-        llvm::SmallVector<NonNamedValue, 2> Values;
+        llvm::SmallVector<NonNamedValue> Values;
+        llvm::SmallVector<NamedValue>    NamedValues;
 
     };
 

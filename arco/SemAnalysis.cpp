@@ -2079,6 +2079,11 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         if (Arg.E->Ty == Context.ErrorType)
             ArgHasError = true;
     }
+    for (auto& Arg : Call->NamedArgs) {
+        CheckNode(Arg.AssignValue);
+        if (Arg.AssignValue->Ty == Context.ErrorType)
+            ArgHasError = true;
+    }
     if (ArgHasError) {
         YIELD_ERROR(Call);
     }
@@ -2101,11 +2106,17 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         // Calling a variable!
         FunctionType* FuncTy = SiteTy->AsFunctionType();
 
+        if (!Call->NamedArgs.empty()) {
+            Error(Call, "Cannot call a variable with named arguments");
+            YIELD_ERROR(Call);
+        }
+
         if (Call->Args.size() != FuncTy->ParamTypes.size()) {
             DisplayErrorForSingleFuncForFuncCall("function",
                                                  Call->Loc,
                                                  FuncTy->ParamTypes,
                                                  Call->Args,
+                                                 Call->NamedArgs,
                                                  0 /* Num default args */);
             YIELD_ERROR(Call);
         }
@@ -2118,9 +2129,9 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
                 ViolatesConstAssignment(ParamTyInfo.Ty, ParamTyInfo.ConstMemory, Arg)) {
                 DisplayErrorForSingleFuncForFuncCall("function",
                                                      Call->Loc,
-                                                     
                                                      FuncTy->ParamTypes,
                                                      Call->Args,
+                                                     Call->NamedArgs,
                                                      0 /* Num default args */);
                 YIELD_ERROR(Call);
             }
@@ -2159,7 +2170,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     FuncsList* Canidates = static_cast<IdentRef*>(Call->Site)->Funcs;
 
     bool VarArgsPassAlong = false;
-    Call->CalledFunc = CheckCallToCanidates(Call->Loc, Canidates, Call->Args, VarArgsPassAlong);
+    Call->CalledFunc = CheckCallToCanidates(Call->Loc, Canidates, Call->Args, Call->NamedArgs, VarArgsPassAlong);
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
@@ -2179,12 +2190,56 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
                                                         FuncsList* Canidates,
-                                                        llvm::SmallVector<NonNamedValue, 2>& Args,
+                                                        llvm::SmallVector<NonNamedValue>& Args,
+                                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong) {
-    FuncDecl* Selected = FindBestFuncCallCanidate(Canidates, Args, VarArgsPassAlong);
+    FuncDecl* Selected = FindBestFuncCallCanidate(Canidates, Args, NamedArgs, VarArgsPassAlong);
     if (!Selected) {
-        DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args);
+        DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
         return nullptr;
+    }
+    // If the call has named arguments the named arguments might conflict with the non-named
+    // arguments so checking for that now.
+    if (!NamedArgs.empty()) {
+        // Need to lookup the paramters again because there might have been multiple overloaded functions.
+        for (NamedValue& NamedArg : NamedArgs) {
+            auto Itr = std::find_if(Selected->Params.begin(), Selected->Params.end(),
+                [&NamedArg](VarDecl* Param) {
+                    return Param->Name == NamedArg.Name;
+                });
+            assert(Itr != Selected->Params.end() && "The canidate should not have been selected");
+            NamedArg.VarRef = *Itr;
+
+            if (NamedArg.VarRef->ParamIdx < Args.size()) {
+                Error(NamedArg.NameLoc,
+                    "Named argument '%s' already taken by non named argument at index: %s",
+                    NamedArg.Name,
+                    NamedArg.VarRef->ParamIdx + 1);
+            }
+        }
+        if (Selected->NumDefaultArgs) {
+            // Checking that for all parameters between the non-named arguments and the default
+            // arguments that the parameter actually recieved a value.
+            // It is possible that it did not in cases like:
+            // 
+            // fn foo(a int, b := 33) { }
+            //
+            // fn main() {
+            //     foo(b: 41);
+            // }
+            ulen StartOfDefaults = Selected->Params.size() - Selected->NumDefaultArgs;
+            for (ulen i = Args.size(); i < StartOfDefaults; i++) {
+                VarDecl* Param = Selected->Params[i];
+                auto Itr = std::find_if(NamedArgs.begin(), NamedArgs.end(),
+                    [Param](const NamedValue& V) {
+                        return V.VarRef->ParamIdx == Param->ParamIdx;
+                    });
+                if (Itr == NamedArgs.end()) {
+                    // TODO: better error reporting.
+                    Error(ErrorLoc, "Parameter '%s' recieved no argument", Param->Name);
+                }
+            }
+        }
     }
     
     // Creating casts for the arguments.
@@ -2217,7 +2272,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
 }
 
 arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates,
-                                                            const llvm::SmallVector<NonNamedValue, 2>& Args,
+                                                            llvm::SmallVector<NonNamedValue>& Args,
+                                                            llvm::SmallVector<NamedValue>& NamedArgs,
                                                             bool& SelectedVarArgsPassAlong) {
     if (!Canidates) return nullptr;
 
@@ -2237,7 +2293,7 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
 
         ulen NumConflicts = 0, EnumImplicitConflicts = 0, NumSignConflicts = 0;
         bool VarArgsPassAlong = false;
-        if (!CompareAsCanidate(Canidate, Args, NumConflicts, EnumImplicitConflicts, NumSignConflicts, VarArgsPassAlong)) {
+        if (!CompareAsCanidate(Canidate, Args, NamedArgs, NumConflicts, EnumImplicitConflicts, NumSignConflicts, VarArgsPassAlong)) {
             continue;
         }
 
@@ -2264,7 +2320,8 @@ SelectedVarArgsPassAlong   = VarArgsPassAlong;
 }
 
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
-                                          const llvm::SmallVector<NonNamedValue, 2>& Args,
+                                          llvm::SmallVector<NonNamedValue>& Args,
+                                          llvm::SmallVector<NamedValue>& NamedArgs,
                                           ulen& NumConflicts,
                                           ulen& EnumImplicitConflicts,
                                           ulen& NumSignConflicts,
@@ -2275,18 +2332,19 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
     if (Canidate->ParsingError) {
         return false;
     }
+    ulen TotalArgs = Args.size() + NamedArgs.size();
     if (Canidate->NumDefaultArgs) {
-        if (!(Args.size() >= Canidate->Params.size() - Canidate->NumDefaultArgs &&
-              Args.size() <= Canidate->Params.size())) {
+        if (!(TotalArgs >= Canidate->Params.size() - Canidate->NumDefaultArgs &&
+              TotalArgs <= Canidate->Params.size())) {
             return false;
         }
     } else {
         if (Canidate->IsVariadic) {
-            if (Args.size() < Canidate->Params.size() - 1) {
+            if (TotalArgs < Canidate->Params.size() - 1) {
                 return false;
             }
         } else {
-            if (Args.size() != Canidate->Params.size()) {
+            if (TotalArgs != Canidate->Params.size()) {
                 return false;
             }
         }
@@ -2330,46 +2388,78 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
             ParamType = Param->Ty;
         }
         
-        if (!IsAssignableTo(ParamType, Arg)) {
-            // May be an implicit pointer type.
-            if (Param->ImplicitPtr) {
-                if (!Param->Ty->AsPointerTy()->GetElementType()->Equals(Arg->Ty)) {
-                    return false;
-                }
-                if (!IsLValue(Arg) && Arg->Ty->GetKind() != TypeKind::Struct) {
-                    // Must be an l-value or a struct in which case an unseen allocation
-                    // will occure and the address will be takne.
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-        if (ViolatesConstAssignment(Param, Arg)) {
+        if (!CheckCallArg(Arg, Param, ParamType, NumConflicts, EnumImplicitConflicts, NumSignConflicts)) {
             return false;
-        }
-        if (!ParamType->Equals(Arg->Ty)) {
-            ++NumConflicts;
-            if (Arg->Ty->GetRealKind() == TypeKind::Enum) {
-                
-                EnumDecl* Enum = static_cast<StructType*>(Arg->Ty)->GetEnum();
-                if (!Enum->ValuesType->Equals(ParamType)) {
-                    ++EnumImplicitConflicts;
-                }
-            } else if (Arg->Ty->IsNumber()) {
-                if (Arg->Ty->IsSigned() != ParamType->IsSigned()) {
-                    ++NumSignConflicts;
-                }
-            }
         }
     }
 
+    if (!NamedArgs.empty() && Canidate->IsVariadic) {
+        return false; 
+    }
+
+    for (NamedValue& NamedArg : NamedArgs) {
+        auto Itr = std::find_if(Canidate->Params.begin(), Canidate->Params.end(),
+            [&NamedArg](VarDecl* Param) {
+                return Param->Name == NamedArg.Name;
+            });
+        if (Itr != Canidate->Params.end()) {
+
+            VarDecl* Param = *Itr;
+            if (!CheckCallArg(NamedArg.AssignValue, Param, Param->Ty, NumConflicts, EnumImplicitConflicts, NumSignConflicts)) {
+                return false;
+            }
+        } else {
+            // Could not find the parameter by the given name.
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+bool arco::SemAnalyzer::CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
+                                     ulen& NumConflicts,
+                                     ulen& EnumImplicitConflicts,
+                                     ulen& NumSignConflicts) {
+    if (!IsAssignableTo(ParamType, Arg)) {
+        // May be an implicit pointer type.
+        if (Param->ImplicitPtr) {
+            if (!Param->Ty->AsPointerTy()->GetElementType()->Equals(Arg->Ty)) {
+                return false;
+            }
+            if (!IsLValue(Arg) && Arg->Ty->GetKind() != TypeKind::Struct) {
+                // Must be an l-value or a struct in which case an unseen allocation
+                // will occure and the address will be takne.
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    if (ViolatesConstAssignment(Param, Arg)) {
+        return false;
+    }
+    if (!ParamType->Equals(Arg->Ty)) {
+        ++NumConflicts;
+        if (Arg->Ty->GetRealKind() == TypeKind::Enum) {
+                
+            EnumDecl* Enum = static_cast<StructType*>(Arg->Ty)->GetEnum();
+            if (!Enum->ValuesType->Equals(ParamType)) {
+                ++EnumImplicitConflicts;
+            }
+        } else if (Arg->Ty->IsNumber()) {
+            if (Arg->Ty->IsSigned() != ParamType->IsSigned()) {
+                ++NumSignConflicts;
+            }
+        }
+    }
     return true;
 }
 
 void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                           FuncsList* Canidates,
-                                                          const llvm::SmallVector<NonNamedValue, 2>& Args) {
+                                                          const llvm::SmallVector<NonNamedValue>& Args,
+                                                          const llvm::SmallVector<NamedValue>& NamedArgs) {
     
     const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
@@ -2392,6 +2482,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                              ErrorLoc,
                                              ParamsToTypeInfo(SingleCanidate),
                                              Args,
+                                             NamedArgs,
                                              SingleCanidate->NumDefaultArgs,
                                              SingleCanidate);
     } else {
@@ -2445,7 +2536,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
             ErrorMsg += std::string(LongestDefLength - Def.length(), ' ') + "   - declared at: "
                 + Canidate->FScope->Path + std::string(":") + std::to_string(Canidate->Loc.LineNumber);
             ErrorMsg += "\n";
-            std::string MismatchInfo = GetCallMismatchInfo(ParamTypes, Args, Canidate->NumDefaultArgs, Canidate->IsVariadic);
+            std::string MismatchInfo = GetCallMismatchInfo(CallType, ParamTypes, Args, NamedArgs, Canidate->NumDefaultArgs, Canidate->IsVariadic);
             std::stringstream StrStream(MismatchInfo.c_str());
             std::string Line;
             bool First = true;
@@ -2470,7 +2561,8 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     const char* CallType,
     SourceLoc CallLoc,
     const llvm::SmallVector<TypeInfo>& ParamTypes,
-    const llvm::SmallVector<NonNamedValue, 2>& Args,
+    const llvm::SmallVector<NonNamedValue>& Args,
+    const llvm::SmallVector<NamedValue>& NamedArgs,
     ulen NumDefaultArgs,
     FuncDecl* CalledFunc) {
 
@@ -2496,7 +2588,7 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     ErrorMsg += "\n\n";
 
     bool IsVariadic = CalledFunc ? CalledFunc->IsVariadic : false;
-    std::string ExtMsg = GetCallMismatchInfo(ParamTypes, Args, NumDefaultArgs, IsVariadic);
+    std::string ExtMsg = GetCallMismatchInfo(CallType, ParamTypes, Args, NamedArgs, NumDefaultArgs, IsVariadic);
     
     Log.SetMsgToShowAbovePrimaryLocAligned(ExtMsg.c_str());
     Log.BeginError(CallLoc, ErrorMsg.c_str(), false);
@@ -2525,77 +2617,114 @@ std::string arco::SemAnalyzer::GetFuncDefForError(const llvm::SmallVector<TypeIn
     return FuncDef;
 }
 
-std::string arco::SemAnalyzer::GetCallMismatchInfo(const llvm::SmallVector<TypeInfo>& ParamTypes,
-                                                   const llvm::SmallVector<NonNamedValue, 2>& Args,
+std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
+                                                   const llvm::SmallVector<TypeInfo>& ParamTypes,
+                                                   const llvm::SmallVector<NonNamedValue>& Args,
+                                                   const llvm::SmallVector<NamedValue>& NamedArgs,
                                                    ulen NumDefaultArgs,
                                                    bool IsVariadic) {
+
+    if (IsVariadic && !NamedArgs.empty()) {
+        return "- Cannot call variadic " + std::string(CallType) + " with named arguments";
+    }
+
     bool IncorrectNumberOfArgs = false;
     std::string MismatchInfo = "";
+    ulen TotalArgs = Args.size() + NamedArgs.size();
     if (NumDefaultArgs) {
         ulen MinArgs = ParamTypes.size() - NumDefaultArgs;
         ulen MaxArgs = ParamTypes.size();
-        if (!(Args.size() >= MinArgs &&
-              Args.size() <= MaxArgs)) {
+        if (!(TotalArgs >= MinArgs &&
+              TotalArgs <= MaxArgs)) {
             IncorrectNumberOfArgs = true;
             MismatchInfo = "- Incorrect number of arguments. Expected between "
                      + std::to_string(MinArgs) + std::string("-") + std::to_string(MaxArgs)
-                     + ". Got " + std::to_string(Args.size()) + ".";
+                     + ". Got " + std::to_string(TotalArgs) + ".";
             
         }
     } else {
         if (IsVariadic) {
-            if (Args.size() < ParamTypes.size() - 1) {
+            if (TotalArgs < ParamTypes.size() - 1) {
                 IncorrectNumberOfArgs = true;
                 MismatchInfo = "- Incorrect number of arguments. Expected at least "
                      + std::to_string(ParamTypes.size() - 1)
-                     + ". Got " + std::to_string(Args.size()) + ".";
+                     + ". Got " + std::to_string(TotalArgs) + ".";
             }
         } else {
-            if (Args.size() != ParamTypes.size()) {
+            if (TotalArgs != ParamTypes.size()) {
                 IncorrectNumberOfArgs = true;
                 MismatchInfo = "- Incorrect number of arguments. Expected "
                      + std::to_string(ParamTypes.size())
-                     + ". Got " + std::to_string(Args.size()) + ".";
+                     + ". Got " + std::to_string(TotalArgs) + ".";
             }
         }
     }
 
-    if (!IncorrectNumberOfArgs) {
-        // One or more of the arguments are incorrect.
-        bool EncounteredError = false;
-        for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
-            Expr* Arg = Args[ArgCount].E;
-            bool  ParamConstMemory;
-            Type* ParamTy;
-            if (IsVariadic) {
-                if (ArgCount >= ParamTypes.size() - 1) {
-                    TypeInfo ParamTyInfo = ParamTypes[ParamTypes.size() - 1];
-                    ParamTy          = ParamTyInfo.Ty->AsSliceTy()->GetElementType();
-                    ParamConstMemory = ParamTyInfo.ConstMemory;
-                } else {
-                    TypeInfo ParamTyInfo = ParamTypes[ArgCount];
-                    ParamTy          = ParamTyInfo.Ty;
-                    ParamConstMemory = ParamTyInfo.ConstMemory;
-                }
+    if (IncorrectNumberOfArgs) {
+        return MismatchInfo;   
+    }
+
+    // One or more of the arguments are incorrect.
+    bool EncounteredError = false;
+    for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
+        Expr* Arg = Args[ArgCount].E;
+        bool  ParamConstMemory;
+        Type* ParamTy;
+        if (IsVariadic) {
+            if (ArgCount >= ParamTypes.size() - 1) {
+                TypeInfo ParamTyInfo = ParamTypes[ParamTypes.size() - 1];
+                ParamTy          = ParamTyInfo.Ty->AsSliceTy()->GetElementType();
+                ParamConstMemory = ParamTyInfo.ConstMemory;
             } else {
                 TypeInfo ParamTyInfo = ParamTypes[ArgCount];
                 ParamTy          = ParamTyInfo.Ty;
                 ParamConstMemory = ParamTyInfo.ConstMemory;
             }
+        } else {
+            TypeInfo ParamTyInfo = ParamTypes[ArgCount];
+            ParamTy          = ParamTyInfo.Ty;
+            ParamConstMemory = ParamTyInfo.ConstMemory;
+        }
             
-            if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
-                if (EncounteredError)  MismatchInfo += "\n";
-                MismatchInfo += "- Cannot assign argument "
-                       + std::to_string(ArgCount+1) + " of type '" + Arg->Ty->ToString() + "' "
-                       + "to parameter of type '" + ParamTy->ToString() + "'.";
-                EncounteredError = true;
-            } else if (ViolatesConstAssignment(ParamTy, ParamConstMemory, Arg)) {
-                if (EncounteredError)  MismatchInfo += "\n";
-                MismatchInfo += "- Cannot assign argument "
-                       + std::to_string(ArgCount+1) + " with const memory to non-const parameter.";
-                
-                EncounteredError = true;
-            }
+        if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Cannot assign argument "
+                         + std::to_string(ArgCount+1) + " of type '" + Arg->Ty->ToString() + "' "
+                         + "to parameter of type '" + ParamTy->ToString() + "'.";
+            EncounteredError = true;
+        } else if (ViolatesConstAssignment(ParamTy, ParamConstMemory, Arg)) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Cannot assign argument "
+                         + std::to_string(ArgCount+1) + " with const memory to non-const parameter.";
+            EncounteredError = true;
+        }
+    }
+
+    for (const NamedValue& NamedArg : NamedArgs) {
+        if (!NamedArg.VarRef) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Could not find parameter by name: '" + NamedArg.Name.Text.str() + "'.";
+            EncounteredError = true;
+            continue;
+        }
+
+        VarDecl* Param = NamedArg.VarRef;
+
+        Expr* Arg = NamedArg.AssignValue;
+        bool  ParamConstMemory = Param->HasConstAddress;
+        Type* ParamTy = Param->Ty;
+
+        if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Cannot assign named argument '" + NamedArg.Name.Text.str() + "'"
+                         + " of type '" + Arg->Ty->ToString() + "' "
+                         + "to parameter of type '" + ParamTy->ToString() + "'.";
+            EncounteredError = true;
+        } else if (ViolatesConstAssignment(ParamTy, ParamConstMemory, Arg)) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Cannot assign named argument '" + NamedArg.Name.Text.str() + "'"
+                         + " with const memory to non-const parameter.";
+            EncounteredError = true;
         }
     }
     
@@ -2730,13 +2859,14 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 
     // TODO: May want to allow if the fields are foldable!
     StructInit->IsFoldable = false;
-    StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args, StructInit->VarArgsPassAlong);
+    StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args, StructInit->NamedArgs, StructInit->VarArgsPassAlong);
 
 }
 
 arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                                                        SourceLoc ErrorLoc,
-                                                       llvm::SmallVector<NonNamedValue, 2>& Args,
+                                                       llvm::SmallVector<NonNamedValue>& Args,
+                                                       llvm::SmallVector<NamedValue>& NamedArgs,
                                                        bool& VarArgPassAlong) {
 
     bool ArgsHaveErrors = false;
@@ -2744,6 +2874,12 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
         NonNamedValue Value = Args[i];
         CheckNode(Value.E);
         if (Value.E->Ty == Context.ErrorType) {
+            ArgsHaveErrors = true;
+        }
+    }
+    for (NamedValue& NamedArg : NamedArgs) {
+        CheckNode(NamedArg.AssignValue);
+        if (NamedArg.AssignValue->Ty == Context.ErrorType) {
             ArgsHaveErrors = true;
         }
     }
@@ -2760,6 +2896,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 ErrorLoc,
                 &Struct->Constructors,
                 Args,
+                NamedArgs,
                 VarArgPassAlong);
     }
 
@@ -2784,14 +2921,53 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 Error(ErrorLoc, "No default constructor to initialize the '%s' field", Field->Name);
             }
         }
+        
         if (!IsAssignableTo(FieldTy, Value.E)) {
             DisplayErrorForTypeMismatch(
                 "Cannot assign value of type '%s' to field of type '%s'",
                 Value.ExpandedLoc,
                 Value.E,
                 FieldTy);
+        } else if (ViolatesConstAssignment(Field, Value.E)) {
+            Error(Value.ExpandedLoc, "Cannot assign argument with const memory to non-const field");
         } else {
             CreateCast(Value.E, FieldTy);
+        }
+    }
+    for (NamedValue& NamedArg : NamedArgs) {
+        if (NamedArg.AssignValue->Ty == Context.ErrorType) {
+            continue;
+        }
+
+        auto Itr = std::find_if(Struct->Fields.begin(), Struct->Fields.end(),
+            [&NamedArg](VarDecl* Field) {
+                return NamedArg.Name == Field->Name;
+            });
+        if (Itr != Struct->Fields.end()) {
+
+            VarDecl* Field = *Itr;
+            NamedArg.VarRef = Field;
+
+            if (Field->FieldIdx < Args.size()) {
+                Error(NamedArg.NameLoc,
+                    "Named argument '%s' already taken by non named argument at index: %s",
+                    NamedArg.Name,
+                    Field->FieldIdx + 1);
+            }
+
+            if (!IsAssignableTo(Field->Ty, NamedArg.AssignValue)) {
+                DisplayErrorForTypeMismatch(
+                    "Cannot assign value of type '%s' to field of type '%s'",
+                    NamedArg.ExpandedLoc,
+                    NamedArg.AssignValue,
+                    Field->Ty);
+            } else if (ViolatesConstAssignment(Field, NamedArg.AssignValue)) {
+                Error(NamedArg.ExpandedLoc, "Cannot assign argument with const memory to non-const field");
+            } else {
+                CreateCast(NamedArg.AssignValue, Field->Ty);
+            }
+        } else {
+            Error(NamedArg.NameLoc, "Could not find field by name: '%s'", NamedArg.Name);
         }
     }
 
@@ -2810,7 +2986,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 
     if (TypeToAlloc->GetKind() == TypeKind::Struct) {
         StructType* StructTy = TypeToAlloc->AsStructType();
-        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values, Alloc->VarArgsPassAlong);
+        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values, Alloc->NamedValues, Alloc->VarArgsPassAlong);
     } else if (!Alloc->Values.empty()) {
         if (Alloc->Values.size() > 1) {
             Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc->ToString());
@@ -3530,6 +3706,12 @@ void arco::SemAnalyzer::DisplayCircularDepError(SourceLoc ErrLoc, VarDecl* Start
 
 void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
     // TODO: can this use +1 offset for performance?
+
+    // TODO: Should probably check for ambiguous functions with default arguments.
+    // EX.
+    //
+    // fn foo(a int) {}
+    // fn foo(a int, b := 4) {}
     for (const FuncDecl* Func1 : FuncList) {
         for (const FuncDecl* Func2 : FuncList) {
             if (Func1 == Func2) continue;

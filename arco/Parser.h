@@ -143,7 +143,8 @@ namespace arco {
         void SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth = 0);
 
 
-        void ParseAggregatedValues(llvm::SmallVector<NonNamedValue, 2>& Values,
+        void ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
+                                   llvm::SmallVector<NamedValue>& NamedValues,
                                    u16 EndDelimTok,
                                    bool AllowTrailingComma);
 

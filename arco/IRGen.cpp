@@ -1973,6 +1973,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
             Call,
             CalledFunc,
             Call->Args,
+            Call->NamedArgs,
             LLAddr,
             Call->VarArgsPassAlong
         );
@@ -2014,7 +2015,8 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
 
 llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    FuncDecl* CalledFunc,
-                                                   llvm::SmallVector<NonNamedValue, 2>& Args,
+                                                   llvm::SmallVector<NonNamedValue>& Args,
+                                                   llvm::SmallVector<NamedValue>& NamedArgs,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong) {
     GenFuncDecl(CalledFunc);
@@ -2034,10 +2036,10 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     llvm::SmallVector<llvm::Value*, 2> LLArgs;
     LLArgs.resize(NumArgs);
 
-    ulen ArgIdx = 0;
+    ulen ArgOffset = 0;
     if (CalledFunc->Struct) {
         if (CalledFunc->IsConstructor) {
-            LLArgs[ArgIdx++] = LLAddr;
+            LLArgs[ArgOffset++] = LLAddr;
         } else {
             
 
@@ -2046,30 +2048,34 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             FuncCall* Call = static_cast<FuncCall*>(CallNode);
             if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
                 // TODO: does this.memfunc() work?
-                LLArgs[ArgIdx++] = GenNode(Call->Site);
+                LLArgs[ArgOffset++] = GenNode(Call->Site);
             } else {
                 // Calling one member function from another.
-                LLArgs[ArgIdx++] = LLThis;
+                LLArgs[ArgOffset++] = LLThis;
             }
         }
     }
     if (CalledFunc->UsesParamRetSlot) {
-        LLArgs[ArgIdx++] = GenFuncCallParamRetSlot(CallNode->Ty, LLAddr);
+        LLArgs[ArgOffset++] = GenFuncCallParamRetSlot(CallNode->Ty, LLAddr);
     }
 
     if (!CalledFunc->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
             VarDecl* Param = CalledFunc->Params[i];
-            LLArgs[ArgIdx++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
+            LLArgs[ArgOffset + i] = GenCallArg(Args[i].E, Param->ImplicitPtr);
+        }
+        for (NamedValue& NamedArg : NamedArgs) {
+            VarDecl* Param = NamedArg.VarRef;
+            LLArgs[ArgOffset + Param->ParamIdx] = GenCallArg(NamedArg.AssignValue, Param->ImplicitPtr);
         }
     } else {
         ulen i = 0;
         for (; i < CalledFunc->Params.size() - 1; i++) {
             VarDecl* Param = CalledFunc->Params[i];
-            LLArgs[ArgIdx++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
+            LLArgs[ArgOffset++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
         }
         if (VarArgsPassAlong) {
-            LLArgs[ArgIdx++] = GenRValue(Args[i].E); // TODO: implicit pointer here?
+            LLArgs[ArgOffset++] = GenRValue(Args[i].E); // TODO: implicit pointer here?
         } else {
             ulen NumVarArgs = Args.size() - (CalledFunc->Params.size() - 1);
             VarDecl* LastParam = CalledFunc->Params[CalledFunc->Params.size() - 1];
@@ -2093,18 +2099,17 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             llvm::Value* LLSliceArrPtrAddr = CreateStructGEP(LLVarArgs, 1);
             Builder.CreateStore(DecayArray(LLArray), LLSliceArrPtrAddr);
         
-            LLArgs[ArgIdx++] = CreateLoad(LLVarArgs);
+            LLArgs[ArgOffset++] = CreateLoad(LLVarArgs);
         }
     }
 
     if (CalledFunc->NumDefaultArgs) {
         for (ulen i = 0; i < CalledFunc->Params.size() - Args.size(); i++) {
             VarDecl* Param = CalledFunc->Params[Args.size() + i];
-            LLArgs[ArgIdx++] = GenCallArg(Param->Assignment, false);
+            LLArgs[ArgOffset + Param->ParamIdx] = GenCallArg(Param->Assignment, false);
         }
     }
     
-
     llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
 
     // -- DEBUG
@@ -2436,37 +2441,64 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
             StructInit,
             StructInit->CalledConstructor,
             StructInit->Args,
+            StructInit->NamedArgs,
             LLAddr,
             StructInit->VarArgsPassAlong
         );
         return LLAddr;
     }
 
-    GenStructInitArgs(LLAddr, Struct, StructInit->Args);
+    GenStructInitArgs(LLAddr, Struct, StructInit->Args, StructInit->NamedArgs);
 
     return LLAddr;
 }
 
 void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                                           StructDecl* Struct,
-                                          llvm::SmallVector<NonNamedValue, 2>& Args) {
-    std::unordered_set<ulen> ConsumedFieldIdxs;
-    for (ulen i = 0; i < Args.size(); i++) {
+                                          llvm::SmallVector<NonNamedValue>& Args,
+                                          llvm::SmallVector<NamedValue>& NamedArgs) {
+    ulen i = 0;
+    for (i = 0; i < Args.size(); i++) {
         NonNamedValue Value = Args[i];
         VarDecl* Field = Struct->Fields[i];
+        
+        llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
+        GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
+    }
+    for (NamedValue& Arg : NamedArgs) {
+        VarDecl* Field = Arg.VarRef;
 
         llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
-        GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
-        ConsumedFieldIdxs.insert(i);
+        GenAssignment(LLFieldAddr, Field->Ty, Arg.AssignValue, Field->HasConstAddress);
     }
+    if (NamedArgs.empty()) {
+        for (; i < Struct->Fields.size(); i++) {
+            VarDecl* Field = Struct->Fields[i];
 
-    for (VarDecl* Field : Struct->Fields) {
-        if (ConsumedFieldIdxs.find(Field->FieldIdx) == ConsumedFieldIdxs.end()) {
-            llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
+            llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
             if (Field->Assignment) {
                 GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
             } else {
                 GenDefaultValue(Field->Ty, LLFieldAddr);
+            }
+        }
+    } else {
+        // Fill in arguments past the non-named arguments which are not
+        // covered by the named arguments.
+        for (; i < Struct->Fields.size(); i++) {
+            VarDecl* Field = Struct->Fields[i];
+            
+            auto Itr = std::find_if(NamedArgs.begin(), NamedArgs.end(),
+                [Field](const NamedValue& A) {
+                    return A.VarRef == Field;
+                });
+            if (Itr == NamedArgs.end()) {
+                llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
+                if (Field->Assignment) {
+                    GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
+                } else {
+                    GenDefaultValue(Field->Ty, LLFieldAddr);
+                }
             }
         }
     }
@@ -2502,10 +2534,10 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc) {
             StructType* StructTy = TypeToAlloc->AsStructType();
             StructDecl* Struct = StructTy->GetStruct();
             if (Alloc->CalledConstructor) {
-                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, LLMalloc, Alloc->VarArgsPassAlong);
+                GenFuncCallGeneral(Alloc, Alloc->CalledConstructor, Alloc->Values, Alloc->NamedValues, LLMalloc, Alloc->VarArgsPassAlong);
             } else {
                 if (!Alloc->Values.empty()) {
-                    GenStructInitArgs(LLMalloc, Struct, Alloc->Values);
+                    GenStructInitArgs(LLMalloc, Struct, Alloc->Values, Alloc->NamedValues);
                 } else {
                     // Need to initialize fields so calling the default constructor.
                     CallDefaultConstructor(LLMalloc, TypeToAlloc->AsStructType());
@@ -3621,7 +3653,7 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 // https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
 llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                                      FuncDecl* CalledFunc,
-                                                     const llvm::SmallVector<NonNamedValue, 2>& Args) {
+                                                     const llvm::SmallVector<NonNamedValue>& Args) {
     // TODO: may want to verify the function definition is correct as to not cause an error.
 #define CALL_GET_DECL1(Name)                                          \
 llvm::Value* Arg0 = GenRValue(Args[0].E);                             \

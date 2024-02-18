@@ -1,0 +1,12 @@
+
+Ab struct {
+    a int;
+    b int;
+}
+
+fn main() {
+    ab Ab = Ab{ 314, b=14 };
+    print(ab.a);
+    print(" ", 1);
+    print(ab.b);
+}

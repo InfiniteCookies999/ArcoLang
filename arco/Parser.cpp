@@ -1427,7 +1427,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
             StructInit->Ty = Ty;
             
             if (CTok.IsNot('}')) {
-                ParseAggregatedValues(StructInit->Args, '}', true);
+                ParseAggregatedValues(StructInit->Args, StructInit->NamedArgs, '}', true);
             }
 
             Match('}', "for struct initializer");
@@ -1580,7 +1580,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         }
         if (AllowStructInitializer && CTok.Is('{')) {
             NextToken(); // Consumign '{'.
-            ParseAggregatedValues(Alloc->Values, '}', true);
+            ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, '}', true);
             Match('}', "for struct initializer");
         }
         return Alloc;
@@ -1993,7 +1993,7 @@ arco::FuncCall* arco::Parser::ParseFuncCall(Expr* Site) {
     NextToken(); // Consuming '(' token
 
     if (CTok.IsNot(')')) {
-        ParseAggregatedValues(Call->Args, ')', false);
+        ParseAggregatedValues(Call->Args, Call->NamedArgs, ')', false);
     }
 
     Match(')', "for function call");
@@ -2073,19 +2073,50 @@ void arco::Parser::SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth) 
     }
 }
 
-void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue, 2>& Values,
+void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
+                                         llvm::SmallVector<NamedValue>& NamedValues,
                                          u16 EndDelimTok,
                                          bool AllowTrailingComma) {
     bool MoreValues = false;
+    bool AlreadyReportedErrAboutNamedValuesOrder = false;
     do {
 
-        NonNamedValue NonNamedVal;
-        CREATE_EXPANDED_SOURCE_LOC(
-            NonNamedVal.E = ParseExpr(),
-            NonNamedVal.ExpandedLoc
-        )
+        if (CTok.Is(TokenKind::IDENT) && PeekToken(1).Is('=')) {
 
-        Values.push_back(NonNamedVal);
+            NamedValue NamedVal;
+            NamedVal.NameLoc = CTok.Loc;
+            CREATE_EXPANDED_SOURCE_LOC(
+                NamedVal.Name = ParseIdentifier("Expected identifier for argument name");
+                NextToken(); // Consuming '=' token.
+                NamedVal.AssignValue = ParseExpr();,
+                NamedVal.ExpandedLoc
+            );
+
+            auto Itr = std::find_if(NamedValues.begin(), NamedValues.end(),
+                [&NamedVal](const NamedValue& V) {
+                    return V.Name == NamedVal.Name;
+                });
+            if (Itr != NamedValues.end()) {
+                Error(NamedVal.ExpandedLoc, "Duplicate named value");
+            }
+
+            NamedValues.push_back(NamedVal);
+        } else {
+
+            NonNamedValue NonNamedVal;
+            CREATE_EXPANDED_SOURCE_LOC(
+                NonNamedVal.E = ParseExpr(),
+                NonNamedVal.ExpandedLoc
+            );
+
+            Values.push_back(NonNamedVal);
+
+            if (!NamedValues.empty() && NonNamedVal.E->Ty != Context.ErrorType &&
+                !AlreadyReportedErrAboutNamedValuesOrder) {
+                Error(NonNamedVal.ExpandedLoc, "Non-named argumens should come before named arguments");
+                AlreadyReportedErrAboutNamedValuesOrder = true;
+            }
+        }
 
         if (CTok.Is(',')) {
             NextToken(); // Consuming ','
@@ -2154,6 +2185,7 @@ void arco::Parser::SkipRecovery() {
     case TokenKind::KW_READONLY:
     case TokenKind::KW_WRITEONLY:
     case '{':
+        // TODO: } but only contexually?
         return;
     case ';':
     case TokenKind::TK_EOF:

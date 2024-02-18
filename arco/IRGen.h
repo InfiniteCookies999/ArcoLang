@@ -131,7 +131,8 @@ namespace arco {
         llvm::Value* GenFuncCall(FuncCall* Call, llvm::Value* LLAddr);
         llvm::Value* GenFuncCallGeneral(Expr* CallNode,
                                         FuncDecl* CalledFunc,
-                                        llvm::SmallVector<NonNamedValue, 2>& Args,
+                                        llvm::SmallVector<NonNamedValue>& Args,
+                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                         llvm::Value* LLAddr,
                                         bool VarArgsPassAlong);
         llvm::Value* GenFuncCallParamRetSlot(Type* RetTy, llvm::Value* LLAddr);
@@ -145,7 +146,8 @@ namespace arco {
         llvm::Value* GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr);
         void GenStructInitArgs(llvm::Value* LLAddr,
                                StructDecl* Struct,
-                               llvm::SmallVector<NonNamedValue, 2>& Args);
+                               llvm::SmallVector<NonNamedValue>& Args,
+                               llvm::SmallVector<NamedValue>& NamedArgs);
         llvm::Value* GenHeapAlloc(HeapAlloc* Alloc);
         llvm::Value* GenTypeOf(TypeOf* TOf);
         llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
@@ -270,7 +272,7 @@ namespace arco {
 
         llvm::Value* GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                           FuncDecl* CalledFunc,
-                                          const llvm::SmallVector<NonNamedValue, 2>& Args);
+                                          const llvm::SmallVector<NonNamedValue>& Args);
 
         inline DebugInfoEmitter* GetDIEmitter(Decl* D) {
             return D->FScope->DIEmitter;
