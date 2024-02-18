@@ -929,10 +929,10 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
     if (CTok.IsNot('{')) {
         AllowStructInitializer = false;
         Loop->Cond = ParseExpr();
-        if (CTok.Is(TokenKind::DOT_DOT) || CTok.Is(TokenKind::DOT_DOT_LT)) {
+        if (CTok.Is(TokenKind::DOT_DOT_EQ) || CTok.Is(TokenKind::DOT_DOT_LT)) {
             Range* Rg = NewNode<Range>(CTok);
             Rg->Op = CTok.Kind;
-            NextToken(); // Consuming '..' token.
+            NextToken(); // Consuming '..='/'..<' token.
             Rg->LHS = Loop->Cond;
             Rg->RHS = ParseExpr();
             Loop->Cond = Rg;
@@ -996,10 +996,10 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
     Match(':', "for iteration loop");
     AllowStructInitializer = false;
     Loop->IterOnExpr = ParseExpr();
-    if (CTok.Is(TokenKind::DOT_DOT) || CTok.Is(TokenKind::DOT_DOT_LT)) {
+    if (CTok.Is(TokenKind::DOT_DOT_EQ) || CTok.Is(TokenKind::DOT_DOT_LT)) {
         Range* Rg = NewNode<Range>(CTok);
         Rg->Op = CTok.Kind;
-        NextToken(); // Consuming '..' token.
+        NextToken(); // Consuming '..='/'..<' token.
         Rg->LHS = Loop->IterOnExpr;
         Rg->RHS = ParseExpr();
         Loop->IterOnExpr = Rg;

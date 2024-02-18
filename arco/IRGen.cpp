@@ -1018,8 +1018,8 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
 
     llvm::Value* LLIndexValue = CreateLoad(LLIndex);
     llvm::Value* LLRHS, *LLCond;
-    if (Rg->Op == TokenKind::DOT_DOT) {
-        //..
+    if (Rg->Op == TokenKind::DOT_DOT_EQ) {
+        //..=
         LLRHS = Builder.CreateAdd(GenRValue(Rg->RHS), GetOneValue(Rg->Ty), "one.more");
     } else {
         // ..<
@@ -2170,8 +2170,18 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
             return GenRValue(Arg);
         }
         if (Arg->CastTy && Arg->CastTy->GetKind() == TypeKind::Struct) {
-            // Cast to any so nothing below applies.
-            return GenRValue(Arg);
+            if (Arg->Is(AstKind::FUNC_CALL) && Arg->Ty->GetKind() == TypeKind::Struct) {
+                llvm::Value* LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
+                GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
+
+                // Any does not have ownership.
+                AddObjectToDestroyOpt(Arg->Ty, LLArg);
+
+                return CreateLoad(GenCast(Arg->CastTy, Arg->Ty, LLArg));
+            } else {
+                // Cast to any so nothing below applies.
+                return GenRValue(Arg);
+            }
         }
     }
 

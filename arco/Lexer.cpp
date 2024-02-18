@@ -64,6 +64,7 @@ restartLex:
             ++CurPtr;
             if (*CurPtr == '.')      return CreateTokenAndEat(TokenKind::DOT_DOT_DOT, TokStart);
             else if (*CurPtr == '<') return CreateTokenAndEat(TokenKind::DOT_DOT_LT, TokStart);
+            else if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::DOT_DOT_EQ, TokStart);
             else                     return CreateToken(TokenKind::DOT_DOT, TokStart);
         }
         else                    return CreateToken('.', TokStart);

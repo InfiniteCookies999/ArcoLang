@@ -85,6 +85,9 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 
 int main() {
 
+    std::string s;
+    
+
     RunTest(SRC("hello_world.arco"), "Hello World!");
     RunTest(SRC("binary_operators.arco"), "464");
     RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");

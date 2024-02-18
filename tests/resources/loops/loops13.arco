@@ -10,7 +10,7 @@ Day enum {
 }
 
 fn main() {
-    loop i Day : Day.MONDAY .. Day.SUNDAY {
+    loop i Day : Day.MONDAY ..= Day.SUNDAY {
         print(i);
         print(" ", 1);
     }

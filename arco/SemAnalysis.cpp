@@ -1749,6 +1749,14 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 IRef->RefKind = IdentRef::RK::Funcs;
             }
         } else {
+            
+            auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
+            if (Itr != NamespaceToLookup->Funcs.end()) {
+                IRef->Funcs   = &Itr->second;
+                IRef->RefKind = IdentRef::RK::Funcs;
+                return;
+            }
+            
             // Relative member functions.
             if (CStruct) {
                 auto Itr = CStruct->Funcs.find(IRef->Ident);
@@ -1758,14 +1766,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                     return;
                 }
             }
-            
 
-            auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
-            if (Itr != NamespaceToLookup->Funcs.end()) {
-                IRef->Funcs   = &Itr->second;
-                IRef->RefKind = IdentRef::RK::Funcs;
-                return;
-            }
             if (LocalNamespace && FScope->UniqueNSpace) {
                 // File marked with a namespace need to search the namespace the file belongs to as well.
                 Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);

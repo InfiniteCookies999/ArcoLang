@@ -1,6 +1,6 @@
 
 fn main() {
-    loop 0..5 {
+    loop 0..=5 {
         print("go!", 3);
     }
 }

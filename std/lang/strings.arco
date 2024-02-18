@@ -1,3 +1,5 @@
+import std;
+
 import reflect.Any;
 import reflect.Type;
 import reflect.TypeId;
@@ -17,7 +19,9 @@ String struct {
      * Defaults to having zero length.
      */
     String() {
-
+        // Still want a null terminated string.
+        this.buffer = new char[1];
+        this.buffer[0] = '\0';
     }
 
     /*
@@ -93,6 +97,197 @@ String struct {
         string.buffer = null;
     }
 
+    /*
+     * Returns a sub-string of this string which is in the range
+     * from the begin_index and goes to the end of this string.
+     */
+    fn substr(begin_idx int) String {
+        return substr(begin_idx, length);
+    }
+
+    /*
+     * Returns a sub-string of this string which is in the range
+     * from the begin_index until the end_index - 1.
+     */
+    fn substr(begin_idx int, end_idx int) String {
+        // TODO: proper error handling.
+        if begin_idx < 0 || end_idx > length || end_idx < begin_idx {
+            panic("substr out of bounds");
+        }
+        sublength := end_idx - begin_idx;
+        if sublength == 0 {
+            return String{};
+        }
+        if begin_idx == 0 && end_idx == length {
+            return *this;
+        }
+        return String{ this.buffer + begin_idx, sublength };
+    }
+    
+    /*
+     * Replaces all occurences off of the old_char in this string
+     * with the new_char.
+     */
+    fn replace(old_char char, new_char char) String* {
+        loop i : 0..<length {
+            if buffer[i] == old_char {
+                buffer[i] = new_char;
+            }
+        }
+        return this;
+    }
+    
+    /*
+     * Finds the first occurence of the character c within this
+     * string and returns the index of the character within this
+     * string if it was found.
+     *
+     * If the character could not be found within this string -1
+     * is returned.
+     */
+    fn find_first_of(c char) int {
+        loop i : 0..<length {
+            if buffer[i] == c {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    /*
+     * Finds the last occurence of the character c within this
+     * string and returns the index of the character within this
+     * string if it was found.
+     *
+     * If the character could not be found within this string -1
+     * is returned.
+     */
+    fn find_last_of(c char) int {
+        loop i := length-1; i >= 0; i-- {
+            if buffer[i] == c {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /*
+     * Finds the first occurence of a character that is not the character
+     * c within this string and returns the index of the character that
+     * that does not match c within this string.
+     *
+     * If such a character could not be found within this string -1
+     * is returned.
+     */
+    fn find_first_not_of(c char) int {
+        loop i : 0..<length {
+            if buffer[i] != c {
+                return i;
+            }
+        }
+        return -1;
+    }
+    
+    /*
+     * Finds the last occurence of a character that is not the character
+     * c within this string and returns the index of the character that
+     * that does not match c within this string.
+     *
+     * If such a character could not be found within this string -1
+     * is returned.
+     */
+    fn find_last_not_of(c char) int {
+        loop i := length-1; i >= 0; i-- {
+            if buffer[i] != c {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /*
+     * Converts this string to lowercase.
+     */
+    fn tolower() String* {
+        loop i : 0..<length {
+            buffer[i] = std.tolower(buffer[i]);
+        }
+        return this;
+    }
+
+    /*
+     * Converts this string to uppercase.
+     */
+    fn toupper() String* {
+        loop i : 0..<length {
+            buffer[i] = std.toupper(buffer[i]);
+        }
+        return this;
+    }
+    
+    /*
+     * Returns true if this string starts with the string s.
+     */
+    fn starts_with(s String^) bool {
+        return starts_with(s.buffer, s.length);
+    }
+    
+    /*
+     * Returns true if this string starts with the c-string s.
+     */
+    fn starts_with(s cstr) bool {
+        return starts_with(s, strlen(s));
+    }
+    
+    /*
+     * Returns true if this string starts with the c-string s
+     * of length s_length.
+     */
+    fn starts_with(s cstr, s_length int) bool {
+        if s_length > length {
+            return false;
+        }
+        loop i : 0..<s_length {
+            if buffer[i] != s[i] {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /*
+     * Returns true if this string ends with the string s.
+     */
+    fn ends_with(s String^) bool {
+        return ends_with(s.buffer, s.length);
+    }
+    
+    /*
+     * Returns true if this string ends with the c-string s.
+     */
+    fn ends_with(s cstr) bool {
+        return ends_with(s, strlen(s));
+    }
+    
+    /*
+     * Returns true if this string ends with the c-string s
+     * of length s_length.
+     */
+    fn ends_with(s cstr, s_length int) bool {
+        if s_length > length {
+            return false;
+        }
+        end_idx := length - s_length;
+        loop i : 0..s_length {
+            c1 := buffer[length - 1 - i]; // Index this buffer from end.
+            c2 := s[s_length - 1 - i];
+            if c1 != c2 {
+                return false;
+            }
+        }
+        return true;
+    }
+    
     /*
      * Parses the string into a signed an  integer
      * for using base-10. All the characters in the
@@ -175,7 +370,7 @@ String struct {
             }
 
             if uc {
-                ch = tolower(ch);
+                ch = std.tolower(ch);
             }
 
             digit int32 = cast(int32) to_digit_for_base(ch, base);
@@ -235,9 +430,8 @@ String struct {
 
         return buffer[0];
     }
-
-      // Note: leave as non-pointer so user may chose to move the string.
-    fn append(s String) String* {
+    
+    fn append(s String^) String* {
         return append(s.buffer, s.length);
     }
 
@@ -276,6 +470,26 @@ String struct {
         }
         loop i := 0; i < length; i++ {
             if buffer[i] != s[i] {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    fn equals_ignore_case(s String^) bool {
+        return equals_ignore_case(s.buffer, s.length);
+    }
+    
+    fn equals_ignore_case(s cstr) bool {
+        return equals_ignore_case(s, strlen(s));
+    }
+    
+    fn equals_ignore_case(s cstr, s_length int) bool {
+        if s_length != length {
+            return false;
+        }
+        loop i := 0; i < length; i++ {
+            if std.tolower(buffer[i]) != std.tolower(s[i]) {
                 return false;
             }
         }
