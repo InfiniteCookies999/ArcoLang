@@ -107,7 +107,8 @@ namespace arco {
             SourceLoc  ErrorLoc;
             Module*    Mod;
             Identifier NamespaceName;
-            Namespace* NSpace;
+            bool       IsNamespaceUnderMod;
+            Namespace* NSpace = nullptr;
         };
 
         std::string                                         Path;

@@ -252,19 +252,14 @@ void arco::Parser::ParseImport() {
         auto Itr = Context.ModNamesToMods.find(ModOrNamespace.Text);
         bool ModFound = Itr != Context.ModNamesToMods.end();
 
-        // static import
-        if (!StructOrNamespace.IsNull() && !ModFound) {
-            Error(ImportTok, "Could not find import module for '%s'", ModOrNamespace.Text);
-            return;
-        }
-
         // namespace        (need namespace)
         // module.namespace (need namespace)
         // module           (do not need namespace)
         FScope->StaticImports.push_back({
                 ImportTok.Loc,
                 ModFound ? Itr->second : nullptr,
-                StructOrNamespace.IsNull() ? ModOrNamespace : StructOrNamespace
+                StructOrNamespace.IsNull() ? ModOrNamespace : StructOrNamespace,
+                !StructOrNamespace.IsNull()
             });
     }
 }

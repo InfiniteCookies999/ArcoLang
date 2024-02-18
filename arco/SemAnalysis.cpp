@@ -2,6 +2,8 @@
 
 #include "Context.h"
 #include "IRGen.h"
+#include "SpellChecking.h"
+#include "TermColors.h"
 
 #include <sstream>
 
@@ -47,7 +49,80 @@ void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
     }
 }
 
+namespace arco {
+// TODO: Should this limit the search count?
+struct ImportErrorSpellChecker {
+
+    template<typename T>
+    void AddSearches(const llvm::DenseMap<Identifier, T>& SearchMap) {
+        for (auto [Name, _] : SearchMap) {
+            AllSearches.push_back(Name.Text.str());
+        }
+    }
+
+    void AddSearches(const llvm::StringMap<Module*>& Modules) {
+        auto Itr = Modules.begin();
+        while (Itr != Modules.end()) {
+            AllSearches.push_back(Itr->first().str());
+            ++Itr;
+        }
+    }
+
+    void SearchAndEndError(Logger& Log, Identifier SearchIdent) {
+        const char* Found = FindClosestSpellingMatch(AllSearches, SearchIdent.Text.str());
+        if (Found) {
+            std::string DidYouMeanStr = "Did you mean '";
+            std::string InsteadOfStr  = "' insteaf of '";
+            Log.AddNoteLine([=](auto& OS) {
+                OS << DidYouMeanStr << Found << InsteadOfStr << SearchIdent << "'?";
+            });
+            Log.AddNoteLine([=](auto& OS) {
+                OS << std::string(DidYouMeanStr.size() + 1, ' ');
+                SetTerminalColor(TerminalColorBrightGreen);
+                
+                auto DiffStr = [](const std::string& S1,
+                                  const std::string& S2,
+                                  const char C) -> std::string {
+                    std::string Result = "";
+                    for (ulen i = 0; i < S1.size(); i++) {
+                        if (i >= S2.size()) {
+                            Result += std::string(S1.size() - i, C);
+                            break;
+                        }
+
+                        const char C1 = S1[i];
+                        const char C2 = S2[i];
+                        Result += C1 == C2 ? ' ' : C;
+                    }
+                    return Result;
+                };
+
+                std::string SearchStr = SearchIdent.Text.str();
+                std::string Pluses  = DiffStr(Found, SearchStr, '+');
+                std::string Minuses = DiffStr(SearchStr, Found, '-');
+
+                OS << Pluses;
+                SetTerminalColor(TerminalColorRed);
+                OS << std::string(InsteadOfStr.size(), ' ');
+                OS << Minuses;
+                SetTerminalColor(TerminalColorDefault);
+            });
+        }
+        Log.EndError();
+        AllSearches.clear();
+    }
+
+    llvm::SmallVector<std::string> AllSearches;
+};
+}
+
 void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) {
+#define BERROR(Fmt, ...)                          \
+Logger Log(FScope->Path.c_str(), FScope->Buffer); \
+Log.BeginError(ErrorLoc, Fmt, __VA_ARGS__);
+
+    ImportErrorSpellChecker SpellChecker;
+
     for (auto& [LookupIdent, StructOrNamespaceImport] : FScope->Imports) {
         auto ModItr = Context.ModNamesToMods.find(StructOrNamespaceImport.ModOrNamespace.Text);
         bool ModExists = ModItr != Context.ModNamesToMods.end();
@@ -65,10 +140,11 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
                 if (Itr != ImportMod->Namespaces.end()) {
                     StructOrNamespaceImport.NSpace = Itr->second;
                 } else {
-                    Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                    Log.BeginError(ErrorLoc, "Could not find module or namespace '%s'",
+                    BERROR("Could not find module or namespace '%s'",
                         StructOrNamespaceImport.ModOrNamespace);
-                    Log.EndError();
+                    SpellChecker.AddSearches(ImportMod->Namespaces);
+                    SpellChecker.AddSearches(Context.ModNamesToMods);
+                    SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.ModOrNamespace);
                 }
             }
         } else if (StructOrNamespaceImport.StructName.IsNull()) {
@@ -85,10 +161,10 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
                     if (Itr2 != ImportMod->Namespaces.end()) {
                         StructOrNamespaceImport.NSpace = Itr2->second;
                     } else {
-                        Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                        Log.BeginError(ErrorLoc, "Could not find type or namespace '%s' in module '%s'",
-                            StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
-                        Log.EndError();
+                        BERROR("Could not find type or namespace '%s' in module '%s'",
+                             StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
+                        SpellChecker.AddSearches(ImportMod->Namespaces);
+                        SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.StructOrNamespace);
                     }
                 }
             } else {
@@ -99,16 +175,16 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
                     if (Itr2 != LookupNamespace->Decls.end() && Itr2->second->IsStructLike()) {
                         StructOrNamespaceImport.Decl = Itr2->second;
                     } else {
-                        Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                        Log.BeginError(ErrorLoc, "Could not find type '%s' in namespace '%s'",
+                        BERROR("Could not find type '%s' in namespace '%s'",
                             StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
-                        Log.EndError();
+                        SpellChecker.AddSearches(LookupNamespace->Decls);
+                        SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.StructOrNamespace);
                     }
                 } else {
-                    Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                    Log.BeginError(ErrorLoc, "Could not find module or namespace '%s'",
-                        StructOrNamespaceImport.ModOrNamespace);
-                    Log.EndError();
+                    BERROR("Could not find module or namespace '%s'", StructOrNamespaceImport.ModOrNamespace);
+                    SpellChecker.AddSearches(ImportMod->Namespaces);
+                    SpellChecker.AddSearches(Context.ModNamesToMods);
+                    SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.ModOrNamespace);
                 }
             }
         } else {
@@ -122,26 +198,37 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
                     if (Itr2 != LookupNamespace->Decls.end() && Itr2->second->IsStructLike()) {
                         StructOrNamespaceImport.Decl = Itr2->second;
                     } else {
-                        Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                        Log.BeginError(ErrorLoc, "Could not find type '%s' in namespace '%s'",
+                        BERROR("Could not find type '%s' in namespace '%s'",
                             StructOrNamespaceImport.StructName, StructOrNamespaceImport.StructOrNamespace);
-                        Log.EndError();
+                        SpellChecker.AddSearches(LookupNamespace->Decls);
+                        SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.StructName);
                     }
                 } else {
-                    Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                    Log.BeginError(ErrorLoc, "Could not find namespace '%s' in module '%s'",
+                    BERROR("Could not find namespace '%s' in module '%s'",
                         StructOrNamespaceImport.StructOrNamespace, StructOrNamespaceImport.ModOrNamespace);
-                    Log.EndError();
+                    SpellChecker.AddSearches(ImportMod->Namespaces);
+                    SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.StructOrNamespace);
                 }
             } else {
-                Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                Log.BeginError(ErrorLoc, "Could not find module '%s'",
-                    StructOrNamespaceImport.ModOrNamespace);
-                Log.EndError();
+                BERROR("Could not find module '%s'", StructOrNamespaceImport.ModOrNamespace);
+                SpellChecker.AddSearches(Context.ModNamesToMods);
+                SpellChecker.SearchAndEndError(Log, StructOrNamespaceImport.ModOrNamespace);
             }
         }
     }
+
     for (auto& Import : FScope->StaticImports) {
+
+        SourceLoc ErrorLoc = Import.ErrorLoc;
+
+        // static import
+        if (Import.IsNamespaceUnderMod && !Import.Mod) {
+            BERROR("Could not find module '%s'", Import.NamespaceName);
+            SpellChecker.AddSearches(Context.ModNamesToMods);
+            SpellChecker.SearchAndEndError(Log, Import.NamespaceName);
+            continue;
+        }
+
         if (Import.Mod && Import.NamespaceName.IsNull()) {
             // Importing module's default namespace.
             Import.NSpace = Import.Mod->DefaultNamespace;
@@ -149,10 +236,10 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
             // Statically importing namespace from module.
             auto Itr = Import.Mod->Namespaces.find(Import.NamespaceName);
             if (Itr == Import.Mod->Namespaces.end()) {
-                Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                Log.BeginError(Import.ErrorLoc, "Could not find namespace '%s' in module '%s'",
+                BERROR("Could not find namespace '%s' in module '%s'",
                     Import.NamespaceName, Import.Mod->Name);
-                Log.EndError();
+                SpellChecker.AddSearches(Import.Mod->Namespaces);
+                SpellChecker.SearchAndEndError(Log, Import.NamespaceName);
                 continue;
             }
             Import.NSpace = Itr->second;
@@ -160,9 +247,10 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
             // Statically importing namespace from the source file's module.
             auto Itr = FScope->Mod->Namespaces.find(Import.NamespaceName);
             if (Itr == FScope->Mod->Namespaces.end()) {
-                Logger Log(FScope->Path.c_str(), FScope->Buffer);
-                Log.BeginError(Import.ErrorLoc, "Could not find namespace or module '%s'", Import.NamespaceName);
-                Log.EndError();
+                BERROR("Could not find namespace or module '%s'", Import.NamespaceName);
+                SpellChecker.AddSearches(Context.ModNamesToMods);
+                SpellChecker.AddSearches(FScope->Mod->Namespaces);
+                SpellChecker.SearchAndEndError(Log, Import.NamespaceName);
                 continue;
             }
             Import.NSpace = Itr->second;
@@ -178,6 +266,7 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
             FScope->Imports.insert({ Context.StringIdentifier, Import });
         }
     }
+#undef ERROR
 }
 
 void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Module* Mod) {

@@ -2,6 +2,7 @@
 #define ARCO_OPTIONS_H
 
 #include <llvm/ADT/StringRef.h>
+#include <llvm/ADT/SmallVector.h>
 #include <functional>
 #include <vector>
 
@@ -15,6 +16,8 @@ public:
 	void AddOption(const char* OptName, const OptCB& Callback, bool OnlyStartsWith = true);
 
 	bool ProcessOption(int ArgNum, llvm::StringRef Opt);
+
+	llvm::SmallVector<std::string> GetAllOptionsAsStrings();
 
 private:
 
