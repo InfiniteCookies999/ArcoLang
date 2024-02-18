@@ -9,7 +9,7 @@ native fn WriteFile(hFile                  void*,
                     ) int32;
                     
 fn print(msg cstr, length int) {
-    handle        void* = GetStdHandle(-11);
+    handle        void* = GetStdHandle(cast(uint32) -11);
     bytes_written uint32;
     WriteFile(handle, msg, cast(uint32) length, &bytes_written, null);
 }

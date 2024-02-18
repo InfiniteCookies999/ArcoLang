@@ -2802,18 +2802,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
     case TypeKind::UInt64:
     case TypeKind::Char: {
         if (FromTy->IsInt()) {
-            if (FromTy->IsSystemInt()) {
-                if (FromExpr && FromExpr->IsFoldable) {
-                    // TODO: Should check if the value is less than 32 bits
-                    // for better system compatibility?
-                    return true;
-                }
-                // Otherwise trying to assign a non-foldable value to
-                // a explicit type should require a cast.
-                return false;
-            }
-
-            if (ToTy->GetTrivialTypeSizeInBytes() >= FromTy->GetTrivialTypeSizeInBytes()) {
+            if (ToTy->GetSizeInBytes(Context.LLArcoModule) >= FromTy->GetSizeInBytes(Context.LLArcoModule)) {
                 // Destination has enough capacity to store the integer.
                 return true;
             } else if (FromExpr && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
@@ -2828,42 +2817,93 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
 
                 if (Num->Ty->IsSigned()) {
                     switch (ToTy->GetKind()) {
-                    case TypeKind::Int8:          return RANGE(i8, Num->SignedIntValue);
-                    case TypeKind::Int16:         return RANGE(i16, Num->SignedIntValue);
-                    case TypeKind::Int32:         return RANGE(i32, Num->SignedIntValue);
-                    case TypeKind::Int64:         return RANGE(i64, Num->SignedIntValue);
+                    case TypeKind::Int8:   return RANGE(i8, Num->SignedIntValue);
+                    case TypeKind::Int16:  return RANGE(i16, Num->SignedIntValue);
+                    case TypeKind::Int32:  return RANGE(i32, Num->SignedIntValue);
+                    case TypeKind::Int64:  return RANGE(i64, Num->SignedIntValue);
                     case TypeKind::UInt8:  return POS_RANGE(u8, Num->SignedIntValue);
                     case TypeKind::UInt16: return POS_RANGE(u16, Num->SignedIntValue);
                     case TypeKind::UInt32: return POS_RANGE(u32, Num->SignedIntValue);
                     case TypeKind::UInt64: return POS_RANGE(u64, Num->SignedIntValue);
-                    case TypeKind::Char:	      return RANGE(i8, Num->SignedIntValue);
+                    case TypeKind::Char:   return RANGE(i8, Num->SignedIntValue);
                     }
                 } else {
                     switch (ToTy->GetKind()) {
-                    case TypeKind::Int8:          return RANGE(i8, Num->UnsignedIntValue);
-                    case TypeKind::Int16:         return RANGE(i16, Num->UnsignedIntValue);
-                    case TypeKind::Int32:         return RANGE(i32, Num->UnsignedIntValue);
-                    case TypeKind::Int64:         return RANGE(i64, Num->UnsignedIntValue);
+                    case TypeKind::Int8:   return RANGE(i8, Num->UnsignedIntValue);
+                    case TypeKind::Int16:  return RANGE(i16, Num->UnsignedIntValue);
+                    case TypeKind::Int32:  return RANGE(i32, Num->UnsignedIntValue);
+                    case TypeKind::Int64:  return RANGE(i64, Num->UnsignedIntValue);
                     case TypeKind::UInt8:  return POS_RANGE(u8, Num->UnsignedIntValue);
                     case TypeKind::UInt16: return POS_RANGE(u16, Num->UnsignedIntValue);
                     case TypeKind::UInt32: return POS_RANGE(u32, Num->UnsignedIntValue);
                     case TypeKind::UInt64: return POS_RANGE(u64, Num->UnsignedIntValue);
-                    case TypeKind::Char:	      return RANGE(i8, Num->UnsignedIntValue);
+                    case TypeKind::Char:   return RANGE(i8, Num->UnsignedIntValue);
                     }
                 }
             }
             return false;
+        } else if (FromTy->IsFloat() && FromExpr && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
+            NumberLiteral* Num = static_cast<NumberLiteral*>(FromExpr);
+
+            i64 AsInt;
+            if (FromTy->GetKind() == TypeKind::Float32) {
+                float Value = Num->Float32Value;
+                AsInt = Value;
+                if (Value - AsInt > 0) {
+                    return false;
+                }                
+            } else {
+                double Value = Num->Float64Value;
+                AsInt = Value;
+                if (Value - AsInt > 0) {
+                    return false;
+                }
+            }
+            switch (ToTy->GetKind()) {
+            case TypeKind::Int8:   return RANGE(i8, AsInt);
+            case TypeKind::Int16:  return RANGE(i16, AsInt);
+            case TypeKind::Int32:  return RANGE(i32, AsInt);
+            case TypeKind::Int64:  return RANGE(i64, AsInt);
+            case TypeKind::UInt8:  return POS_RANGE(u8, AsInt);
+            case TypeKind::UInt16: return POS_RANGE(u16, AsInt);
+            case TypeKind::UInt32: return POS_RANGE(u32, AsInt);
+            case TypeKind::UInt64: return POS_RANGE(u64, AsInt);
+            case TypeKind::Char:   return RANGE(i8, AsInt);
+            }
         }
         return false;
-#undef RANGE
-#undef POS_RANGE
     }
     case TypeKind::Int:
     case TypeKind::UInt: {
         if (FromTy->IsSystemInt()) return true;
-        if (!FromTy->IsInt()) return false;
-        return FromTy->GetTrivialTypeSizeInBytes() <= 4;
+        if (FromTy->IsInt()) return FromTy->GetTrivialTypeSizeInBytes() <= 4;
+        if (FromTy->IsFloat() && FromExpr && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
+            NumberLiteral* Num = static_cast<NumberLiteral*>(FromExpr);
+
+            i64 AsInt;
+            if (FromTy->GetKind() == TypeKind::Float32) {
+                float Value = Num->Float32Value;
+                AsInt = Value;
+                if (Value - AsInt > 0) {
+                    return false;
+                }                
+            } else {
+                double Value = Num->Float64Value;
+                AsInt = Value;
+                if (Value - AsInt > 0) {
+                    return false;
+                }
+            }
+            if (ToTy->GetKind() == TypeKind::Int) {
+                return RANGE(i32, AsInt);
+            } else {
+                return POS_RANGE(u32, AsInt);
+            }
+        }
+        return false;
     }
+#undef RANGE
+#undef POS_RANGE
     case TypeKind::Float32:
     case TypeKind::Float64:
         if (FromTy->IsInt()) {
