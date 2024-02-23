@@ -355,6 +355,9 @@ namespace arco {
         bool HasConstAddress    = false;
         bool TyIsInfered        = false;
         bool ImplicitPtr        = false;
+        // If this is set to try then the memory will not be initialized
+        // to a default value.
+        bool LeaveUninitialized = false;
 
         // One variable may depend on another variable in its
         // declaration.

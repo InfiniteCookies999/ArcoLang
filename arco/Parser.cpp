@@ -576,7 +576,12 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     
         if (CTok.Is('=')) {
             NextToken(); // Consuming '=' token.
-            Var->Assignment = ParseExpr();
+            if (CTok.Is(TokenKind::MINUS_MINUS_MINUS)) {
+                NextToken(); // Consuming '---' token.
+                Var->LeaveUninitialized = true;
+            } else {
+                Var->Assignment = ParseExpr();
+            }
         }
     }
 
@@ -646,8 +651,13 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
             while (true) {
                 NumErrs = TotalAccumulatedErrors;
 
-                SingleVarDeclList->List[Count]->Assignment = ParseExpr();
-            
+                if (CTok.Is(TokenKind::MINUS_MINUS_MINUS)) {
+                    NextToken(); // Consuming '---' token.
+                    SingleVarDeclList->List[Count]->LeaveUninitialized = true;
+                } else {
+                    SingleVarDeclList->List[Count]->Assignment = ParseExpr();
+                }
+                
                 if (NumErrs != TotalAccumulatedErrors) {
                     SingleVarDeclList->List[Count]->ParsingError = true;
                     // TODO: error the remaining declarations?

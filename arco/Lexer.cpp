@@ -77,7 +77,11 @@ restartLex:
         else if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::PLUS_EQ, TokStart);
         else                     return CreateToken('+', TokStart);
     case '-':
-        if (*CurPtr == '-')      return CreateTokenAndEat(TokenKind::MINUS_MINUS, TokStart);
+        if (*CurPtr == '-') {
+            ++CurPtr;
+            if (*CurPtr == '-')  return CreateTokenAndEat(TokenKind::MINUS_MINUS_MINUS, TokStart);
+            else                 return CreateToken(TokenKind::MINUS_MINUS, TokStart);
+        }
         else if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::MINUS_EQ, TokStart);
         else                     return CreateToken('-', TokStart);
     case '*':

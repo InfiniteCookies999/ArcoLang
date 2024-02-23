@@ -47,7 +47,7 @@ OutStream struct {
         // TODO: validate the base.
 
         BUFFER_SIZE :: 21;
-        buffer char[BUFFER_SIZE];
+        buffer char[BUFFER_SIZE] = ---;
 
         ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 

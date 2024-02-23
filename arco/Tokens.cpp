@@ -36,6 +36,11 @@ std::string arco::Token::TokenKindToString(u16 Kind, ArcoContext& Context) {
     case TokenKind::EXL_EQ:         return "!=";
     case TokenKind::COL_EQ:         return ":=";
     case TokenKind::COL_COL:        return "::";
+    case TokenKind::DOT_DOT:        return "..";
+    case TokenKind::DOT_DOT_DOT:    return "...";
+    case TokenKind::DOT_DOT_EQ:     return "..=";
+    case TokenKind::DOT_DOT_LT:     return "..<";
+    case TokenKind::MINUS_MINUS_MINUS: return "---";
     default:
         if (static_cast<u32>(Kind) < 256) {
             u32 UTF8Kind = static_cast<u32>(Kind);

@@ -375,7 +375,7 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
         llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
         if (Field->Assignment) {
             GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
-        } else {
+        } else if (!Field->LeaveUninitialized) {
             GenDefaultValue(Field->Ty, LLFieldAddr);
         }
     }
@@ -880,7 +880,7 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
 
     if (Var->Assignment) {
         GenAssignment(Var->LLAddress, Var->Ty, Var->Assignment, Var->HasConstAddress);
-    } else {
+    } else if (!Var->LeaveUninitialized) {
         GenDefaultValue(Var->Ty, Var->LLAddress);
     }
     // Emit the location for the generated assignment.
@@ -2635,7 +2635,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
             llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
             if (Field->Assignment) {
                 GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
-            } else {
+            } else if (!Field->LeaveUninitialized) {
                 GenDefaultValue(Field->Ty, LLFieldAddr);
             }
         }
@@ -2653,7 +2653,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                 llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
                 if (Field->Assignment) {
                     GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
-                } else {
+                } else if (!Field->LeaveUninitialized) {
                     GenDefaultValue(Field->Ty, LLFieldAddr);
                 }
             }
@@ -3459,7 +3459,7 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
             GenAssignment(LLFieldAddr, Field->Ty, InitValue, Field->HasConstAddress);
         } else if (Field->Assignment) {
             GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
-        } else {
+        } else if (!Field->LeaveUninitialized) {
             GenDefaultValue(Field->Ty, LLFieldAddr);
         }
     }

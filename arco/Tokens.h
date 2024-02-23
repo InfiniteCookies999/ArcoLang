@@ -94,30 +94,31 @@ namespace arco {
         POST_PLUS_PLUS,
         POST_MINUS_MINUS,
 
-        PLUS_EQ,     // +=
-        MINUS_EQ,    // -=
-        SLASH_EQ,    // /=
-        STAR_EQ,     // *=
-        MOD_EQ,      // %=
-        AMP_EQ,      // &=
-        BAR_EQ,      // |=
-        CRT_EQ,      // ^=
-        LT_LT,       // <<
-        GT_GT,       // >>
-        LT_LT_EQ,    // <<=
-        GT_GT_EQ,    // >>=
-        LT_EQ,       // <=
-        GT_EQ,       // >=
-        AMP_AMP,     // &&
-        BAR_BAR,     // ||
-        EQ_EQ,       // ==
-        EXL_EQ,      // !=
-        COL_EQ,      // :=
-        COL_COL,     // ::
-        DOT_DOT,     // ..
-        DOT_DOT_LT,  // ..<
-        DOT_DOT_EQ,  // ..=
-        DOT_DOT_DOT, // ...
+        PLUS_EQ,           // +=
+        MINUS_EQ,          // -=
+        SLASH_EQ,          // /=
+        STAR_EQ,           // *=
+        MOD_EQ,            // %=
+        AMP_EQ,            // &=
+        BAR_EQ,            // |=
+        CRT_EQ,            // ^=
+        LT_LT,             // <<
+        GT_GT,             // >>
+        LT_LT_EQ,          // <<=
+        GT_GT_EQ,          // >>=
+        LT_EQ,             // <=
+        GT_EQ,             // >=
+        AMP_AMP,           // &&
+        BAR_BAR,           // ||
+        EQ_EQ,             // ==
+        EXL_EQ,            // !=
+        COL_EQ,            // :=
+        COL_COL,           // ::
+        DOT_DOT,           // ..
+        DOT_DOT_LT,        // ..<
+        DOT_DOT_EQ,        // ..=
+        DOT_DOT_DOT,       // ...
+        MINUS_MINUS_MINUS, // ---
 
         // End of file
         TK_EOF
