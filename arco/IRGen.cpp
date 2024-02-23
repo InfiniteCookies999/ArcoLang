@@ -3851,12 +3851,12 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
             CallDefaultConstructor(LLAddr, StructTy);
         } else {
-            ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
+            llvm::StructType* LLStructTy = GenStructType(StructTy);
+            ulen TotalLinearLength = SizeOfTypeInBytes(LLStructTy);
             
             // TODO: For performance may want to offset and not memset the vtable ptrs.
 
-            // TODO: alignment
-            llvm::Align LLAlignment = llvm::Align();
+            llvm::Align LLAlignment = GetAlignment(LLStructTy);
             Builder.CreateMemSet(
                 LLAddr,
                 GetLLUInt8(0),
@@ -3887,10 +3887,10 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         
         // Memset to zero.
         ulen TotalLinearLength = ArrTy->GetTotalLinearLength();
-        TotalLinearLength *= SizeOfTypeInBytes(GenType(BaseTy));
+        llvm::Type* LLBaseTy = GenType(BaseTy);
+        TotalLinearLength *= SizeOfTypeInBytes(LLBaseTy);
 
-        // TODO: alignment
-        llvm::Align LLAlignment = llvm::Align();
+        llvm::Align LLAlignment = GetAlignment(LLBaseTy);
         Builder.CreateMemSet(
             LLAddr,
             GetLLUInt8(0),
@@ -4009,9 +4009,12 @@ break;
     llvm::Instruction* LLCall;
     switch (CalledFunc->LLVMIntrinsicID) {
     case llvm::Intrinsic::memcpy: {
-        // TODO: Alignment!
-
-        llvm::Align LLAlignment = llvm::Align();
+        // We know the first argument is a pointer/array type since
+        // it is cast to a void* so to get the type that we are
+        // aligning with we need to get the element type
+        // of that pointer/array.
+        llvm::Type* LLType = GenType(Args[0].E->Ty->AsContainerType()->GetElementType());
+        llvm::Align LLAlignment = GetAlignment(LLType);
         LLCall = Builder.CreateMemCpy(
             GenRValue(Args[0].E), LLAlignment,
             GenRValue(Args[1].E), LLAlignment,
@@ -4020,26 +4023,12 @@ break;
         break;
     }
     case llvm::Intrinsic::memset: {
-        // TODO: Alignment!
-        // TODO: Figure out virtual offset for interfaces.
-
-        // maybe bitcasting interfaces to i8* should take into account offset.
-
-        //llvm::Value* LLDestAddr = GenRValue(Args[0].E);
-        //
-        //if (Args[0].E->Ty->GetKind() == TypeKind::Interface) {
-        //    StructDecl* Struct = Args[0].E->Ty->AsStructType()->GetStruct();
-        //    if (!Struct->Interfaces.empty()) {
-        //        // Need to deal with virtual offset so we do not override the virtual
-        //        // data.
-        //    
-        //        // LLDestAddr should already be i8* so just need to add the offset.
-        //        LLDestAddr = CreateInBoundsGEP(LLDestAddr, { GetLLUInt64(Struct->VirtualOffset) });
-        //
-        //    }
-        //}
-        
-        llvm::Align LLAlignment = llvm::Align();
+        // We know the first argument is a pointer/array type since
+        // it is cast to a void* so to get the type that we are
+        // aligning with we need to get the element type
+        // of that pointer/array.
+        llvm::Type* LLType = GenType(Args[0].E->Ty->AsContainerType()->GetElementType());
+        llvm::Align LLAlignment = GetAlignment(LLType);
         LLCall = Builder.CreateMemSet(
             GenRValue(Args[0].E),
             GenRValue(Args[1].E),
