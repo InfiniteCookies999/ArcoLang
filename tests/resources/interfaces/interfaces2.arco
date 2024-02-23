@@ -1,0 +1,23 @@
+
+A interface {
+    fn foo(a int);
+
+    fn bar(b int);
+}
+
+B struct : A {
+    fn foo(a int) {
+        print(a);
+    }
+    fn bar(b int) {
+        print(b);
+    }
+}
+
+fn main() {
+    b B;
+    a A* = &b;
+    a.foo(42);
+    print(" ", 1);
+    a.bar(341);
+}

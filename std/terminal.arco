@@ -1,10 +1,14 @@
 import win32;
 import reflect.Any;
+import files.FileHandle;
 
-out := OutStream{ win32.GetStdHandle(win32.STD_OUTPUT_HANDLE), auto_close=false };
-err := OutStream{ win32.GetStdHandle(win32.STD_ERROR_HANDLE) , auto_close=false };
+private out_file_handle := FileHandle{ win32.GetStdHandle(win32.STD_OUTPUT_HANDLE), auto_close=false };
+private err_file_handle := FileHandle{ win32.GetStdHandle(win32.STD_ERROR_HANDLE) , auto_close=false };
+private in_file_handle  := FileHandle{ win32.GetStdHandle(win32.STD_INPUT_HANDLE) , auto_close=false };
+out := OutStream{ &out_file_handle };
+err := OutStream{ &err_file_handle };
 
-in  := LineStream{ win32.GetStdHandle(win32.STD_INPUT_HANDLE), auto_close=false };
+in  := LineStream{ &in_file_handle };
 
 
 // TODO: Functions are redundent because there is no support for

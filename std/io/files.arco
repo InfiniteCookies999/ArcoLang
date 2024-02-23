@@ -35,7 +35,7 @@ IOFlag enum : uint32 {
  * with system files. This object may read and write
  * chunks of pre-allocated bytes to the file.
  */
-FileHandle struct {
+FileHandle struct : Writeable, Readable {
     
     private handle     void*;
     private auto_close bool;
@@ -56,9 +56,9 @@ FileHandle struct {
         }
     }
     
-    fn read(buffer char*, length int) int {
+    fn read_buffer(buffer char*, length int) int {
         // TODO: proper error handling.
-    
+        
         number_of_bytes_read uint32;
         if win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null) == 0 {
             panic("Failed to read from FileHandle");
@@ -66,7 +66,7 @@ FileHandle struct {
         return cast(int) number_of_bytes_read;
     }
     
-    fn write(buffer cstr, length int) int {
+    fn write_buffer(buffer cstr, length int) int {
         // TODO: proper error handling.
     
         number_of_bytes_written uint32;
@@ -96,7 +96,7 @@ fn read(path cstr) String {
     size   := stream.get_size();
     buffer := new char[size + 1];
     
-    read_bytes := stream.read(buffer, size);
+    read_bytes := stream.read_buffer(buffer, size);
     if read_bytes != size {
         // TODO: proper error handling
         panic("Failed to read file");

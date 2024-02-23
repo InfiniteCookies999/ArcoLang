@@ -60,6 +60,7 @@ namespace arco {
         KW_FN,
         KW_STRUCT,
         KW_ENUM,
+        KW_INTERFACE,
         KW_CAST,
         KW_LOOP,
         KW_BREAK,

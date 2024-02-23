@@ -234,10 +234,17 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 	case TypeKind::Pointer:
 	case TypeKind::CStr: {
 		ulen PtrSizeInBits = Context.LLArcoModule
-			                        .getDataLayout()
-			                        .getPointerSizeInBits();
-		llvm::DIType* DITy = DBuilder->createPointerType(
-			EmitType(Ty->GetPointerElementType(Context)), PtrSizeInBits);
+			.getDataLayout()
+			.getPointerSizeInBits();
+		
+		llvm::DIType* DITy;
+		if (Ty->GetPointerElementType(Context)->GetKind() == TypeKind::Interface) {
+			DITy = DBuilder->createPointerType(EmitType(Context.VoidType), PtrSizeInBits);
+		} else {
+			DITy = DBuilder->createPointerType(
+				EmitType(Ty->GetPointerElementType(Context)), PtrSizeInBits);
+		}
+
 		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DITy });
 		return DITy;
 	}

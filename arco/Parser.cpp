@@ -170,7 +170,7 @@ arco::FileScope* arco::Parser::Parse() {
             } else {
                 NSpace->Funcs[Func->Name].push_back(Func);
             }
-        } else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL)) {
+        } else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL) || Stmt->Is(AstKind::INTERFACE_DECL)) {
             Decl* Dec = static_cast<Decl*>(Stmt);
             auto Itr = FScope->Imports.find(Dec->Name);
             if (Itr != FScope->Imports.end()) {
@@ -322,6 +322,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
                 Stmt = ParseStructDecl(Mods);
             } else if (PeekTok.Is(TokenKind::KW_ENUM)) {
                 Stmt = ParseEnumDecl(Mods);
+            } else if (PeekTok.Is(TokenKind::KW_INTERFACE)) {
+                Stmt = ParseInterfaceDecl(Mods);
             } else {
                 Stmt = ParseVarDecl(Mods);
                 Match(';');
@@ -355,6 +357,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
             return ParseStructDecl(0);
         case TokenKind::KW_ENUM:
             return ParseEnumDecl(0);
+        case TokenKind::KW_INTERFACE:
+            return ParseInterfaceDecl(0);
         case ',': {
             Stmt = ParseVarDeclList(0);
             Match(';');
@@ -455,10 +459,36 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
     CFunc = Func;
 
     PUSH_SCOPE();
+    ParseFuncSignature(Func);
+
+    if (!(Func->Mods & ModKinds::NATIVE)) {
+        ParseScopeStmts(Func->Scope);
+    } else {
+        Match(';');
+    }
+    POP_SCOPE();
+    
+    if (Func->RetTy == Context.VoidType) {
+        if (Func->Scope.Stmts.empty() || Func->Scope.Stmts.back()->IsNot(AstKind::RETURN)) {
+            // Implicit return.
+            ++Func->NumReturns;
+        }
+    }
+
+    if (NumErrs != TotalAccumulatedErrors) {
+        Func->ParsingError = true;
+    }
+
+    CFunc = PrevFunc;
+    return Func;
+}
+
+void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
+    
     Match('(');
     if (CTok.IsNot(')')) {
         bool MoreParams = false;
-        
+
         ulen ParamCount = 0;
         do {
             VarDecl* Param = ParseVarDecl(0);
@@ -491,7 +521,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
     Match(')');
 
     if (CTok.IsNot('{') && CTok.IsNot(':') &&
-        !((Mods & ModKinds::NATIVE) && CTok.Is(';'))) {
+        !((Func->Mods & ModKinds::NATIVE) && CTok.Is(';'))) {
         if (CTok.Is(TokenKind::KW_CONST)) {
             NextToken(); // Consuming 'const' token.
             Func->ReturnsConstAddress = true;
@@ -509,7 +539,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
                 Func->InitializerValues.push_back(FuncDecl::InitializerValue{
                     FieldName,
                     Assignment
-                });
+                    });
                 MoreInitializers = CTok.Is(',');
                 if (MoreInitializers) {
                     NextToken();
@@ -518,27 +548,6 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
         }
         Func->RetTy = Context.VoidType;
     }
-
-    if (!(Func->Mods & ModKinds::NATIVE)) {
-        ParseScopeStmts(Func->Scope);
-    } else {
-        Match(';');
-    }
-    POP_SCOPE();
-    
-    if (Func->RetTy == Context.VoidType) {
-        if (Func->Scope.Stmts.empty() || Func->Scope.Stmts.back()->IsNot(AstKind::RETURN)) {
-            // Implicit return.
-            ++Func->NumReturns;
-        }
-    }
-
-    if (NumErrs != TotalAccumulatedErrors) {
-        Func->ParsingError = true;
-    }
-
-    CFunc = PrevFunc;
-    return Func;
 }
 
 arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
@@ -705,6 +714,25 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
     Struct->Name   = ParseIdentifier("Expected identifier for struct declaration");
     Struct->Mods   = Mods;
     Match(TokenKind::KW_STRUCT);
+    if (CTok.Is(':')) {
+        NextToken(); // Parsing ':' token.
+        bool MoreInterfaces = false;
+        do {
+            Token InterfaceNameTok = CTok;
+            Identifier InterfaceName = ParseIdentifier("Expected identifier for interface name");
+            if (!InterfaceName.IsNull()) {
+                Struct->InterfaceHooks.push_back(StructDecl::InterfaceHook{
+                    InterfaceNameTok.Loc,
+                    InterfaceName
+                    });
+            }
+
+            MoreInterfaces = CTok.Is(',');
+            if (MoreInterfaces) {
+                NextToken(); // Consuming ',' token.
+            }
+        } while (MoreInterfaces);
+    }
 
     Context.UncheckedDecls.insert(Struct);
 
@@ -834,6 +862,71 @@ arco::EnumDecl* arco::Parser::ParseEnumDecl(Modifiers Mods) {
     }
 
     return Enum;
+}
+
+arco::InterfaceDecl* arco::Parser::ParseInterfaceDecl(Modifiers Mods) {
+
+    ulen NumErrs = TotalAccumulatedErrors;
+
+    Token NameTok = CTok;
+    Identifier Name = Identifier(CTok.GetText());
+    NextToken(); // Consuming identifier token.
+    InterfaceDecl* Interface = NewNode<InterfaceDecl>(NameTok);
+    Interface->Name = Name;
+    Interface->UniqueTypeId = Context.UniqueTypeIdCounter++;
+    Interface->Mod = Mod;
+    Interface->FScope = FScope;
+    Interface->Mods = Mods;
+    NextToken(); // Consuming 'interface' token.
+
+    Match('{');
+    if (CTok.IsNot('}')) {
+        // TODO: Provide better error handling.
+        while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
+
+            if (CTok.Is(TokenKind::KW_FN)) {
+
+                NextToken(); // Consuming 'fn' token.
+                FuncDecl* Func = NewNode<FuncDecl>(CTok);
+                Func->Name   = ParseIdentifier("Expected identifier for function of an interface");
+                Func->Mod    = Mod;
+                Func->FScope = FScope;
+                Func->Mods   = 0; // TODO: Allow for modifiers?
+                Func->Interface = Interface;
+                Func->InterfaceIdx = Interface->NumFuncs;
+
+                FuncDecl* PrevFunc = CFunc;
+                CFunc = Func;
+
+                PUSH_SCOPE();
+                // TODO: Hacky: so that it doesn't complain about about the lack of a type.
+                Func->Mods = ModKinds::NATIVE;
+                ParseFuncSignature(Func);
+                Func->Mods = 0;
+
+                Match(';');
+                POP_SCOPE();
+
+                ++Interface->NumFuncs;
+                Interface->Funcs[Func->Name].push_back(Func);
+
+                CFunc = PrevFunc;
+
+            } else {
+                Error(CTok, "Expected function declaration for interface");
+                SkipRecovery();
+            }
+        }
+    }
+    Match('}');
+    
+    Context.UncheckedDecls.insert(Interface);
+
+    if (NumErrs != TotalAccumulatedErrors) {
+        Interface->ParsingError = true;
+    }
+    
+    return Interface;
 }
 
 void arco::Parser::ParseScopeStmts(LexScope& Scope) {
@@ -2185,7 +2278,7 @@ void arco::Parser::SkipRecovery() {
     case TokenKind::KW_READONLY:
     case TokenKind::KW_WRITEONLY:
     case '{':
-        // TODO: } but only contexually?
+    case '}':
         return;
     case ';':
     case TokenKind::TK_EOF:

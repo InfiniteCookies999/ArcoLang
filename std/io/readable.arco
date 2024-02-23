@@ -1,0 +1,16 @@
+
+/*
+ * A readable interface for reading buffers with explicit
+ * lengths. This may be used by files, sockets, or anything
+ * which reads bytes.
+ */
+Readable interface {
+
+    /*
+     * reads the bytes of the buffer with the given length.
+     *
+     * @return how many bytes were actually read.
+     */
+    fn read_buffer(buffer char*, length int) int;
+
+}

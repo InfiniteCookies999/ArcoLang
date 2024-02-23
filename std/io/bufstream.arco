@@ -1,13 +1,10 @@
 import files;
 import files.IOFlag;
-import files.FileHandle;
 
 
 BufferedStream struct {
     
-    // TODO: This handle should eventually be more abstract
-    //       and be a any readable handle instead.
-    private handle FileHandle;
+    private handle Readable*;
     
     private buffer      char*;
     // Maximum number of bytes the buffer can store. The amount
@@ -20,8 +17,8 @@ BufferedStream struct {
     // Position offset into the buffer.
     private pos           := 0;
     
-    BufferedStream(path cstr, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
-        : handle(files.open(path, io_flags)) {
+    BufferedStream(handle Readable*, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
+        : handle(handle) {
         if buffer_size < 0 {
             panic("buffer_size < 0");
         }
@@ -36,7 +33,7 @@ BufferedStream struct {
     private fn fill() {
         // TODO: should make sure the stream is still open.
         if pos >= buffer_length {
-            buffer_length = handle.read(buffer, buffer_size);
+            buffer_length = handle.read_buffer(buffer, buffer_size);
         }
     }
     
@@ -77,16 +74,12 @@ BufferedStream struct {
         
         // No reason to continually fill our buffer just have
         // the handle do the work of reading the remaining bytes.
-        amount_read += handle.read(buffer + amount_read, length - amount_read);
+        amount_read += handle.read_buffer(buffer + amount_read, length - amount_read);
         
         return amount_read;
     }
     
     ~BufferedStream() {
         delete buffer;
-    }
-    
-    fn close() {
-        handle.close();
     }
 }

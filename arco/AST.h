@@ -13,6 +13,7 @@ namespace llvm {
     class Value;
     class Constant;
     class StructType;
+    class GlobalVariable;
     namespace Intrinsic {
         typedef unsigned ID;
     }
@@ -38,6 +39,7 @@ namespace arco {
         VAR_DECL_LIST,
         STRUCT_DECL,
         ENUM_DECL,
+        INTERFACE_DECL,
 
         RETURN,
         IF,
@@ -183,12 +185,22 @@ namespace arco {
         Identifier Name;
 
         inline bool IsStructLike() {
-            return Kind == AstKind::STRUCT_DECL || Kind == AstKind::ENUM_DECL;
+            return Kind == AstKind::STRUCT_DECL || Kind == AstKind::ENUM_DECL ||
+                   Kind == AstKind::INTERFACE_DECL;
         }
     };
 
     struct StructDecl : Decl {
         StructDecl() : Decl(AstKind::STRUCT_DECL) {}
+
+        // All interfaces that this struct implements.
+        llvm::SmallVector<InterfaceDecl*> Interfaces;
+        struct InterfaceHook {
+            SourceLoc  ErrorLoc;
+            Identifier Name;
+        };
+        // Needed until the interfaces are fixed up during semantic analysis.
+        llvm::SmallVector<InterfaceHook>  InterfaceHooks;
 
         llvm::SmallVector<VarDecl*>           Fields;
         FuncsList                             Constructors;
@@ -200,10 +212,17 @@ namespace arco {
 
         u32 UniqueTypeId;
 
+        // When the struct implements interfaces this offset is the offset
+        // past the interface data.
+        //ulen VirtualOffset = 0;
+
         llvm::StructType* LLStructTy         = nullptr;
         llvm::Function* LLDefaultConstructor = nullptr;
+        llvm::Function* LLInitVTableFunc     = nullptr;
 
         // At least one field has assignment.
+        // This also takes into account fields which are structs
+        // which themselves need assignment.
         bool FieldsHaveAssignment = false;
         // This is true if either their is a user defined
         // destructor or if the structure contains another
@@ -236,6 +255,18 @@ namespace arco {
         const EnumValue* FindValue(Identifier Name) const;
     };
 
+    struct InterfaceDecl : Decl {
+        InterfaceDecl() : Decl(AstKind::INTERFACE_DECL) {}
+
+        u32 UniqueTypeId;
+        ulen NumFuncs = 0;
+
+        // Functions that must be implemented by any struct
+        // which implements this interface.
+        llvm::DenseMap<Identifier, FuncsList> Funcs;
+
+    };
+
     struct FuncDecl : Decl {
         FuncDecl() : Decl(AstKind::FUNC_DECL) {}
 
@@ -246,6 +277,7 @@ namespace arco {
 
         Identifier CallingConv;
 
+        // TODO: This should be turned into a bitset.
         bool ParamTypesChecked   = false;
         // If this is true then the function will return
         // a struct type as an integer and then the caller
@@ -261,9 +293,20 @@ namespace arco {
         bool IsCopyConstructor   = false;
         bool IsMoveConstructor   = false;
         bool IsVariadic          = false;
+        
+        // When this is not -1 it indicates the index number of
+        // the function in an interface.
+        u16 InterfaceIdx = -1;
 
         // Non-nullptr if the function is a member function.
         StructDecl* Struct = nullptr;
+        // Non-nullptr if the function is an interface function.
+        InterfaceDecl* Interface = nullptr;
+
+        // When this function is a function of a struct that implements
+        // an interface this is the function of the interface that this
+        // function is mapped to.
+        FuncDecl* MappedInterfaceFunc = nullptr;
 
         Type*                          RetTy;
         llvm::SmallVector<VarDecl*, 2> Params;
@@ -300,6 +343,10 @@ namespace arco {
 
         ulen ParamIdx = -1;
         ulen FieldIdx = -1;
+        // This is not equivalent to FieldIdx because if the struct implements
+        // an interface it is offset so that it does not interfere with the
+        // interface data.
+        ulen LLFieldIdx;
 
         // If the variable is declared inside a function
         // and returned.

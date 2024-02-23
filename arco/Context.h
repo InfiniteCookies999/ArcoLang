@@ -122,6 +122,7 @@ namespace arco {
         Type* FuncRefType;
         Type* StructRefType;
         Type* EnumRefType;
+        Type* InterfaceRefType;
         Type* AnyType;
 
         // Maps a binary operator to its precedence.

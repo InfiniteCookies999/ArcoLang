@@ -351,6 +351,8 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
             Analyzer.CheckStructDecl(static_cast<StructDecl*>(D));
         } else if (D->Is(AstKind::ENUM_DECL)) {
             Analyzer.CheckEnumDecl(static_cast<EnumDecl*>(D));
+        } else if (D->Is(AstKind::INTERFACE_DECL)) {
+            Analyzer.CheckInterfaceDecl(static_cast<InterfaceDecl*>(D));
         }
     }
 

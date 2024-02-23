@@ -17,6 +17,7 @@ namespace arco {
     struct Expr;
     struct StructDecl;
     struct EnumDecl;
+    struct InterfaceDecl;
     class ContainerType;
     class ImplPointerType;
     class PointerType;
@@ -52,6 +53,7 @@ namespace arco {
         Array,
         Struct,
         Enum,
+        Interface,
         Function,
 
         Null,
@@ -66,6 +68,8 @@ namespace arco {
         StructRef,
         // When referencing an identifier that refers to an enum.
         EnumRef,
+        // When referencing an identifier that refers to an interface.
+        InterfaceRef,
 
     };
 
@@ -222,14 +226,19 @@ namespace arco {
         static StructType* Create(StructDecl* Struct, ArcoContext& Context);
         static StructType* Create(EnumDecl* Enum, ArcoContext& Context);
 
-        StructDecl* GetStruct() const { return Struct; }
-        EnumDecl*   GetEnum() const { return Enum; }
+        StructDecl*    GetStruct() const { return Struct; }
+        EnumDecl*      GetEnum() const { return Enum; }
+        InterfaceDecl* GetInterface() const { return Interface; }
         void AssignStruct(StructDecl* Struct) {
             this->Struct = Struct;
         }
         void AssignEnum(EnumDecl* Enum) {
             this->Enum = Enum;
             Kind = TypeKind::Enum;
+        }
+        void AssignInterface(InterfaceDecl* Interface) {
+            this->Interface = Interface;
+            Kind = TypeKind::Interface;
         }
 
         Identifier GetStructName() const { return StructName; }
@@ -243,8 +252,9 @@ namespace arco {
         SourceLoc   ErrorLoc;
         Identifier  StructName;
         union {
-            StructDecl* Struct;
-            EnumDecl*   Enum;
+            StructDecl*    Struct;
+            EnumDecl*      Enum;
+            InterfaceDecl* Interface;
         };
     };
 

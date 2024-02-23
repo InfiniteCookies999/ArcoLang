@@ -287,6 +287,11 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
             for (const auto& [Name, FuncList] : Struct->Funcs) {
                 CheckForDuplicateFuncs(FuncList);
             }
+        } else if (Dec->Is(AstKind::INTERFACE_DECL)) {
+            InterfaceDecl* Interface = static_cast<InterfaceDecl*>(Dec);
+            for (const auto& [Name, FuncList] : Interface->Funcs) {
+                CheckForDuplicateFuncs(FuncList);
+            }
         }
     }
 }
@@ -470,10 +475,18 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         Struct->NeedsDestruction = true;
     }
 
+    FixupInterfaces(Struct);
+
     for (VarDecl* Field : Struct->Fields) {
         CheckVarDecl(Field);
         if (Field->Assignment) {
             Struct->FieldsHaveAssignment = true;
+        }
+
+        if (!Struct->Interfaces.empty()) {
+            Field->LLFieldIdx = Field->FieldIdx + Struct->Interfaces.size();
+        } else {
+            Field->LLFieldIdx = Field->FieldIdx;
         }
 
         // TODO: Does the field need to be checked for a complete type here?
@@ -538,6 +551,10 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
     bool ParamsHaveAssignment = false, ParamAssignmentNotLast = false;
     for (VarDecl* Param : Params) {
         CheckVarDecl(Param);
+        if (Param->Ty == Context.ErrorType) {
+            // TODO: Hacky so that it stops showing errors later on.
+            Func->ParsingError = true;
+        }
         if (Param->Assignment) {
             ++Func->NumDefaultArgs;
             ParamsHaveAssignment = true;
@@ -651,6 +668,94 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     }
 }
 
+void arco::SemAnalyzer::FixupInterfaces(StructDecl* Struct) {
+    for (const auto& InterfaceHook : Struct->InterfaceHooks) {
+        FixupInterface(Struct, InterfaceHook);
+    }
+}
+
+void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::InterfaceHook& InterfaceHook) {
+    // TODO: May want to check for duplicate interface functions prior to this
+    // and remove them prior to this to prevent uneeded error messages.
+    Decl* FoundDecl = FindStructLikeTypeByName(InterfaceHook.Name);
+
+    if (!FoundDecl) {
+        Error(InterfaceHook.ErrorLoc, "Could not find interface by name '%s'", InterfaceHook.Name);
+        return;
+    }
+
+    if (FoundDecl->IsNot(AstKind::INTERFACE_DECL)) {
+        if (FoundDecl->Is(AstKind::STRUCT_DECL)) {
+            // TODO: Explain why?
+            Error(InterfaceHook.ErrorLoc, "Cannot extend from another struct");
+        } else if (FoundDecl->Is(AstKind::ENUM_DECL)) {
+            Error(InterfaceHook.ErrorLoc, "Cannot extend from enum");
+        }
+        return;
+    }
+
+    InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
+    Struct->Interfaces.push_back(Interface);
+    // Finding the matching functions for the interface.
+    for (auto& [InterfaceFuncName, FuncList] : Interface->Funcs) {
+        for (FuncDecl* InterfaceFunc : FuncList) {
+            CheckFuncParams(InterfaceFunc);
+
+            auto Itr = std::find_if(Struct->Funcs.begin(), Struct->Funcs.end(),
+                [&InterfaceFuncName](const auto& KeyValue) {
+                    return KeyValue.first == InterfaceFuncName;
+                });
+            if (Itr != Struct->Funcs.end()) {
+                // Validating that the functions are a perfect match.
+                // Unlike when checking for duplicate functions this must check
+                // to make sure that everything is identical.
+                FuncsList& FuncList = Itr->second;
+                FuncDecl* FoundFunc = nullptr;
+                for (FuncDecl* Func : FuncList) {
+                    CheckFuncParams(Func);
+
+                    if (InterfaceFunc->Params.size() != Func->Params.size()) continue;
+                    if (!InterfaceFunc->RetTy->Equals(Func->RetTy)) continue;
+                    bool ParamsMatch = true;
+                    for (ulen i = 0; i < Func->Params.size(); i++) {
+                        VarDecl* FuncParam = Func->Params[i];
+                        VarDecl* InterfaceParam = InterfaceFunc->Params[i];
+                        if (!FuncParam->Ty->Equals(InterfaceParam->Ty)) {
+                            ParamsMatch = false;
+                            break;
+                        }
+                        if (FuncParam->HasConstAddress != InterfaceParam->HasConstAddress) {
+                            ParamsMatch = false;
+                            break;
+                        }
+                    }
+                    if (!ParamsMatch) continue;
+                    if (InterfaceFunc->IsVariadic != Func->IsVariadic) continue;
+                    FoundFunc = Func;
+                    break;
+                }
+                if (!FoundFunc) {
+                    // TODO: Make the error message more expressive by describing how none of the
+                    // functions match and why. Similar to how error reporting works when calling
+                    // functions and not finding matches.
+                    Error(InterfaceHook.ErrorLoc,
+                        "Struct could not find overloaded function '%s' for interface interface '%s'",
+                        InterfaceFunc->Name, Interface->Name);
+                    break;
+                }
+                FoundFunc->MappedInterfaceFunc = InterfaceFunc;
+
+                // It will be needed if the struct is casted to the interface.
+                Context.RequestGen(FoundFunc);
+                break;
+            } else {
+                Error(InterfaceHook.ErrorLoc, "Struct must implement function '%s' of interface '%s'",
+                    GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc), Interface->Name);
+            }
+        }
+    }
+}
+
 void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
     if (Enum->HasBeenChecked) return;
     Enum->HasBeenChecked = true;
@@ -755,6 +860,20 @@ void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
     }
 
     Enum->IsBeingChecked = false;
+}
+
+void arco::SemAnalyzer::CheckInterfaceDecl(InterfaceDecl* Interface) {
+    if (Interface->HasBeenChecked) return;
+    Interface->HasBeenChecked = true;
+    Context.UncheckedDecls.erase(Interface);
+    if (Interface->ParsingError) return;
+
+    Interface->IsBeingChecked = true;
+    FScope = Interface->FScope;
+
+    if (Interface->Funcs.empty()) {
+        Error(Interface, "Interfaces must have at least one function declaration");
+    }
 }
 
 //===-------------------------------===//
@@ -914,6 +1033,7 @@ return;
             case TypeKind::FuncRef:
             case TypeKind::StructRef:
             case TypeKind::EnumRef:
+            case TypeKind::InterfaceRef:
                 VAR_YIELD(Error(Var, "Cannot infer type from an incomplete expression"), true);
                 break;
             }
@@ -1017,6 +1137,8 @@ return;
                 Log.EndError();
                     , true);
         }
+    } else if (Var->Ty->GetKind() == TypeKind::Interface) {
+        Error(Var, "Cannot declare a variable type as an interface type. You must use a pointer");
     }
 
     if (Var->Ty->Equals(Context.CStrType)) {
@@ -1669,10 +1791,13 @@ YIELD_ERROR(UniOp);
                 YIELD_ERROR(UniOp);
             }
             
+            // TODO: If we do allow taking addresses of member function then we should
+            // also prevent taking addresses of virtual functions because that would
+            // still cause bugs.
             if (Func->Struct) {
                 Error(UniOp, "Not supporting taking address of member functions yet!");
             }
-
+            
             SemAnalyzer A(Context, Func);
             A.CheckFuncParams(Func);
 
@@ -2020,12 +2145,35 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
         return;
     }
 
+    bool InterfacePtrRef = Site->Ty->GetKind() == TypeKind::Pointer &&
+                           Site->Ty->AsPointerTy()->GetElementType()->GetKind() == TypeKind::Interface;
+
     if (!(Site->Ty->GetKind() == TypeKind::Struct ||
           (Site->Ty->GetKind() == TypeKind::Pointer &&
-          Site->Ty->AsPointerTy()->GetElementType()->GetKind() == TypeKind::Struct)
+          Site->Ty->AsPointerTy()->GetElementType()->GetKind() == TypeKind::Struct) ||
+        InterfacePtrRef
          )) {
         Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty->ToString());
         YIELD_ERROR(FieldAcc);
+    }
+
+    if (InterfacePtrRef) {
+        InterfaceDecl* Interface = Site->Ty->AsPointerTy()->GetElementType()->AsStructType()->GetInterface();
+        auto Itr = Interface->Funcs.find(FieldAcc->Ident);
+        if (Itr != Interface->Funcs.end()) {
+            FieldAcc->Ty = Context.FuncRefType;
+            FieldAcc->RefKind = IdentRef::RK::Funcs;
+            FieldAcc->Funcs = &Itr->second;
+            FieldAcc->IsFoldable = false;
+            return;
+        } else {
+            if (ExpectsFuncCall) {
+                Error(FieldAcc, "Could not find a function for identifier '%s'", FieldAcc->Ident);
+            } else {
+                Error(FieldAcc, "Could not find symbol for identifier '%s'", FieldAcc->Ident);
+            }
+            YIELD_ERROR(FieldAcc);
+        }
     }
 
     StructType* StructTy;
@@ -2266,7 +2414,12 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
         }
     }
     
-    Context.RequestGen(Selected);
+    if (!Selected->Interface) {
+        // We do not want to generate this if it is an interface function
+        // because interface functions are just pointers to functions not
+        // actually functions themselves.
+        Context.RequestGen(Selected);
+    }
     
     return Selected;
 }
@@ -2462,18 +2615,6 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                           const llvm::SmallVector<NamedValue>& NamedArgs) {
     
     const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
-
-    auto ParamsToTypeInfo = [](FuncDecl* Func) {
-        llvm::SmallVector<TypeInfo> ParamTypes;
-        ParamTypes.reserve(Func->Params.size());
-        for (VarDecl* Param : Func->Params) {
-            ParamTypes.push_back(TypeInfo{
-                Param->Ty,
-                Param->HasConstAddress
-                });
-        }
-        return ParamTypes;
-    };
 
     if (Canidates && Canidates->size() == 1) {
         FuncDecl* SingleCanidate = (*Canidates)[0];
@@ -3265,8 +3406,31 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
             }
             return false;
         } else if (FromTy->IsPointer()) {
+            PointerType* ToPtrTy = ToTy->AsPointerTy();
             if (ToTy->Equals(Context.VoidPtrType)) {
                 return true; // Can always assign to void*
+            } else if (ToPtrTy->GetElementType()->GetKind() == TypeKind::Interface) {
+                // InterfaceType*
+                Type* FromPtrElmTy = FromTy->GetPointerElementType(Context);
+                Type* ToPtrElmTy = ToTy->GetPointerElementType(Context);
+                if (FromPtrElmTy->GetKind() == TypeKind::Struct) {
+                    StructDecl* Struct = FromPtrElmTy->AsStructType()->GetStruct();
+                    if (!Struct->Interfaces.empty()) {
+                        InterfaceDecl* Interface = ToPtrElmTy->AsStructType()->GetInterface();
+                        auto Itr = std::find_if(Struct->Interfaces.begin(), Struct->Interfaces.end(),
+                            [Interface](const InterfaceDecl* StructInterface) {
+                                return StructInterface == Interface;
+                            });
+                        return Itr != Struct->Interfaces.end();
+                    } else {
+                        return false;
+                    }
+                }
+                
+                if (FromPtrElmTy->Equals(ToPtrElmTy)) {
+                    return true;
+                }
+                return false;
             } else {
                 return ToTy->Equals(FromTy);
             }
@@ -3343,6 +3507,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
                         return false;
                     } else if (Kind == TypeKind::Import || Kind == TypeKind::FuncRef ||
                                Kind == TypeKind::StructRef || Kind == TypeKind::EnumRef ||
+                               Kind == TypeKind::InterfaceRef ||
                                Kind == TypeKind::EmptyArrayElm) {
                         return false;
                     }
@@ -3352,6 +3517,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
                 case TypeKind::FuncRef:
                 case TypeKind::StructRef:
                 case TypeKind::EnumRef:
+                case TypeKind::InterfaceRef:
                 case TypeKind::Void:
                 case TypeKind::EmptyArrayElm:
                     return false;
@@ -3554,34 +3720,7 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
 
 bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
     Identifier StructName = StructTy->GetStructName();
-    Decl* FoundDecl = nullptr;
-
-    auto Itr = FScope->Imports.find(StructName);
-    if (Itr != FScope->Imports.end() && Itr->second.Decl) {
-        FoundDecl = Itr->second.Decl;
-    }
-
-    if (!FoundDecl) {
-        if (Decl* Dec = FScope->FindDecl(StructName)) {
-            if (Dec->IsStructLike()) {
-                FoundDecl = Dec;
-            }
-        }
-    }
-
-    if (!FoundDecl) {
-        auto Itr = Mod->DefaultNamespace->Decls.find(StructName);
-        if (Itr != Mod->DefaultNamespace->Decls.end() && Itr->second->IsStructLike()) {
-            FoundDecl = Itr->second;
-        }
-    }
-
-    if (!FoundDecl && FScope->UniqueNSpace) {
-        auto Itr = FScope->UniqueNSpace->Decls.find(StructName);
-        if (Itr != FScope->UniqueNSpace->Decls.end() && Itr->second->IsStructLike()) {
-            FoundDecl = Itr->second;
-        }
-    }
+    Decl* FoundDecl = FindStructLikeTypeByName(StructName);
 
     if (!FoundDecl) {
         Error(StructTy->GetErrorLoc(), "Could not find struct, or enum by name '%s'", StructTy->GetStructName());
@@ -3599,11 +3738,50 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
         StructTy->AssignEnum(Enum);
         StructTy->SetUniqueId(Enum->UniqueTypeId);
         Analyzer.CheckEnumDecl(Enum);
+    } else if (FoundDecl->Is(AstKind::INTERFACE_DECL)) {
+        InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
+        StructTy->AssignInterface(Interface);
+        StructTy->SetUniqueId(Interface->UniqueTypeId);
+        Analyzer.CheckInterfaceDecl(Interface);
     } else {
         assert(!"Not handled");
     }
     
     return true;
+}
+
+arco::Decl* arco::SemAnalyzer::FindStructLikeTypeByName(Identifier Name) {
+
+    Decl* FoundDecl = nullptr;
+
+    auto Itr = FScope->Imports.find(Name);
+    if (Itr != FScope->Imports.end() && Itr->second.Decl) {
+        FoundDecl = Itr->second.Decl;
+    }
+
+    if (!FoundDecl) {
+        if (Decl* Dec = FScope->FindDecl(Name)) {
+            if (Dec->IsStructLike()) {
+                FoundDecl = Dec;
+            }
+        }
+    }
+
+    if (!FoundDecl) {
+        auto Itr = Mod->DefaultNamespace->Decls.find(Name);
+        if (Itr != Mod->DefaultNamespace->Decls.end() && Itr->second->IsStructLike()) {
+            FoundDecl = Itr->second;
+        }
+    }
+
+    if (!FoundDecl && FScope->UniqueNSpace) {
+        auto Itr = FScope->UniqueNSpace->Decls.find(Name);
+        if (Itr != FScope->UniqueNSpace->Decls.end() && Itr->second->IsStructLike()) {
+            FoundDecl = Itr->second;
+        }
+    }
+
+    return FoundDecl;
 }
 
 void arco::SemAnalyzer::CheckModifibility(Expr* LValue) {
@@ -3712,6 +3890,9 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
     //
     // fn foo(a int) {}
     // fn foo(a int, b := 4) {}
+    //
+    // TODO: Alternative optimization: mark functions which already stated that they
+    // are a duplicate and then just skip them in the future.
     for (const FuncDecl* Func1 : FuncList) {
         for (const FuncDecl* Func2 : FuncList) {
             if (Func1 == Func2) continue;
@@ -3752,4 +3933,16 @@ void arco::SemAnalyzer::DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLo
     Log.BeginError(ErrorLoc, ErrMsg, FromExpr->Ty->ToString(), ToTy->ToString());
     DisplayNoteInfoForTypeMismatch(FromExpr, ToTy);
     Log.EndError();
+}
+
+llvm::SmallVector<arco::TypeInfo> arco::SemAnalyzer::ParamsToTypeInfo(FuncDecl* Func) {
+    llvm::SmallVector<TypeInfo> ParamTypes;
+    ParamTypes.reserve(Func->Params.size());
+    for (VarDecl* Param : Func->Params) {
+        ParamTypes.push_back(TypeInfo{
+            Param->Ty,
+            Param->HasConstAddress
+            });
+    }
+    return ParamTypes;
 }

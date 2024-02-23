@@ -213,7 +213,7 @@ int main() {
     RunTest(SRC("implicit_ptrs/implicit_ptrs1.arco"), "55");
     RunTest(SRC("implicit_ptrs/implicit_ptrs2.arco"), "65 72");
     RunTest(SRC("implicit_ptrs/implicit_ptrs3.arco"), "65 72");
-
+    
     RunTest(SRC("named_args/named_args1.arco"), "314 14");
     RunTest(SRC("named_args/named_args2.arco"), "314 14");
     RunTest(SRC("named_args/named_args3.arco"), "314 14");
@@ -221,6 +221,11 @@ int main() {
     RunTest(SRC("named_args/named_args5.arco"), "314 14");
     RunTest(SRC("named_args/named_args6.arco"), "314 14");
     RunTest(SRC("named_args/named_args7.arco"), "42 11 83 61 342");
+
+    RunTest(SRC("interfaces/interfaces1.arco"), "42");
+    RunTest(SRC("interfaces/interfaces2.arco"), "42 341");
+    RunTest(SRC("interfaces/interfaces3.arco"), "52");
+    RunTest(SRC("interfaces/interfaces4.arco"), "42 32 56 88");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

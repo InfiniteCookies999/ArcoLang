@@ -24,6 +24,7 @@ namespace arco {
         
         void CheckStructDecl(StructDecl* Struct);
         void CheckEnumDecl(EnumDecl* Enum);
+        void CheckInterfaceDecl(InterfaceDecl* Interface);
 
         void CheckVarDecl(VarDecl* Var);
 
@@ -59,6 +60,9 @@ namespace arco {
         void CheckFuncParams(FuncDecl* Func);
 
         void CheckNode(AstNode* Node);
+
+        void FixupInterfaces(StructDecl* Struct);
+        void FixupInterface(StructDecl* Struct, const StructDecl::InterfaceHook& InterfaceHook);
 
         //===-------------------------------===//
         // Statements
@@ -157,6 +161,8 @@ namespace arco {
         bool FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic);
         bool FixupStructType(StructType* StructTy);
 
+        Decl* FindStructLikeTypeByName(Identifier Name);
+
         void CheckModifibility(Expr* LValue);
         bool IsLValue(Expr* E);
 
@@ -171,6 +177,8 @@ namespace arco {
         void DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToTy);
         void DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLoc ErrorLoc,
                                          Expr* FromExpr, Type* ToTy);
+
+        static llvm::SmallVector<TypeInfo> ParamsToTypeInfo(FuncDecl* Func);
 
         void Error(SourceLoc Loc, const char* Msg) {
             Log.BeginError(Loc, Msg);

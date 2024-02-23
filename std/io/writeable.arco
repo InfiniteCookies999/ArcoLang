@@ -1,0 +1,16 @@
+
+/*
+ * A writable interface for writing buffers with explicit
+ * lengths. This may be used by files, sockets, or anything
+ * which writes bytes.
+ */
+Writeable interface {
+
+    /*
+     * Writes the bytes of the buffer with the given length.
+     *
+     * @return how many bytes were actually written.
+     */
+    fn write_buffer(buffer cstr, length int) int;
+
+}

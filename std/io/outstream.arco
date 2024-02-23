@@ -1,4 +1,3 @@
-import files.FileHandle;
 import reflect.Any;
 import reflect.Type;
 import reflect.TypeId;
@@ -9,24 +8,18 @@ import reflect.TypeId;
  */
 OutStream struct {
     
-    // TODO: This handle should eventually be more abstract
-    //       and be a any writable handle instead.
-    private handle FileHandle;
+    private handle Writeable*;
 
-    OutStream(handle void*, auto_close := true)
-        : handle(FileHandle{handle, auto_close}) {
+    OutStream(handle Writeable*)
+        : handle(handle) {
     }
 
-    // TODO: This stream should not write directly to the handle.
-    //       In the future the stream should be abstracted in such
-    //       a way that it writes to another stream such as a buffered
-    //       output stream, which then writes to the handle.
-    fn write(msg cstr, length int) {
-        handle.write(msg, length);
+    fn write_buffer(msg cstr, length int) {
+        handle.write_buffer(msg, length);
     }
 
     fn write(msg cstr) {
-        write(msg, strlen(msg));
+        write_buffer(msg, strlen(msg));
     }
 
     fn write(b bool) {
@@ -38,7 +31,7 @@ OutStream struct {
     }
 
     fn write(c char) {
-        write(&c, 1);
+        write_buffer(&c, 1);
     }
 
     fn write(i int64, base := 10) {
@@ -59,7 +52,7 @@ OutStream struct {
         ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 
         length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
-        write(ptr, length);
+        write_buffer(ptr, length);
     }
 
     fn write(i int, base := 10) {
@@ -130,7 +123,7 @@ OutStream struct {
             //if type.struct_info == typeof(String).struct_info {
             if type == typeof(String) {
                 string := cast(String*) value;
-                write(string.buffer, string.length);
+                write_buffer(string.buffer, string.length);
                 return;
             }
             
@@ -269,9 +262,5 @@ OutStream struct {
 
     fn writeln() {
         write("\n", 1);
-    }
-
-    fn close() {
-        handle.close();
     }
 }

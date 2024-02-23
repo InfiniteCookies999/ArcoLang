@@ -109,7 +109,7 @@ arco::ArrayType* arco::Type::AsArrayTy() {
 }
 
 arco::StructType* arco::Type::AsStructType() {
-    assert(GetKind() == TypeKind::Struct && "Not a struct type");
+    assert((GetKind() == TypeKind::Struct || GetKind() == TypeKind::Interface) && "Not a struct type");
     return static_cast<StructType*>(Unbox());
 }
 
@@ -148,7 +148,7 @@ const arco::ArrayType* arco::Type::AsArrayTy() const {
 }
 
 const arco::StructType* arco::Type::AsStructType() const {
-    assert(GetRealKind() == TypeKind::Struct && "Not a struct type");
+    assert((GetKind() == TypeKind::Struct || GetKind() == TypeKind::Interface) && "Not a struct type");
     return static_cast<const StructType*>(Unbox());
 }
 
@@ -266,15 +266,15 @@ std::string arco::Type::ToString() const {
     case TypeKind::Int16:		    return "int16";
     case TypeKind::Int32:		    return "int32";
     case TypeKind::Int64:		    return "int64";
-    case TypeKind::UInt8:    return "uint8";
-    case TypeKind::UInt16:   return "uint16";
-    case TypeKind::UInt32:   return "uint32";
-    case TypeKind::UInt64:   return "uint64";
+    case TypeKind::UInt8:           return "uint8";
+    case TypeKind::UInt16:          return "uint16";
+    case TypeKind::UInt32:          return "uint32";
+    case TypeKind::UInt64:          return "uint64";
     case TypeKind::Float32:         return "f32";
     case TypeKind::Float64:         return "f64";
     case TypeKind::Char:            return "char";
     case TypeKind::Int:             return "int";
-    case TypeKind::UInt:     return "uint";
+    case TypeKind::UInt:            return "uint";
     case TypeKind::Void:            return "void";
     case TypeKind::Null:            return "null";
     case TypeKind::CStr:            return "cstr";
@@ -285,6 +285,7 @@ std::string arco::Type::ToString() const {
     case TypeKind::FuncRef:         return "fn reference";
     case TypeKind::StructRef:       return "struct reference";
     case TypeKind::EnumRef:         return "enum reference";
+    case TypeKind::InterfaceRef:    return "interface reference";
     case TypeKind::Pointer: {
         if (!this->UniqueId) {
             return "error";
@@ -317,7 +318,8 @@ std::string arco::Type::ToString() const {
         return Val;
     }
     case TypeKind::Struct:
-    case TypeKind::Enum: {
+    case TypeKind::Enum:
+    case TypeKind::Interface: {
         if (!this->UniqueId) {
             return "error";
         }

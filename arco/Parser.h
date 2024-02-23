@@ -91,11 +91,13 @@ namespace arco {
         void ParseOptStmt(AstNode*& Stmt, u16 TokenEndDelim);
         AstNode* ParseStmt();
         FuncDecl* ParseFuncDecl(Modifiers Mods);
+        void ParseFuncSignature(FuncDecl* Func);
         VarDecl* ParseVarDecl(Modifiers Mods);
         VarDeclList* ParseVarDeclList(Modifiers Mods);
         VarDecl* CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods);
         StructDecl* ParseStructDecl(Modifiers Mods);
         EnumDecl* ParseEnumDecl(Modifiers Mods);
+        InterfaceDecl* ParseInterfaceDecl(Modifiers Mods);
 
         void ParseScopeStmts(LexScope& Scope);
 

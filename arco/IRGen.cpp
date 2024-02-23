@@ -43,6 +43,19 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& OS, const LLTypePrinter& Printe
     return OS;
 }
 
+
+namespace arco {
+static arco::FuncDecl* GetMappedInterfaceFunc(FuncDecl* InterfaceFunc, FuncsList& Funcs) {
+    for (FuncDecl* Func : Funcs) {
+        if (Func->MappedInterfaceFunc == InterfaceFunc) {
+            return Func;
+        }
+    }
+    assert(!"Unreachable: did not find mapped interface function");
+    return nullptr;
+}
+}
+
 bool arco::FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes) {
     return StructTy->GetStruct()->NeedsDestruction ||
         SizeInBytes > LLModule.getDataLayout().getPointerSize();
@@ -103,8 +116,20 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
         return llvm::Type::getDoubleTy(LLContext);
     case TypeKind::Pointer: {
         PointerType* PtrTy = Ty->AsPointerTy();
-        if (PtrTy->GetElementType() == Context.VoidType) {
+        Type* ElmTy = PtrTy->GetElementType();
+        if (ElmTy->Equals(Context.VoidType)) {
             return llvm::Type::getInt8PtrTy(LLContext);
+        } else if (ElmTy->GetKind() == TypeKind::Interface) {
+            InterfaceDecl* Interface = ElmTy->AsStructType()->GetInterface();
+            if (Interface->NumFuncs == 1) {
+                // Will just load the function immediately.
+                llvm::Type* PtrTy = llvm::PointerType::get(GenArcoConvFuncType(Context, Interface->Funcs.begin()->second[0]), 0);
+                return llvm::PointerType::get(PtrTy, 0);
+            } else {
+                // i8** point to index in vtable array.
+                llvm::Type* PtrTy = llvm::PointerType::get(llvm::Type::getInt8PtrTy(LLContext), 0);
+                return llvm::PointerType::get(PtrTy, 0);
+            }
         } else {
             return llvm::PointerType::get(GenType(Context, PtrTy->GetElementType()), 0);
         }
@@ -195,18 +220,96 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
     Struct->LLStructTy = LLStructTy; // Set early to prevent endless recursive
 
     llvm::SmallVector<llvm::Type*> LLStructFieldTypes;
-    LLStructFieldTypes.resize(Struct->Fields.size());
+    ulen NumFields = 0;
+    if (!Struct->Interfaces.empty()) {
+        NumFields += Struct->Interfaces.size();
+    }
+    NumFields += Struct->Fields.size();
+    LLStructFieldTypes.resize(NumFields);
+    for (ulen i = 0; i < Struct->Interfaces.size(); i++) {
+        InterfaceDecl* Interface = Struct->Interfaces[i];
+        if (Interface->NumFuncs == 1) {
+            FuncDecl* InterfaceFunc = Interface->Funcs.begin()->second[0];
+            LLStructFieldTypes[i] = llvm::PointerType::get(GenArcoConvFuncType(Context, InterfaceFunc), 0);
+        } else {
+            LLStructFieldTypes[i] = llvm::Type::getInt8PtrTy(Context.LLContext);
+        }
+    }
+
     if (Struct->Fields.empty()) {
         LLStructFieldTypes.push_back(llvm::Type::getInt8Ty(Context.LLContext));
     } else {
         for (VarDecl* Field : Struct->Fields) {
-            LLStructFieldTypes[Field->FieldIdx] = GenType(Context, Field->Ty);	
+            LLStructFieldTypes[Field->LLFieldIdx] = GenType(Context, Field->Ty);
         }
     }
     LLStructTy->setBody(LLStructFieldTypes);
     LLStructTy->setName(Struct->Name.Text);
 
+    //if (!Struct->Interfaces.empty()) {
+    //    const llvm::StructLayout* LLLayout = Context.LLArcoModule.getDataLayout().getStructLayout(LLStructTy);
+    //    //Struct->VirtualOffset = LLLayout->getElementOffset(1); // TODO: This is totally wrong!
+    //}
+
     return LLStructTy;
+}
+
+llvm::FunctionType* arco::GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Func) {
+    llvm::Module& LLModule = Context.LLArcoModule;
+    llvm::LLVMContext& LLContext = Context.LLContext;
+
+    llvm::Type* LLRetTy;
+    if (Func->RetTy->GetKind() == TypeKind::Struct) {
+        StructType* StructTy = Func->RetTy->AsStructType();
+
+        ulen SizeInBytes = SizeOfTypeInBytes(LLModule, GenStructType(Context, StructTy->GetStruct()));
+        if (!FuncUsesParamRetSlot(LLModule, StructTy, SizeInBytes)) {
+            // Return type is optimized to fit into an integer.
+            Func->UsesOptimizedIntRet = true;
+            LLRetTy = llvm::Type::getIntNTy(LLContext, NextPow2(SizeInBytes) * 8); // *8 because bits
+        } else {
+            // Copy elision case by passing return value as param.
+            Func->UsesParamRetSlot = true;
+            LLRetTy = llvm::Type::getVoidTy(LLContext);
+        }
+    } else {
+        LLRetTy = Func == Context.MainEntryFunc ? llvm::Type::getInt32Ty(LLContext)
+            : GenType(Context, Func->RetTy);
+    }
+
+    llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
+    ulen ImplicitParams = 0;
+
+    if (Func->MappedInterfaceFunc || Func->Interface) {
+        // In the case that the function is mapping to an interface function it actually needs
+        // to recieve an i8* because the pointer that the interface passes won't be correct and
+        // the implementation function (this function) will have to reajust the "this" pointer
+        // to be correct.
+        LLParamTypes.push_back(llvm::Type::getInt8PtrTy(LLContext));
+        ++ImplicitParams;
+    } else if (Func->Struct) {
+        // Member functions recieve pointers to the struct they
+        // are contained inside of.
+        LLParamTypes.push_back(llvm::PointerType::get(GenStructType(Context, Func->Struct), 0));
+        ++ImplicitParams;
+    }
+    if (Func->UsesParamRetSlot) {
+        LLParamTypes.push_back(llvm::PointerType::get(GenType(Context, Func->RetTy), 0));
+        ++ImplicitParams;
+    }
+    for (VarDecl* Param : Func->Params) {
+        Type* Ty = Param->Ty;
+        if (Ty->GetKind() == TypeKind::Array) {
+            // Arrays are decayed when passed.
+            LLParamTypes.push_back(
+                llvm::PointerType::get(GenType(Context, Ty->AsArrayTy()->GetElementType()), 0)
+            );
+        } else {
+            LLParamTypes.push_back(GenType(Context, Ty));
+        }
+    }
+
+    return llvm::FunctionType::get(LLRetTy, LLParamTypes, false);
 }
 
 
@@ -261,17 +364,14 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
     Builder.SetInsertPoint(LLEntryBlock);
 
-    // Allocating "this" pointer
-    llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this");
-
-    // Storing "this" pointer
-    Builder.CreateStore(LLFunc->getArg(0), LLThisAddr);
-
-    LLThis = CreateLoad(LLThisAddr);
+    LLThis = LLFunc->getArg(0);
     LLThis->setName("this");
 
+    if (!Struct->Interfaces.empty()) {
+        GenCallToInitVTableFunc(LLThis, Struct);
+    }
     for (VarDecl* Field : Struct->Fields) {
-        llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
+        llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
         if (Field->Assignment) {
             GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
         } else {
@@ -344,60 +444,13 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
     // TODO: Native functions will not need to return data structures
     //       in the same way.
 
-    llvm::Type* LLRetTy;
-    if (Func->RetTy->GetKind() == TypeKind::Struct) {
-        StructType* StructTy = Func->RetTy->AsStructType();
-        
-        ulen SizeInBytes = SizeOfTypeInBytes(GenStructType(StructTy));
-        if (!FuncUsesParamRetSlot(LLModule, StructTy, SizeInBytes)) {
-            // Return type is optimized to fit into an integer.
-            Func->UsesOptimizedIntRet = true;
-            LLRetTy = llvm::Type::getIntNTy(LLContext, NextPow2(SizeInBytes) * 8); // *8 because bits
-        } else {
-            // Copy elision case by passing return value as param.
-            Func->UsesParamRetSlot = true;
-            LLRetTy = llvm::Type::getVoidTy(LLContext);
-        }
-    } else {
-        LLRetTy = Func == Context.MainEntryFunc ? llvm::Type::getInt32Ty(LLContext)
-                                                : GenType(Func->RetTy);
-    }
+    llvm::FunctionType* LLFuncType = GenArcoConvFuncType(Context, Func);
 
     llvm::Twine LLFuncName = !Func->NativeName.empty() ? Func->NativeName : Func->Name.Text;
     llvm::Twine LLFullFuncName = (Func == Context.MainEntryFunc ||
                                   (Func->Mods & ModKinds::NATIVE))
                                ? LLFuncName
                                : LLFuncName.concat(".arco");
-    
-    llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
-    ulen ImplicitParams = 0;
-
-    if (Func->Struct) {
-        // Member functions recieve pointers to the struct they
-        // are contained inside of.
-
-        // TODO: !Enum
-        LLParamTypes.push_back(llvm::PointerType::get(GenStructType(Func->Struct), 0));
-        ++ImplicitParams;
-    }
-    if (Func->UsesParamRetSlot) {
-        LLParamTypes.push_back(llvm::PointerType::get(GenType(Func->RetTy), 0));
-        ++ImplicitParams;
-    }
-    for (VarDecl* Param : Func->Params) {
-        Type* Ty = Param->Ty;
-        if (Ty->GetKind() == TypeKind::Array) {
-            // Arrays are decayed when passed.
-            LLParamTypes.push_back(
-                llvm::PointerType::get(GenType(Ty->AsArrayTy()->GetElementType()), 0)
-            );
-        } else {
-            LLParamTypes.push_back(GenType(Ty));
-        }
-    }
-
-    llvm::FunctionType* LLFuncType =
-        llvm::FunctionType::get(LLRetTy, LLParamTypes, false);
 
     llvm::Function* LLFunc = llvm::Function::Create(
         LLFuncType,
@@ -425,7 +478,12 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 
     Func->LLFunction = LLFunc;
     
+    ulen ImplicitParams = 0;
+    if (Func->Struct) {
+        ++ImplicitParams;
+    }
     if (Func->UsesParamRetSlot) {
+        ++ImplicitParams;
         GetElisionRetSlotAddr(Func)->setName("ret.addr");
     }
     for (ulen i = 0; i < Func->Params.size(); i++) {
@@ -488,9 +546,32 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     ulen LLParamIndex = 0;
     if (Func->Struct) {
         // Member function pointer.
-        llvm::Value* LLThisAddr = Builder.CreateAlloca(LLFunc->getArg(0)->getType(), nullptr, "this.addr");
-        Builder.CreateStore(LLFunc->getArg(LLParamIndex++), LLThisAddr);
-        LLThis = CreateLoad(LLThisAddr);
+        LLThis = LLFunc->getArg(LLParamIndex++);
+        if (Func->MappedInterfaceFunc) {
+            // Must adjust the "this" pointer since the interfaces are not guaranteed to pass the correct address.
+            StructDecl* Struct = Func->Struct;
+            llvm::StructType* LLStructTy = GenStructType(Func->Struct);
+            ulen InterfaceOffset = 0;
+            InterfaceDecl* Interface = Func->MappedInterfaceFunc->Interface;
+            for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
+                if (InheritedInterface == Interface) {
+                    break;
+                } else {
+                    ++InterfaceOffset;
+                }
+            }
+
+            if (InterfaceOffset != 0) {
+                // Need to subtract from the passed address to get back to the struct's base address.
+
+                // TODO: Should we be relying on the layout information of the struct instead?
+                const llvm::StructLayout* LLLayout = LLModule.getDataLayout().getStructLayout(LLStructTy);
+
+                long long LLInterfaceOffset = (long long)LLLayout->getElementOffset(InterfaceOffset);
+                LLThis = CreateInBoundsGEP(LLThis, { GetLLInt64(-LLInterfaceOffset) });
+            }
+            LLThis = Builder.CreateBitCast(LLThis, llvm::PointerType::get(LLStructTy, 0));
+        }
         LLThis->setName("this");
     }
     if (Func->UsesParamRetSlot) {
@@ -553,7 +634,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (Func->IsDestructor) {
         for (VarDecl* Field : Func->Struct->Fields) {
             if (Field->Ty->TypeNeedsDestruction()) {
-                CallDestructors(Field->Ty, CreateStructGEP(LLThis, Field->FieldIdx));
+                CallDestructors(Field->Ty, CreateStructGEP(LLThis, Field->LLFieldIdx));
             }
         }
     }
@@ -1905,7 +1986,7 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
     }
     
     if (Var->IsField()) {
-        return CreateStructGEP(LLThis, Var->FieldIdx);
+        return CreateStructGEP(LLThis, Var->LLFieldIdx);
     } else {
         return Var->LLAddress;
     }
@@ -1946,7 +2027,7 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
     if (Site->Ty->GetKind() == TypeKind::Pointer &&
         Site->IsNot(AstKind::THIS_REF) && /* Reference is already loaded. */
         Site->IsNot(AstKind::FUNC_CALL) && /* no address to load */
-        Site->IsNot(AstKind::TYPE_CAST) /* type cast calls GenRValue */) {
+        Site->IsNot(AstKind::TYPE_CAST)/* type cast calls GenRValue */) {
         LLSite = CreateLoad(LLSite);
         LLSite->setName("ptr.deref");
     }
@@ -1955,7 +2036,7 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
         // Calling a member function. Ex.  'a.b()'
         return LLSite;
     } else {
-        return CreateStructGEP(LLSite, FieldAcc->Var->FieldIdx);
+        return CreateStructGEP(LLSite, FieldAcc->Var->LLFieldIdx);
     }
 }
 
@@ -1988,7 +2069,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call, llvm::Value* LLAddr)
         UsesParameterRetSlot = FuncUsesParamRetSlot(Context, Call->Ty->AsStructType());
     }
 
-    llvm::SmallVector<llvm::Value*, 2> LLArgs;
+    llvm::SmallVector<llvm::Value*> LLArgs;
     LLArgs.resize(Call->Args.size() + (UsesParameterRetSlot ? 1 : 0));
     ulen ArgIdx = 0;
     
@@ -2019,14 +2100,16 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    llvm::SmallVector<NamedValue>& NamedArgs,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong) {
-    GenFuncDecl(CalledFunc);
+    if (!CalledFunc->Interface) {
+        GenFuncDecl(CalledFunc);
+    }
     
     if (CalledFunc->LLVMIntrinsicID) {
         return GenLLVMIntrinsicCall(CallNode->Loc, CalledFunc, Args);
     }
 
     ulen NumArgs = CalledFunc->Params.size();
-    if (CalledFunc->Struct) {
+    if (CalledFunc->Struct || CalledFunc->Interface) {
         ++NumArgs;
     }
     if (CalledFunc->UsesParamRetSlot) {
@@ -2037,23 +2120,59 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     LLArgs.resize(NumArgs);
 
     ulen ArgOffset = 0;
+    llvm::Value* LLInterfaceAddr;
     if (CalledFunc->Struct) {
         if (CalledFunc->IsConstructor) {
             LLArgs[ArgOffset++] = LLAddr;
         } else {
-            
-
             // Calling a member function from a variable so
             // that the variable's address gets passed in.
             FuncCall* Call = static_cast<FuncCall*>(CallNode);
+            llvm::Value* LLThisPass;
             if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
                 // TODO: does this.memfunc() work?
-                LLArgs[ArgOffset++] = GenNode(Call->Site);
+                LLThisPass = GenNode(Call->Site);
             } else {
                 // Calling one member function from another.
-                LLArgs[ArgOffset++] = LLThis;
+                LLThisPass = LLThis;
             }
+            if (CalledFunc->MappedInterfaceFunc) {
+                // Calling a virtual function so need to adjust the base
+                // address which will then readjust it back at the called
+                // function.
+                
+                StructDecl* Struct = CalledFunc->Struct;
+                llvm::StructType* LLStructTy = GenStructType(Struct);
+                ulen InterfaceOffset = 0;
+                InterfaceDecl* Interface = CalledFunc->MappedInterfaceFunc->Interface;
+                for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
+                    if (InheritedInterface == Interface) {
+                        break;
+                    } else {
+                        ++InterfaceOffset;
+                    }
+                }
+
+                // It expects the passed value to be i8* when mapping virtual functions.
+                LLThisPass = Builder.CreateBitCast(LLThisPass, llvm::Type::getInt8PtrTy(LLContext));
+                if (InterfaceOffset != 0) {
+                    // Need to subtract from the passed address to get back to the struct's base address.
+
+                    // TODO: Should we be relying on the layout information of the struct instead?
+                    const llvm::StructLayout* LLLayout = LLModule.getDataLayout().getStructLayout(LLStructTy);
+
+                    long long LLInterfaceOffset = (long long)LLLayout->getElementOffset(InterfaceOffset);
+                    LLThisPass = CreateInBoundsGEP(LLThisPass, { GetLLInt64(LLInterfaceOffset) });
+
+                }
+            }
+            LLArgs[ArgOffset++] = LLThisPass;
         }
+    } else if (CalledFunc->Interface) {
+        FuncCall* Call = static_cast<FuncCall*>(CallNode);
+        FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(Call->Site);
+        LLInterfaceAddr = CreateLoad(GenNode(FieldAcc->Site));
+        LLArgs[ArgOffset++] = Builder.CreateBitCast(LLInterfaceAddr, llvm::Type::getInt8PtrTy(LLContext, 0));
     }
     if (CalledFunc->UsesParamRetSlot) {
         LLArgs[ArgOffset++] = GenFuncCallParamRetSlot(CallNode->Ty, LLAddr);
@@ -2110,22 +2229,51 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         }
     }
     
-    llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
+    llvm::Value* LLRetValue;
+    if (!CalledFunc->Interface) {
 
-    // -- DEBUG
-    //llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
-    //llvm::outs() << "Types passed to function:\n";
-    //for (ulen i = 0; i < LLArgs.size(); i++) {
-    //	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
-    //}
-    //llvm::outs() << "Types expected by function:\n";
-    //for (ulen i = 0; i < LLCalledFunc->arg_size(); i++) {
-    //	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
-    //}
-    //llvm::outs() << "\n";
+        llvm::Function* LLCalledFunc = CalledFunc->LLFunction;
 
-    llvm::Value* LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
-    EMIT_DI(EmitDebugLocation(CallNode));
+        // -- DEBUG
+        //llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
+        //llvm::outs() << "Types passed to function:\n";
+        //for (ulen i = 0; i < LLArgs.size(); i++) {
+        //	llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
+        //}
+        //llvm::outs() << "Types expected by function:\n";
+        //for (ulen i = 0; i < LLCalledFunc->arg_size(); i++) {
+        //	llvm::outs() << LLValTypePrinter(LLCalledFunc->getArg(i)) << "\n";
+        //}
+        //llvm::outs() << "\n";
+
+        LLRetValue = Builder.CreateCall(LLCalledFunc, LLArgs);
+        EMIT_DI(EmitDebugLocation(CallNode));
+
+    } else {
+        InterfaceDecl* Interface = CalledFunc->Interface;
+
+        if (Interface->NumFuncs == 1) {
+            llvm::Value* LLMappedInterfaceFunc = CreateLoad(LLInterfaceAddr);
+            llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(LLMappedInterfaceFunc->getType()->getPointerElementType());
+            LLRetValue = Builder.CreateCall(LLFuncTy, LLMappedInterfaceFunc, LLArgs);
+        } else {
+            llvm::Value* LLOffsetIntoVTable = CreateLoad(LLInterfaceAddr);
+            if (CalledFunc->InterfaceIdx != 0) {
+                // Must offset into the array from the already given offset to select
+                // the correct function.
+                // TODO: Hope this is right because this honestly is a bit spooky having to use an existing
+                // address of an array to then obtain the next address since we do not have the address of the
+                // array itself.
+                LLOffsetIntoVTable = CreateInBoundsGEP(LLOffsetIntoVTable, { GetLLUInt64(CalledFunc->InterfaceIdx) });
+            }
+
+            llvm::Value* LLFuncPtr = CreateLoad(LLOffsetIntoVTable);
+            // Have to bitcast to the function type.
+            llvm::FunctionType* LLFuncTy = GenArcoConvFuncType(Context, CalledFunc);
+            LLFuncPtr = Builder.CreateBitCast(LLFuncPtr, llvm::PointerType::get(LLFuncTy, 0));
+            LLRetValue = Builder.CreateCall(LLFuncTy, LLFuncPtr, LLArgs);
+        }
+    }
 
     if (LLRetValue->getType() != llvm::Type::getVoidTy(LLContext)) {
         LLRetValue->setName("ret.val");
@@ -2436,6 +2584,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
         AddObjectToDestroyOpt(StructTy, LLAddr);
     }
 
+    // TODO: Isn't this meant to call a default constructor if one exists?
     if (StructInit->CalledConstructor) {
         GenFuncCallGeneral(
             StructInit,
@@ -2457,25 +2606,32 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                                           StructDecl* Struct,
                                           llvm::SmallVector<NonNamedValue>& Args,
                                           llvm::SmallVector<NamedValue>& NamedArgs) {
+
+    // Initializing the VTable and storing pointers to it.
+    
+    // TODO: Language optimization: This is probably pointless if the
+    //       structures only has like a single interface.
+    GenCallToInitVTableFunc(LLAddr, Struct);
+
     ulen i = 0;
     for (i = 0; i < Args.size(); i++) {
         NonNamedValue Value = Args[i];
         VarDecl* Field = Struct->Fields[i];
         
-        llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
+        llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
         GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
     }
     for (NamedValue& Arg : NamedArgs) {
         VarDecl* Field = Arg.VarRef;
 
-        llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->FieldIdx);
+        llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
         GenAssignment(LLFieldAddr, Field->Ty, Arg.AssignValue, Field->HasConstAddress);
     }
     if (NamedArgs.empty()) {
         for (; i < Struct->Fields.size(); i++) {
             VarDecl* Field = Struct->Fields[i];
 
-            llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
+            llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
             if (Field->Assignment) {
                 GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
             } else {
@@ -2493,7 +2649,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                     return A.VarRef == Field;
                 });
             if (Itr == NamedArgs.end()) {
-                llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, i);
+                llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
                 if (Field->Assignment) {
                     GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
                 } else {
@@ -2638,13 +2794,15 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
     for (VarDecl* Field : Struct->Fields) {
         
         Identifier FieldName = Field->Name;
-        ulen FieldOffset = LLStructLayout->getElementOffset(Field->FieldIdx);
+        ulen FieldOffset = LLStructLayout->getElementOffset(Field->LLFieldIdx);
         llvm::SmallVector<llvm::Constant*, 2> LLFieldElements = {
             llvm::cast<llvm::Constant>(GenStringLiteral(FieldName.Text.data(), FieldName.Text.size())),
             GenTypeOfGlobal(Field->Ty),
             GetSystemInt(FieldOffset)
         };
 
+        // NOTE: Not using LLFieldIdx here because typeof does not include the field information of the
+        //       interfaces.
         LLFields[Field->FieldIdx] = llvm::ConstantStruct::get(LLFieldStructType, LLFieldElements);
     }
     std::string LLGlobalFieldArrayName = "__global.typeinfo.field.arr." + std::to_string(Context.NumGeneratedGlobalVars++);
@@ -2838,8 +2996,75 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
                 return ArrayToPointer(LLValue);
             }
         } else if (FromType->IsPointer()) {
-            // Pointer to Pointer
-            return Builder.CreateBitCast(LLValue, LLCastType);
+            PointerType* PtrType = ToType->AsPointerTy();
+            
+            if (PtrType->GetElementType()->GetKind() == TypeKind::Interface) {
+                InterfaceDecl* Interface = PtrType->GetElementType()->AsStructType()->GetInterface();
+                StructDecl*    Struct    = FromType->AsPointerTy()->GetElementType()->AsStructType()->GetStruct();
+
+                ulen InterfaceOffset = 0;
+                for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
+                    if (InheritedInterface == Interface) {
+                        break;
+                    } else {
+                        ++InterfaceOffset;
+                    }
+                }
+                
+                llvm::Value* LLVTableAddr = CreateStructGEP(LLValue, InterfaceOffset);
+                return Builder.CreateBitCast(LLVTableAddr, LLCastType);
+            } else {
+                // Pointer to Pointer
+                return Builder.CreateBitCast(LLValue, LLCastType);
+            }
+
+            
+            /*if (PtrType->GetElementType()->GetKind() == TypeKind::Interface) {
+                // Need to load the interface functions.
+                InterfaceDecl* Interface = PtrType->GetElementType()->AsStructType()->GetInterface();
+                StructDecl*    Struct    = FromType->AsPointerTy()->GetElementType()->AsStructType()->GetStruct();
+
+                if (Interface->NumFuncs == 1) {
+                    // Need to point to relavent function of the struct.
+                    FuncDecl* InterfaceFunc = Interface->Funcs.begin()->second[0];
+                    FuncsList& Funcs = Struct->Funcs[InterfaceFunc->Name];
+                    // Just refind the function since there should not be very many
+                    // overloaded version of the function.
+                    FuncDecl* FoundFunc = GetMappedInterfaceFunc(InterfaceFunc, Funcs);
+                    
+                    GenFuncDecl(FoundFunc);
+
+                    llvm::Value* LLVTablePtrAddr = CreateStructGEP(LLValue, 0);
+                    llvm::Value* LLFuncAddr = FoundFunc->LLFunction;
+                    
+                    LLFuncAddr = Builder.CreateBitCast(LLFuncAddr, llvm::Type::getInt8PtrTy(LLContext));
+                    Builder.CreateStore(LLFuncAddr, LLVTablePtrAddr);
+
+                    return Builder.CreateBitCast(LLValue, LLCastType);
+                } else {
+                    llvm::GlobalVariable* LLVTable = GenVTable(Struct);
+
+                    llvm::Value* LLVTablePtrAddr = CreateStructGEP(LLValue, 0);
+
+                    ulen OffsetIntoVTable = 0;
+                    for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
+                        if (InheritedInterface == Interface) {
+                            break;
+                        } else if (InheritedInterface->NumFuncs != 1) {
+                            OffsetIntoVTable += InheritedInterface->NumFuncs;
+                        }
+                    }
+
+                    llvm::Value* LLPtrIntoVTable = GetArrayIndexAddress(LLVTable, GetLLUInt64(OffsetIntoVTable));
+                    LLPtrIntoVTable = Builder.CreateBitCast(LLPtrIntoVTable, llvm::Type::getInt8PtrTy(LLContext));
+                    Builder.CreateStore(LLPtrIntoVTable, LLVTablePtrAddr);
+
+                    return Builder.CreateBitCast(LLValue, LLCastType);
+                }
+            } else {
+                // Pointer to Pointer
+                return Builder.CreateBitCast(LLValue, LLCastType);
+            }*/
         } else if (FromType->IsInt()) {
             // Int to Ptr
             return Builder.CreateIntToPtr(LLValue, LLCastType);
@@ -3067,6 +3292,41 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
     return LLGlobalArray;
 }
 
+llvm::GlobalVariable* arco::IRGenerator::GenVTable(StructDecl* Struct) {
+    
+    ulen NumFuncs = 0;
+    for (InterfaceDecl* Interface : Struct->Interfaces) {
+        if (Interface->NumFuncs != 1) {
+            NumFuncs += Interface->NumFuncs;
+        }
+    }
+    llvm::SmallVector<llvm::Constant*> LLFuncPtrs;
+    LLFuncPtrs.reserve(NumFuncs);
+    llvm::Type* LLVoidPtrTy = llvm::Type::getInt8PtrTy(LLContext);
+    for (InterfaceDecl* Interface : Struct->Interfaces) {
+        if (Interface->NumFuncs != 1) {
+            for (auto& [Name, FuncList] : Interface->Funcs) {
+                for (FuncDecl* Func : FuncList) {
+                    // TODO: calling GetMappedInterfaceFunc may be too slow. Although it only
+                    // has to go through overloaded functions so it might be okay.
+                    FuncDecl* FoundFunc = GetMappedInterfaceFunc(Func, Struct->Funcs[Name]);
+                    GenFuncDecl(FoundFunc);
+                    llvm::Value* LLFuncPtr = Builder.CreateBitCast(FoundFunc->LLFunction, LLVoidPtrTy);
+                    LLFuncPtrs.push_back(llvm::cast<llvm::Constant>(LLFuncPtr));
+                }
+            }
+        }
+    }
+    llvm::ArrayType* LLArrayTy = llvm::ArrayType::get(LLVoidPtrTy, NumFuncs);
+    llvm::Constant* LLConstArray = llvm::ConstantArray::get(LLArrayTy, LLFuncPtrs);
+    
+    std::string LLGlobalVarName = std::string("__vtable.") + Struct->Name.Text.str() + "." + std::to_string(Context.NumGeneratedGlobalVars++);
+    llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalVarName, LLArrayTy);
+    LLGlobal->setInitializer(LLConstArray);
+
+    return LLGlobal;
+}
+
 llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
     llvm::Value* LLValue = CreateInBoundsGEP(LLArray,
                 { GetSystemUInt(0), GetSystemUInt(0) });
@@ -3142,6 +3402,11 @@ llvm::GlobalVariable* arco::IRGenerator::GenConstGlobalArray(llvm::Constant* LLA
     return LLGlobalVar;
 }
 
+ulen arco::IRGenerator::SizeOfTypeInBytesNonVirtualInclusive(Type* Ty) {
+    
+    return ulen();
+}
+
 inline llvm::Align arco::IRGenerator::GetAlignment(llvm::Type* LLType) {
     return llvm::Align(LLModule.getDataLayout().getPrefTypeAlignment(LLType));
 }
@@ -3203,8 +3468,11 @@ void arco::IRGenerator::MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
 }
 
 void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct) {
+    if (!Struct->Interfaces.empty()) {
+        GenCallToInitVTableFunc(LLThis, Struct);
+    }
     for (VarDecl* Field : Struct->Fields) {
-        llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->FieldIdx);
+        llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
         if (Expr* InitValue = Func->GetInitializerValue(Field)) {
             GenAssignment(LLFieldAddr, Field->Ty, InitValue, Field->HasConstAddress);
         } else if (Field->Assignment) {
@@ -3213,6 +3481,78 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
             GenDefaultValue(Field->Ty, LLFieldAddr);
         }
     }
+}
+
+void arco::IRGenerator::GenCallToInitVTableFunc(llvm::Value* LLAddr, StructDecl* Struct) {
+    if (!Struct->LLInitVTableFunc) {
+        Struct->LLInitVTableFunc = GenInitVTableFunc(Struct);
+    }
+    Builder.CreateCall(Struct->LLInitVTableFunc, { LLAddr });
+}
+
+llvm::Function* arco::IRGenerator::GenInitVTableFunc(StructDecl* Struct) {
+    llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(LLContext),
+        { llvm::PointerType::get(GenStructType(Struct), 0) },
+        false
+    );
+
+    llvm::Function* LLFunc = llvm::Function::Create(
+        LLFuncType,
+        llvm::Function::ExternalLinkage,
+        std::string("init.vtable.") + Struct->Name.Text,
+        LLModule
+    );
+    LLFunc->setDSOLocal(true);
+    llvm::Value* LLThis = LLFunc->getArg(0);
+
+    llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
+    llvm::BasicBlock* BackupInsertBlock = Builder.GetInsertBlock();
+    Builder.SetInsertPoint(LLEntryBlock);
+    
+    llvm::Value* LLVTable = nullptr;
+    for (ulen i = 0; i < Struct->Interfaces.size(); i++) {
+        llvm::Value* LLFuncPtrAddr = CreateStructGEP(LLThis, i);
+
+        InterfaceDecl* Interface = Struct->Interfaces[i];
+        if (Interface->NumFuncs == 1) {
+            FuncDecl* Interfacefunc = Interface->Funcs.begin()->second[0];
+            FuncDecl* MappedFunc    = GetMappedInterfaceFunc(Interfacefunc, Struct->Funcs[Interfacefunc->Name]);
+            GenFuncDecl(MappedFunc);
+
+            // No need to point to the VTable we can just store the function address immediately since there is only
+            // one function.
+            llvm::Value* LLBitCastFunc = Builder.CreateBitCast(MappedFunc->LLFunction, LLFuncPtrAddr->getType()->getPointerElementType());
+            Builder.CreateStore(LLBitCastFunc, LLFuncPtrAddr);
+        } else {
+
+            // Need to generate a global VTable and point to it since the interface has to select from multiple
+            // function pointers.
+            if (!LLVTable) {
+                LLVTable = GenVTable(Struct);
+            }
+            
+            ulen OffsetIntoVTable = 0;
+            for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
+                if (InheritedInterface == Interface) {
+                    break;
+                } else if (InheritedInterface->NumFuncs != 1) {
+                    OffsetIntoVTable += InheritedInterface->NumFuncs;
+                }
+            }
+
+            llvm::Value* LLPtrIntoVTable = GetArrayIndexAddress(LLVTable, GetLLUInt64(OffsetIntoVTable));
+            LLPtrIntoVTable = Builder.CreateBitCast(LLPtrIntoVTable, llvm::Type::getInt8PtrTy(LLContext));
+            Builder.CreateStore(LLPtrIntoVTable, LLFuncPtrAddr);
+
+        }
+    }
+    
+    Builder.CreateRetVoid();
+
+    Builder.SetInsertPoint(BackupInsertBlock);
+
+    return LLFunc;
 }
 
 std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue(VarDecl* Global) {
@@ -3340,7 +3680,7 @@ void arco::IRGenerator::GenCompilerDestructorAndCall(StructDecl* Struct, llvm::V
 
     for (VarDecl* Field : Struct->Fields) {
         if (Field->Ty->TypeNeedsDestruction()) {
-            CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->FieldIdx));
+            CallDestructors(Field->Ty, CreateStructGEP(LLFunc->getArg(0), Field->LLFieldIdx));
         }
     }
 
@@ -3528,8 +3868,11 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 
         if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
             CallDefaultConstructor(LLAddr, StructTy);
+        } else if (!Struct->Interfaces.empty()) {
+            GenCallToInitVTableFunc(LLAddr, Struct);
         } else {
             ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
+            
             // TODO: alignment
             llvm::Align LLAlignment = llvm::Align();
             Builder.CreateMemSet(
@@ -3544,7 +3887,10 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         Type* BaseTy = ArrTy->GetBaseType();
         if (BaseTy->GetKind() == TypeKind::Struct) {
             StructDecl* Struct = BaseTy->AsStructType()->GetStruct();
-            if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
+            // TODO: This could be optimized to not call the default constructors in the case
+            // in which there is no assignment or default constructor and instead just call the
+            // code to initialize the VTable.
+            if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor || !Struct->Interfaces.empty()) {
                 // Cannot simply memset the array to zero must call the default constructor.
                 llvm::Value* LLArrStartPtr = MultiDimensionalArrayToPointerOnly(LLAddr, ArrTy);
                 llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrTy->GetTotalLinearLength());
@@ -3556,6 +3902,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         // Memset to zero.
         ulen TotalLinearLength = ArrTy->GetTotalLinearLength();
         TotalLinearLength *= SizeOfTypeInBytes(GenType(BaseTy));
+
         // TODO: alignment
         llvm::Align LLAlignment = llvm::Align();
         Builder.CreateMemSet(
@@ -3591,6 +3938,8 @@ llvm::Function* arco::IRGenerator::GenDefaultConstructorDecl(StructDecl* Struct)
         Struct->LLDefaultConstructor = Struct->DefaultConstructor->LLFunction;
         return Struct->LLDefaultConstructor;
     }
+
+    // Compiler generated default constructor.
 
     llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
         llvm::Type::getVoidTy(LLContext),
@@ -3654,7 +4003,6 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                                      FuncDecl* CalledFunc,
                                                      const llvm::SmallVector<NonNamedValue>& Args) {
-    // TODO: may want to verify the function definition is correct as to not cause an error.
 #define CALL_GET_DECL1(Name)                                          \
 llvm::Value* Arg0 = GenRValue(Args[0].E);                             \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(			  \
@@ -3669,10 +4017,14 @@ llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(                       
             &LLModule, llvm::Intrinsic::##Name, { Arg0->getType(), Arg1->getType() }); \
 LLCall = Builder.CreateCall(LLFunc, { Arg0, Arg1 });                                   \
 break;
+
+    // TODO: !! Need to have this be compatible with named arguments!
     
     llvm::Instruction* LLCall;
     switch (CalledFunc->LLVMIntrinsicID) {
     case llvm::Intrinsic::memcpy: {
+        // TODO: Alignment!
+
         llvm::Align LLAlignment = llvm::Align();
         LLCall = Builder.CreateMemCpy(
             GenRValue(Args[0].E), LLAlignment,
@@ -3682,6 +4034,25 @@ break;
         break;
     }
     case llvm::Intrinsic::memset: {
+        // TODO: Alignment!
+        // TODO: Figure out virtual offset for interfaces.
+
+        // maybe bitcasting interfaces to i8* should take into account offset.
+
+        //llvm::Value* LLDestAddr = GenRValue(Args[0].E);
+        //
+        //if (Args[0].E->Ty->GetKind() == TypeKind::Interface) {
+        //    StructDecl* Struct = Args[0].E->Ty->AsStructType()->GetStruct();
+        //    if (!Struct->Interfaces.empty()) {
+        //        // Need to deal with virtual offset so we do not override the virtual
+        //        // data.
+        //    
+        //        // LLDestAddr should already be i8* so just need to add the offset.
+        //        LLDestAddr = CreateInBoundsGEP(LLDestAddr, { GetLLUInt64(Struct->VirtualOffset) });
+        //
+        //    }
+        //}
+        
         llvm::Align LLAlignment = llvm::Align();
         LLCall = Builder.CreateMemSet(
             GenRValue(Args[0].E),

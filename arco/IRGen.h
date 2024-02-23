@@ -11,6 +11,7 @@ namespace arco {
 
     llvm::Type* GenType(ArcoContext& Context, Type* Ty);
     llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
+    llvm::FunctionType* GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Func);
     llvm::IntegerType* GetSystemIntType(llvm::LLVMContext& LLContext, llvm::Module& LLModule);
 
     bool FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes);
@@ -188,6 +189,8 @@ namespace arco {
 
         llvm::Value* GenGlobalEnumArray(EnumDecl* Enum);
 
+        llvm::GlobalVariable* GenVTable(StructDecl* Struct);
+
         /// Converts the llvm array type to its eqv. pointer type.
         ///
         llvm::Value* DecayArray(llvm::Value* LLArray);
@@ -204,6 +207,7 @@ namespace arco {
         inline ulen SizeOfTypeInBytes(llvm::Type* LLType) {
             return arco::SizeOfTypeInBytes(LLModule, LLType);
         }
+        ulen SizeOfTypeInBytesNonVirtualInclusive(Type* Ty);
         inline llvm::Align GetAlignment(llvm::Type* LLType);
 
         llvm::Value* GenReturnValueForOptimizedStructAsInt(llvm::Value* LLRetVal);
@@ -214,6 +218,8 @@ namespace arco {
         void MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 
         void GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct);
+        void GenCallToInitVTableFunc(llvm::Value* LLAddr, StructDecl* Struct);
+        llvm::Function* GenInitVTableFunc(StructDecl* Struct);
 
         std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 
