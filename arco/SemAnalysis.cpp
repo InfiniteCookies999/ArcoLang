@@ -28,7 +28,7 @@ static inline ulen min(ulen a, ulen b) {
 }
 
 arco::SemAnalyzer::SemAnalyzer(ArcoContext& Context, Decl* D)
-    : Context(Context), Mod(D->Mod), Log(D->FScope->Path.c_str(), D->FScope->Buffer)
+    : Context(Context), Mod(D->Mod), Log(D->FScope, D->FScope->Buffer)
 {
 }
 
@@ -42,7 +42,7 @@ void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
         } else {
             assert(!"Unhandled case");
         }
-        Logger Log(FScope->Path.c_str(), FScope->Buffer);
+        Logger Log(FScope, FScope->Buffer);
         Log.BeginError(InvalidStmt->Loc, "Statement does not belong at %s scope",
             ScopeKind);
         Log.EndError();
@@ -118,7 +118,7 @@ struct ImportErrorSpellChecker {
 
 void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) {
 #define BERROR(Fmt, ...)                          \
-Logger Log(FScope->Path.c_str(), FScope->Buffer); \
+Logger Log(FScope, FScope->Buffer); \
 Log.BeginError(ErrorLoc, Fmt, __VA_ARGS__);
 
     ImportErrorSpellChecker SpellChecker;
@@ -4036,7 +4036,7 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
                 return Param1->Ty->Equals(Param2->Ty);
             })) {
                 FileScope* FScope = Func1->FScope;
-                Logger Log(FScope->Path.c_str(), FScope->Buffer);
+                Logger Log(FScope, FScope->Buffer);
                 Log.BeginError(Func1->Loc, 
                     "Duplicate declaration of %s '%s'",
                     Func1->IsConstructor ? "constructor" : "function",

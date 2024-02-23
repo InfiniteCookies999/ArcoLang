@@ -78,13 +78,12 @@ L.Text =                                           \
              PrevToken.GetText().end() - ExpandedStartLoc.Text.begin());
    
 
-arco::Parser::Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer)
-    : Context(Context), Mod(Mod), Log(FilePath, FileBuffer), Lex(Context, Log, FileBuffer),
-      FScope(new FileScope( FilePath, FileBuffer ))
+arco::Parser::Parser(ArcoContext& Context, FileScope* FScope, Module* Mod, const SourceBuf FileBuffer)
+    : Context(Context), Mod(Mod), Log(FScope, FileBuffer), Lex(Context, Log, FileBuffer), FScope(FScope)
 {
 }
 
-arco::FileScope* arco::Parser::Parse() {
+void arco::Parser::Parse() {
     // TODO: If this ever becomes multithreaded this won't
     // work here. Same goes for any other uses of this.
     bool PrevNumErrors = TotalAccumulatedErrors;
@@ -216,8 +215,6 @@ arco::FileScope* arco::Parser::Parse() {
     if (PrevNumErrors != TotalAccumulatedErrors) {
         FScope->ParsingErrors = true;
     }
-
-    return FScope;
 }
 
 void arco::Parser::ParseImport() {

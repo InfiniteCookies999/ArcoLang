@@ -99,6 +99,11 @@ Possible options:
         If set to true it will not display a visual indication of
         where the error occured but instead only show the message.
 
+    -full-paths
+        Error messages will display full paths of the file locations
+        where errors occured. Normally it will only show the path
+        information relative to the modules' folders.
+
 )";
 
 
@@ -219,6 +224,7 @@ int main(int argc, char* argv[]) {
     OptManager.AddOption("emit-debug"        , &Compiler.EmitDebugInfo);
     OptManager.AddOption("show-link-command" , &Compiler.ShowLinkCommand);
     OptManager.AddOption("no-wroteto-display", &Compiler.NoWroteToDispaly);
+    OptManager.AddOption("-full-paths"       , &arco::FullPaths);
     OptManager.AddOption("max-errors", [](int ArgNum, llvm::StringRef ValPart) {
         ValPart = GetOptValue(ArgNum, ValPart, "max-errors");
         if (ValPart.empty()) return;

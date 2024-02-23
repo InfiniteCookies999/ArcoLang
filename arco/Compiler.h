@@ -93,7 +93,7 @@ namespace arco {
 
         void ParseDirectoryFiles(Module* Mod, const std::filesystem::path& DirectoryPath, ulen PrimaryPathLen);
 
-        void ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath);
+        void ParseFile(Module* Mod, std::string RelativePath, std::string AbsolutePath);
 
         bool FindStdLibStructs();
         StructDecl* FindStdLibStruct(Namespace* Namespace, Identifier Name);

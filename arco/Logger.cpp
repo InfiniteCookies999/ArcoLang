@@ -1,6 +1,7 @@
 #include "Logger.h"
 
 #include "TermColors.h"
+#include "AST.h"
 #include <sstream>
 
 namespace arco {
@@ -9,10 +10,11 @@ namespace arco {
     ulen TotalAccumulatedErrors = 0;
     ulen TOTAL_ALLOWED_ERRORS   = 20;
     bool ShortErrors            = false;
+    bool FullPaths              = false;
 }
 
-arco::Logger::Logger(const char* FilePath, SourceBuf Buffer)
-    : FilePath(FilePath), Buffer(Buffer), OS(llvm::errs())
+arco::Logger::Logger(FileScope* FScope, SourceBuf Buffer)
+    : FScope(FScope), Buffer(Buffer), OS(llvm::errs())
 {
 }
 
@@ -110,7 +112,8 @@ void arco::Logger::EndError() {
 }
 
 ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
-    ulen Total = strlen(FilePath);
+    std::string UsedPath = FullPaths ? FScope->FullPath : FScope->Path;
+    ulen Total = strlen(UsedPath.c_str());
     Total += 1 + std::to_string(Loc.LineNumber).length() + 1;
     Total += strlen(" error: ");
     ulen Column = 0;
@@ -126,7 +129,8 @@ ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
 void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod) {
     
     SetTerminalColor(TerminalColorWhite);
-    OS << FilePath;
+    std::string UsedPath = FullPaths ? FScope->FullPath : FScope->Path;
+    OS << UsedPath;
 
     SetTerminalColor(TerminalColorWhite);
     OS << ":" << Loc.LineNumber << ":";

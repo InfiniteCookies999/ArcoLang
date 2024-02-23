@@ -17,11 +17,14 @@ namespace arco {
     extern ulen TOTAL_ALLOWED_ERRORS;
 
     extern bool ShortErrors;
+    extern bool FullPaths;
+
+    struct FileScope;
 
     class Logger {
     public:
 
-        Logger(const char* FilePath, SourceBuf Buffer);
+        Logger(FileScope* FScope, SourceBuf Buffer);
 
         void BeginError(SourceLoc Loc, const char* MsgHeader, bool ShowPeriod = true) {
             PrimaryErrLoc = Loc;
@@ -59,13 +62,11 @@ namespace arco {
 
         void EndError();
 
-        const char* GetFilePath() const { return FilePath; }
-
     private:
         llvm::raw_ostream& OS;
 
-        const char* FilePath;
-        SourceBuf   Buffer;
+        FileScope* FScope;
+        SourceBuf  Buffer;
 
         const char* ExtErrMsgAbovePrimaryLocAligned = nullptr;
         // Current information for printing the error.

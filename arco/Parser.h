@@ -23,9 +23,9 @@ namespace arco {
     class Parser {
     public:
 
-        explicit Parser(ArcoContext& Context, Module* Mod, const char* FilePath, const SourceBuf FileBuffer);
+        explicit Parser(ArcoContext& Context, FileScope* FScope, Module* Mod, const SourceBuf FileBuffer);
 
-        FileScope* Parse();
+        void Parse();
 
         ulen GetLinesParsed() const { return Lex.GetLinesLexed(); }
 

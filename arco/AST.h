@@ -147,8 +147,8 @@ namespace arco {
         FuncsList* FindFuncsList(Identifier Name);
         Decl* FindDecl(Identifier Name);
 
-        FileScope(std::string Path, SourceBuf Buffer)
-            : Path(Path), Buffer(Buffer) {}
+        FileScope(std::string Path, std::string FullPath, SourceBuf Buffer)
+            : Path(std::move(Path)), FullPath(std::move(FullPath)), Buffer(Buffer) {}
     };
 
     struct LexScope {

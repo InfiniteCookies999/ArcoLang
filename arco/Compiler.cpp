@@ -420,10 +420,10 @@ void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::pat
             const std::string& Path = Entry.path().generic_string();
 
             if (Path.substr(Path.find_last_of('.') + 1) == "arco") {
-                const std::string& RelativePath = Path.substr(PrimaryPathLen);
-                const std::string& AbsolutePath = std::filesystem::absolute(Entry.path()).generic_string();
+                std::string RelativePath = Path.substr(PrimaryPathLen);
+                std::string AbsolutePath = std::filesystem::absolute(Entry.path()).generic_string();
 
-                ParseFile(Mod, RelativePath, AbsolutePath);
+                ParseFile(Mod, std::move(RelativePath), std::move(AbsolutePath));
             }
         } else if (Entry.is_directory()) {
             ParseDirectoryFiles(Mod, Entry.path(), PrimaryPathLen);
@@ -431,16 +431,16 @@ void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::pat
     }
 }
 
-void arco::Compiler::ParseFile(Module* Mod, const std::string& RelativePath, const std::string& AbsolutePath) {
+void arco::Compiler::ParseFile(Module* Mod, std::string RelativePath, std::string AbsolutePath) {
     SourceBuf Buffer;
     if (!ReadFile(AbsolutePath.c_str(), Buffer.Memory, Buffer.length)) {
         Logger::GlobalError(llvm::errs(), "Failed to read file: %s. Check permissions", AbsolutePath.c_str());	
         return;
     }
 
-    Parser Parser(Context, Mod, RelativePath.c_str(), Buffer);
-    FileScope* FScope = Parser.Parse();
-    FScope->FullPath = AbsolutePath;
+    FileScope* FScope = new FileScope(std::move(RelativePath), std::move(AbsolutePath), Buffer);
+    Parser Parser(Context, FScope, Mod, Buffer);
+    Parser.Parse();
     TotalLinesParsed += Parser.GetLinesParsed();
 
     if (!FScope->ParsingErrors) {
