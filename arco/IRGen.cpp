@@ -3850,13 +3850,11 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
 
         if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
             CallDefaultConstructor(LLAddr, StructTy);
-        } else if (!Struct->Interfaces.empty()) {
-            // TODO: This still needs to set all other fields to zero. Or just memset
-            // then set remaining fields to zero. Or memset with offset, ect...
-            GenCallToInitVTableFunc(LLAddr, Struct);
         } else {
             ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
             
+            // TODO: For performance may want to offset and not memset the vtable ptrs.
+
             // TODO: alignment
             llvm::Align LLAlignment = llvm::Align();
             Builder.CreateMemSet(
@@ -3865,6 +3863,10 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
                 GetLLUInt64(TotalLinearLength),
                 LLAlignment
             );
+
+            if (!Struct->Interfaces.empty()) {
+                GenCallToInitVTableFunc(LLAddr, Struct);
+            }
         }
     } else if (Ty->GetKind() == TypeKind::Array) {
         ArrayType* ArrTy = Ty->AsArrayTy();
