@@ -1764,7 +1764,7 @@ YIELD_ERROR(BinOp)
         } else if (BinOp->RHS->IsFoldable) { // << or >>
             IRGenerator IRGen(Context);
             llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
-            if (LLInt->getZExtValue()-1 > LTy->GetTrivialTypeSizeInBytes() * 8) {
+            if (LLInt->getZExtValue()-1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
                 Error(BinOp, "Shifting bits larger than bit size of type");
             }
         }

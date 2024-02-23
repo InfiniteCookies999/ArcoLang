@@ -1,0 +1,58 @@
+import reflect.Any;
+import math;
+
+/*
+ * A buffer for efficient appending of characters into a
+ * buffer which can produce a String as a result.
+ */
+StringFormatBuffer struct : Writeable {
+
+    private buffer   char*;
+    private length   int;
+    private capacity int;
+
+    private fn grow(new_capacity int) {
+        if capacity == 0 {
+            // First time allocation.
+            buffer = new char[new_capacity];
+            capacity = new_capacity;
+        } else {
+            old_buffer := buffer;
+            // TODO: Reconsider strategy.
+            // For now just choosing to either grow to required capacity
+            // or *2.
+            capacity = math.max(new_capacity, capacity << 1);
+            buffer = new char[capacity];
+            memcpy(buffer, old_buffer, length);
+            delete old_buffer;
+        }
+    }
+
+    fn write_buffer(buffer cstr, length int) int {
+        if this.length + length > capacity {
+            // +1 for null termination.
+            grow(this.length + length + 1);
+        }
+        
+        memcpy(this.buffer + this.length, buffer, length);
+        this.length += length;
+        return length;
+    }
+
+    fn to_string() String {
+        // Null terminating.
+        buffer[length] = '\0';
+        return String{ buffer, length, copy_buffer=false };
+    }
+}
+
+/*
+ * Given a format fmt and arguments args it will create
+ * a formatted string using the OutStream rules for formatting.
+ */
+fn format(fmt cstr, args Any...) String {
+    fmt_buffer StringFormatBuffer;
+    stream := OutStream{ &fmt_buffer };
+    stream.write(fmt, args);
+    return fmt_buffer.to_string();
+}

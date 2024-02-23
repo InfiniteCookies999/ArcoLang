@@ -67,7 +67,7 @@ OutStream struct {
         write_any(any.value, any.type);
     }
 
-    fn write_any(value void*, type const Type*) {
+    private fn write_any(value void*, type const Type*) {
         // TODO: replace with a switch statement once supported.
         if type.id == TypeId.CSTR {
             write(cast(cstr) value);

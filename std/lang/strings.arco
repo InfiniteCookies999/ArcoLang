@@ -1,4 +1,4 @@
-import std;
+import std; // Because there are some name comflicts.
 
 import reflect.Any;
 import reflect.Type;
@@ -698,4 +698,13 @@ private fn array_like_type_to_string(array void*, elm_type Type*, length int) St
     
     string.append(" ]");
     return string;
+}
+
+fn concat(s1 String^, s2 String^) String {
+    new_length := s1.length + s2.length;
+    buffer := new char[new_length + 1]; // +1 for null termination.
+    memcpy(buffer            , s1.buffer, s1.length);
+    memcpy(buffer + s1.length, s2.buffer, s2.length);
+    buffer[new_length] = '\0'; // Null termination.
+    return String{ buffer, new_length, copy_buffer=false };
 }

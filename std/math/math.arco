@@ -193,6 +193,22 @@ fn tan(x f32) f32 {
     return sin(x) / cos(x);
 }
 
+// TODO: Make these functions generic once templates are supported.
+fn min(a int, b int) int {
+    if a < b {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+fn max(a int, b int) int {
+    if a > b {
+        return a;
+    } else {
+        return b;
+    }
+}
 
 MIN_INT8   :: -128;
 MAX_INT8   :: +127;
