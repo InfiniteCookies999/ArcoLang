@@ -214,7 +214,7 @@ namespace arco {
 
         // When the struct implements interfaces this offset is the offset
         // past the interface data.
-        //ulen VirtualOffset = 0;
+        ulen VirtualOffset = 0;
 
         llvm::StructType* LLStructTy         = nullptr;
         llvm::Function* LLDefaultConstructor = nullptr;

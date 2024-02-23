@@ -246,10 +246,11 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
     LLStructTy->setBody(LLStructFieldTypes);
     LLStructTy->setName(Struct->Name.Text);
 
-    //if (!Struct->Interfaces.empty()) {
-    //    const llvm::StructLayout* LLLayout = Context.LLArcoModule.getDataLayout().getStructLayout(LLStructTy);
-    //    //Struct->VirtualOffset = LLLayout->getElementOffset(1); // TODO: This is totally wrong!
-    //}
+    if (!Struct->Interfaces.empty()) {
+        const llvm::StructLayout* LLLayout = Context.LLArcoModule.getDataLayout().getStructLayout(LLStructTy);
+        // Obtains offset past virtual data.
+        Struct->VirtualOffset = LLLayout->getElementOffset(Struct->Interfaces.size());
+    }
 
     return LLStructTy;
 }
@@ -750,7 +751,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
         return GenHeapAlloc(static_cast<HeapAlloc*>(Node));
     case AstKind::SIZEOF:
         return GetSystemInt(
-            SizeOfTypeInBytes(GenType(static_cast<SizeOf*>(Node)->TypeToGetSizeOf)));
+            SizeOfTypeInBytesNonVirtualInclusive(static_cast<SizeOf*>(Node)->TypeToGetSizeOf));
     case AstKind::TYPEOF:
         return GenTypeOf(static_cast<TypeOf*>(Node));
     default:
@@ -2756,6 +2757,7 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
         LLStructInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLStructStructType, 0));
     }
 
+    // TODO: Should this change? (The size in bytes include interface data?)
     ulen SizeInBytes = GetTy->GetKind() == TypeKind::Void ? 0 : SizeOfTypeInBytes(GenType(GetTy));
     llvm::SmallVector<llvm::Constant*, 5> LLElements = {
         LLTypeId,
@@ -3013,58 +3015,30 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
                 
                 llvm::Value* LLVTableAddr = CreateStructGEP(LLValue, InterfaceOffset);
                 return Builder.CreateBitCast(LLVTableAddr, LLCastType);
+            } else if (ToType->Equals(Context.VoidPtrType)) {
+                Type* FromElmType = FromType->GetPointerElementType(Context);
+                if (FromElmType->GetKind() == TypeKind::Struct) {
+                    StructDecl* Struct = FromElmType->AsStructType()->GetStruct();
+                    if (!Struct->Interfaces.empty()) {
+                        // Obtain offset past the interface data so that things such as
+                        // memset work correctly.
+                        ulen NumInterfaceFuncs = 0;
+                        for (InterfaceDecl* Interface : Struct->Interfaces) {
+                            NumInterfaceFuncs += Interface->NumFuncs;
+                        }
+
+                        llvm::StructType* LLStructTy = GenStructType(Struct);
+                        // -1 because CreateStructGEP is zero index based.
+                        llvm::Value* LLOffsetAddr = CreateStructGEP(LLValue, NumInterfaceFuncs - 1);
+                        return Builder.CreateBitCast(LLOffsetAddr, LLCastType);
+                    }
+                }
+
+                return Builder.CreateBitCast(LLValue, LLCastType);
             } else {
                 // Pointer to Pointer
                 return Builder.CreateBitCast(LLValue, LLCastType);
             }
-
-            
-            /*if (PtrType->GetElementType()->GetKind() == TypeKind::Interface) {
-                // Need to load the interface functions.
-                InterfaceDecl* Interface = PtrType->GetElementType()->AsStructType()->GetInterface();
-                StructDecl*    Struct    = FromType->AsPointerTy()->GetElementType()->AsStructType()->GetStruct();
-
-                if (Interface->NumFuncs == 1) {
-                    // Need to point to relavent function of the struct.
-                    FuncDecl* InterfaceFunc = Interface->Funcs.begin()->second[0];
-                    FuncsList& Funcs = Struct->Funcs[InterfaceFunc->Name];
-                    // Just refind the function since there should not be very many
-                    // overloaded version of the function.
-                    FuncDecl* FoundFunc = GetMappedInterfaceFunc(InterfaceFunc, Funcs);
-                    
-                    GenFuncDecl(FoundFunc);
-
-                    llvm::Value* LLVTablePtrAddr = CreateStructGEP(LLValue, 0);
-                    llvm::Value* LLFuncAddr = FoundFunc->LLFunction;
-                    
-                    LLFuncAddr = Builder.CreateBitCast(LLFuncAddr, llvm::Type::getInt8PtrTy(LLContext));
-                    Builder.CreateStore(LLFuncAddr, LLVTablePtrAddr);
-
-                    return Builder.CreateBitCast(LLValue, LLCastType);
-                } else {
-                    llvm::GlobalVariable* LLVTable = GenVTable(Struct);
-
-                    llvm::Value* LLVTablePtrAddr = CreateStructGEP(LLValue, 0);
-
-                    ulen OffsetIntoVTable = 0;
-                    for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
-                        if (InheritedInterface == Interface) {
-                            break;
-                        } else if (InheritedInterface->NumFuncs != 1) {
-                            OffsetIntoVTable += InheritedInterface->NumFuncs;
-                        }
-                    }
-
-                    llvm::Value* LLPtrIntoVTable = GetArrayIndexAddress(LLVTable, GetLLUInt64(OffsetIntoVTable));
-                    LLPtrIntoVTable = Builder.CreateBitCast(LLPtrIntoVTable, llvm::Type::getInt8PtrTy(LLContext));
-                    Builder.CreateStore(LLPtrIntoVTable, LLVTablePtrAddr);
-
-                    return Builder.CreateBitCast(LLValue, LLCastType);
-                }
-            } else {
-                // Pointer to Pointer
-                return Builder.CreateBitCast(LLValue, LLCastType);
-            }*/
         } else if (FromType->IsInt()) {
             // Int to Ptr
             return Builder.CreateIntToPtr(LLValue, LLCastType);
@@ -3403,8 +3377,15 @@ llvm::GlobalVariable* arco::IRGenerator::GenConstGlobalArray(llvm::Constant* LLA
 }
 
 ulen arco::IRGenerator::SizeOfTypeInBytesNonVirtualInclusive(Type* Ty) {
-    
-    return ulen();
+    ulen Size = SizeOfTypeInBytes(GenType(Ty));
+    if (Ty->GetKind() == TypeKind::Struct) {
+        StructDecl* Struct = Ty->AsStructType()->GetStruct();
+        if (!Struct->Interfaces.empty()) {
+            // Need to remove the offset of the virtual interface pointers.
+            return Size - Struct->VirtualOffset;
+        }
+    }
+    return Size;
 }
 
 inline llvm::Align arco::IRGenerator::GetAlignment(llvm::Type* LLType) {
@@ -3454,6 +3435,7 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
         llvm::StructType* LLStructType =  llvm::cast<llvm::StructType>(LLFromAddr->getType()->getPointerElementType());
         const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
         llvm::Align LLAlignment =  LLStructLayout->getAlignment();
+        // TODO: Could avoid copying interface data although it is correct either way.
         Builder.CreateMemCpy(
             LLToAddr, LLAlignment,
             LLFromAddr, LLAlignment,
@@ -3869,6 +3851,8 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         if (Struct->FieldsHaveAssignment || Struct->DefaultConstructor) {
             CallDefaultConstructor(LLAddr, StructTy);
         } else if (!Struct->Interfaces.empty()) {
+            // TODO: This still needs to set all other fields to zero. Or just memset
+            // then set remaining fields to zero. Or memset with offset, ect...
             GenCallToInitVTableFunc(LLAddr, Struct);
         } else {
             ulen TotalLinearLength = SizeOfTypeInBytes(GenStructType(StructTy));
