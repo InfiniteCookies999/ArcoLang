@@ -278,7 +278,8 @@ namespace arco {
 
         llvm::Value* GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                           FuncDecl* CalledFunc,
-                                          const llvm::SmallVector<NonNamedValue>& Args);
+                                          const llvm::SmallVector<NonNamedValue>& Args,
+                                          const llvm::SmallVector<NamedValue>& NamedArgs);
 
         inline DebugInfoEmitter* GetDIEmitter(Decl* D) {
             return D->FScope->DIEmitter;

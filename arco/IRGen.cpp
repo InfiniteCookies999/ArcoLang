@@ -2106,7 +2106,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     }
     
     if (CalledFunc->LLVMIntrinsicID) {
-        return GenLLVMIntrinsicCall(CallNode->Loc, CalledFunc, Args);
+        return GenLLVMIntrinsicCall(CallNode->Loc, CalledFunc, Args, NamedArgs);
     }
 
     ulen NumArgs = CalledFunc->Params.size();
@@ -3988,24 +3988,35 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 // https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
 llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                                      FuncDecl* CalledFunc,
-                                                     const llvm::SmallVector<NonNamedValue>& Args) {
+                                                     const llvm::SmallVector<NonNamedValue>& Args,
+                                                     const llvm::SmallVector<NamedValue>& NamedArgs) {
 #define CALL_GET_DECL1(Name)                                          \
-llvm::Value* Arg0 = GenRValue(Args[0].E);                             \
+llvm::Value* Arg0 = GenRValue(GetArg(0));                             \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(			  \
             &LLModule, llvm::Intrinsic::##Name, { Arg0->getType() }); \
 LLCall = Builder.CreateCall(LLFunc, Arg0);                            \
 break;
 
 #define CALL_GET_DECL2(Name)                                                           \
-llvm::Value* Arg0 = GenRValue(Args[0].E);                                              \
-llvm::Value* Arg1 = GenRValue(Args[1].E);                                              \
+llvm::Value* Arg0 = GenRValue(GetArg(0));                                              \
+llvm::Value* Arg1 = GenRValue(GetArg(1));                                              \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(                              \
             &LLModule, llvm::Intrinsic::##Name, { Arg0->getType(), Arg1->getType() }); \
 LLCall = Builder.CreateCall(LLFunc, { Arg0, Arg1 });                                   \
 break;
 
-    // TODO: !! Need to have this be compatible with named arguments!
-    
+    auto GetArg = [&Args, &NamedArgs](ulen Idx) {
+        if (Idx < Args.size()) {
+            return Args[Idx].E;
+        }
+        for (const NamedValue& NamedArg : NamedArgs) {
+            const VarDecl* Param = NamedArg.VarRef;
+            if (Param->ParamIdx == Idx) {
+                return NamedArg.AssignValue;
+            }
+        }
+    };
+
     llvm::Instruction* LLCall;
     switch (CalledFunc->LLVMIntrinsicID) {
     case llvm::Intrinsic::memcpy: {
@@ -4013,12 +4024,15 @@ break;
         // it is cast to a void* so to get the type that we are
         // aligning with we need to get the element type
         // of that pointer/array.
-        llvm::Type* LLType = GenType(Args[0].E->Ty->AsContainerType()->GetElementType());
+        Expr* Arg0 = GetArg(0);
+        Expr* Arg1 = GetArg(1);
+        Expr* Arg2 = GetArg(2);
+        llvm::Type* LLType = GenType(Arg0->Ty->AsContainerType()->GetElementType());
         llvm::Align LLAlignment = GetAlignment(LLType);
         LLCall = Builder.CreateMemCpy(
-            GenRValue(Args[0].E), LLAlignment,
-            GenRValue(Args[1].E), LLAlignment,
-            GenRValue(Args[2].E)
+            GenRValue(Arg0), LLAlignment,
+            GenRValue(Arg1), LLAlignment,
+            GenRValue(Arg2)
         );
         break;
     }
@@ -4027,12 +4041,15 @@ break;
         // it is cast to a void* so to get the type that we are
         // aligning with we need to get the element type
         // of that pointer/array.
-        llvm::Type* LLType = GenType(Args[0].E->Ty->AsContainerType()->GetElementType());
+        Expr* Arg0 = GetArg(0);
+        Expr* Arg1 = GetArg(1);
+        Expr* Arg2 = GetArg(2);
+        llvm::Type* LLType = GenType(Arg0->Ty->AsContainerType()->GetElementType());
         llvm::Align LLAlignment = GetAlignment(LLType);
         LLCall = Builder.CreateMemSet(
-            GenRValue(Args[0].E),
-            GenRValue(Args[1].E),
-            GenRValue(Args[2].E),
+            GenRValue(Arg0),
+            GenRValue(Arg1),
+            GenRValue(Arg2),
             LLAlignment
         );
         break;
