@@ -72,6 +72,8 @@ namespace arco {
 
         FuncDecl* MainEntryFunc = nullptr;
 
+        ulen BailCountForShowingOverloadedFuncs = 5;
+
         // 'main' identifier (for identifying entry points)
         Identifier MainIdentifier;
         // 'length' identifier (for identifying array lengths)

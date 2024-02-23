@@ -700,6 +700,7 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
     for (auto& [InterfaceFuncName, FuncList] : Interface->Funcs) {
         for (FuncDecl* InterfaceFunc : FuncList) {
             CheckFuncParams(InterfaceFunc);
+            if (InterfaceFunc->ParsingError) continue;
 
             auto Itr = std::find_if(Struct->Funcs.begin(), Struct->Funcs.end(),
                 [&InterfaceFuncName](const auto& KeyValue) {
@@ -711,8 +712,13 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
                 // to make sure that everything is identical.
                 FuncsList& FuncList = Itr->second;
                 FuncDecl* FoundFunc = nullptr;
+                bool FuncsHaveErrors = false;
                 for (FuncDecl* Func : FuncList) {
                     CheckFuncParams(Func);
+                    if (Func->ParsingError) {
+                        FuncsHaveErrors = true;
+                        break;
+                    }
 
                     if (InterfaceFunc->Params.size() != Func->Params.size()) continue;
                     if (!InterfaceFunc->RetTy->Equals(Func->RetTy)) continue;
@@ -734,15 +740,25 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
                     FoundFunc = Func;
                     break;
                 }
-                if (!FoundFunc) {
-                    // TODO: Make the error message more expressive by describing how none of the
-                    // functions match and why. Similar to how error reporting works when calling
-                    // functions and not finding matches.
-                    Error(InterfaceHook.ErrorLoc,
-                        "Struct could not find overloaded function '%s' for interface interface '%s'",
-                        InterfaceFunc->Name, Interface->Name);
+                if (FuncsHaveErrors) {
+                    // Do not report when there are functions with errors.
                     break;
                 }
+
+                if (!FoundFunc) {
+                    ReportAboutNoOverloadedInterfaceFunc(InterfaceHook.ErrorLoc, Interface, InterfaceFunc, &FuncList);
+                    break;
+                }
+                if (FoundFunc->MappedInterfaceFunc) {
+                    // There is a conflict with the interfaces. Two interfaces must be requiring the
+                    // implementation of the same function definition.
+                    Error(InterfaceHook.ErrorLoc,
+                          "Function conflict with interfaces '%s' and '%s'. Function '%s' is defined in both interfaces",
+                          Interface->Name,
+                          FoundFunc->MappedInterfaceFunc->Interface->Name,
+                          GetFuncDefForError(ParamsToTypeInfo(FoundFunc), FoundFunc));
+                }
+
                 FoundFunc->MappedInterfaceFunc = InterfaceFunc;
 
                 // It will be needed if the struct is casted to the interface.
@@ -754,6 +770,123 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
             }
         }
     }
+}
+
+
+void arco::SemAnalyzer::ReportAboutNoOverloadedInterfaceFunc(SourceLoc ErrorLoc,
+                                                             InterfaceDecl* Interface,
+                                                             FuncDecl* InterfaceFunc,
+                                                             FuncsList* Canidates) {
+    
+    std::string InterfaceFuncDef = GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc);
+    if (Canidates->size() == 1) {
+        FuncDecl* Canidate = (*Canidates)[0];
+
+        std::string ErrorMsg = "Function '" + InterfaceFuncDef
+                             + "' for interface '" + Interface->Name.Text.str() + "' does not match.";
+        ErrorMsg += "\n\n";
+        std::string ExtMsg = GetMismatchInfoForInterfaceFunc(InterfaceFunc, Canidate);
+        Log.SetMsgToShowAbovePrimaryLocAligned(ExtMsg.c_str());
+        Log.BeginError(Canidate->Loc, ErrorMsg.c_str(), false);
+        Log.EndError();
+        return;
+    }
+
+    
+    std::string ErrorMsg = "Could not find overloaded function '" + InterfaceFuncDef
+                         + "' for interface '" + Interface->Name.Text.str() + "'";
+    ErrorMsg += "\n\n  Possible Canidates:";
+    ulen LongestDefLength = 0;
+    for (FuncDecl* Canidate : *Canidates) {
+        ulen Len = GetFuncDefForError(ParamsToTypeInfo(Canidate), Canidate).length();
+        if (Len > LongestDefLength) {
+            LongestDefLength = Len;
+        }
+    }
+
+    // TODO: Since this limits the amount of functions that are shown to the user it should select the
+    // closest matches and show those to increase finding the right function.
+
+    ulen Count = 0;
+    for (FuncDecl* Canidate : *Canidates) {
+        if (Count == Context.BailCountForShowingOverloadedFuncs) {
+            ErrorMsg += "\n\n  And " + std::to_string(Canidates->size() - Count) + " more...";
+            break;
+        }
+        llvm::SmallVector<TypeInfo> ParamTypes = ParamsToTypeInfo(Canidate);
+        ErrorMsg += "\n\n     ";
+        std::string Def = GetFuncDefForError(ParamTypes, Canidate);
+        ErrorMsg += Def;
+        ErrorMsg += std::string(LongestDefLength - Def.length(), ' ') + "   - declared at: "
+            + Canidate->FScope->Path + std::string(":") + std::to_string(Canidate->Loc.LineNumber);
+        ErrorMsg += "\n";
+        std::string MismatchInfo = GetMismatchInfoForInterfaceFunc(InterfaceFunc, Canidate);
+        std::stringstream StrStream(MismatchInfo.c_str());
+        std::string Line;
+        bool First = true;
+        while (std::getline(StrStream, Line, '\n')) {
+            if (!First) {
+                ErrorMsg += "\n";
+            }
+            First = false;
+            ErrorMsg += "        " + Line;
+        }
+        ++Count;
+    }
+
+    ErrorMsg += "\n";
+    Log.BeginError(ErrorLoc, ErrorMsg.c_str(), false);
+    Log.EndError();
+}
+
+std::string arco::SemAnalyzer::GetMismatchInfoForInterfaceFunc(FuncDecl* InterfaceFunc, FuncDecl* Canidate) {
+    if (InterfaceFunc->Params.size() != Canidate->Params.size()) {
+        return "- Incorrect number of parameters. Expected "
+            + std::to_string(InterfaceFunc->Params.size())
+            + ". Got " + std::to_string(Canidate->Params.size()) + ".";
+    }
+
+    bool EncounteredError = false;
+    std::string MismatchInfo = "";
+    if (!InterfaceFunc->RetTy->Equals(Canidate->RetTy)) {
+        if (EncounteredError)  MismatchInfo += "\n";
+        MismatchInfo += "- Return types do not match. Expected '"
+                     + InterfaceFunc->RetTy->ToString() + "'. Got '"
+                     + Canidate->RetTy->ToString() + "'.";
+        EncounteredError = true;
+    }
+    for (ulen i = 0; i < Canidate->Params.size(); i++) {
+        VarDecl* FuncParam = Canidate->Params[i];
+        VarDecl* InterfaceParam = InterfaceFunc->Params[i];
+        if (!FuncParam->Ty->Equals(InterfaceParam->Ty)) {
+            if (EncounteredError)  MismatchInfo += "\n";
+            MismatchInfo += "- Parameter " + std::to_string(i + 1) + " type does not match. Expected '"
+                + InterfaceParam->Ty->ToString() + "'. Got '"
+                + FuncParam->Ty->ToString() + "'.";
+            EncounteredError = true;
+        }
+        if (FuncParam->HasConstAddress != InterfaceParam->HasConstAddress) {
+            // TODO: Should this complain about constness for cstr if the types mismatch?
+            if (EncounteredError)  MismatchInfo += "\n";
+            if (FuncParam->HasConstAddress) {
+                MismatchInfo += "- Parameter " + std::to_string(i + 1) + " is not meant to be const.";
+            } else {
+                MismatchInfo += "- Parameter " + std::to_string(i + 1) + " was expected to be const.";
+            }
+            EncounteredError = true;
+        }
+    }
+    if (InterfaceFunc->IsVariadic != Canidate->IsVariadic) {
+        if (EncounteredError)  MismatchInfo += "\n";
+        if (InterfaceFunc->IsVariadic) {
+            MismatchInfo += "- Expected variadic parameters.";
+        } else {
+            MismatchInfo += "- Does not take variadic parameters.";
+        }
+        EncounteredError = true;
+    }
+
+    return MismatchInfo;
 }
 
 void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
@@ -2640,6 +2773,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
             }
         }
 
+        // TODO: Since this limits the amount of functions that are shown to the user it should select the
+        // closest matches and show those to increase finding the right function.
         FuncDecl* FirstCanidate = (*Canidates)[0];
 
         llvm::SmallVector<TypeInfo> ArgTypes;
@@ -2661,12 +2796,11 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                 LongestDefLength = Len;
             }
         }
-        const ulen BailMax = 6;
         ulen Count = 0;
         bool CanidateHasParsingError = false;
 
         for (FuncDecl* Canidate : *Canidates) {
-            if (Count == BailMax) {
+            if (Count == Context.BailCountForShowingOverloadedFuncs) {
                 ErrorMsg += "\n\n  And " + std::to_string(Canidates->size() - Count) + " more...";
                 break;
             }
@@ -2714,9 +2848,7 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     // Single canidate so explicit details about
     // how there is a mismatch between the call and
     // the function is given.
-        
-    bool EncounteredError = false;
-
+    
     std::string FuncDef = GetFuncDefForError(ParamTypes, CalledFunc);
     std::string ErrorMsg = "Expected call to " + std::string(CallType) + " declaration: " + FuncDef + ".";
     if (CalledFunc) {

@@ -63,6 +63,11 @@ namespace arco {
 
         void FixupInterfaces(StructDecl* Struct);
         void FixupInterface(StructDecl* Struct, const StructDecl::InterfaceHook& InterfaceHook);
+        void ReportAboutNoOverloadedInterfaceFunc(SourceLoc ErrorLoc,
+                                                  InterfaceDecl* Interface,
+                                                  FuncDecl* InterfaceFunc,
+                                                  FuncsList* Canidates);
+        std::string GetMismatchInfoForInterfaceFunc(FuncDecl* InterfaceFunc, FuncDecl* Canidate);
 
         //===-------------------------------===//
         // Statements
