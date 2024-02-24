@@ -13,15 +13,15 @@ int main() {
     llvm::SmallVector<arco::Source> Sources;
     //Sources.push_back(arco::Source{ true, "default.program.module", SRC("test_utils.arco") });
     Sources.push_back(arco::Source{ true, "default.program.module", SRC("workpad") });
-
+    
     arco::Compiler Compiler;
     //Compiler.StandAlone = true;
-    //Compiler.EmitDebugInfo = true;
+    Compiler.EmitDebugInfo = true;
     //Compiler.DisplayLLVMIR = true;
     //Compiler.SetOutputDirectory("abc");
-    Compiler.DisplayTimes = true;
+    //Compiler.DisplayTimes = true;
     Compiler.Compile(Sources);
-
+    
     if (!arco::FoundCompileError) {
         std::string StdOutResult;
         int Ok = arco::ExeHiddenProcess("program", StdOutResult);

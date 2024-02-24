@@ -1638,6 +1638,9 @@ YIELD_ERROR(BinOp)
             }
         
             if (!IsAssignableTo(LTy, BinOp->RHS)) {
+                // Check for implicit derefencing for function calls.
+
+
                 DisplayErrorForTypeMismatch(
                     "Cannot assign value of type '%s' to variable of type '%s'",
                     BinOp->Loc,

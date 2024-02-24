@@ -286,14 +286,14 @@ namespace arco {
         // If this is true then the function will pass
         // the return value as a parameter rather than
         // returning it.
-        bool UsesParamRetSlot    = false;
-        bool IsConstructor       = false;
-        bool ReturnsConstAddress = false;
-        bool IsDestructor        = false;
-        bool IsCopyConstructor   = false;
-        bool IsMoveConstructor   = false;
-        bool IsVariadic          = false;
-        
+        bool UsesParamRetSlot      = false;
+        bool IsConstructor         = false;
+        bool ReturnsConstAddress   = false;
+        bool IsDestructor          = false;
+        bool IsCopyConstructor     = false;
+        bool IsMoveConstructor     = false;
+        bool IsVariadic            = false;
+
         // When this is not -1 it indicates the index number of
         // the function in an interface.
         u16 InterfaceIdx = -1;

@@ -79,6 +79,9 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
         ++Failed;
     }
 
+    // Reset for next test.
+    arco::FoundCompileError = false;
+
     llvm::outs() << "\n\n";
 
 }
@@ -122,7 +125,13 @@ int main() {
     RunTest(SRC("loops/loops12.arco"), "0 1 2 3 4 ");
     RunTest(SRC("loops/loops13.arco"), "0 1 2 3 4 5 6 ");
     RunTest(SRC("loops/loops14.arco"), "0 1 2 3 4 5 ");
-    
+    RunTest(SRC("loops/loops15.arco"), "foo called finished");
+    RunTest(SRC("loops/loops16.arco"), "10");
+    RunTest(SRC("loops/loops17.arco"), "5");
+    RunTest(SRC("loops/loops18.arco"), "124346221577");
+    RunTest(SRC("loops/loops19.arco"), "10");
+    RunTest(SRC("loops/loops20.arco"), "10");
+
     RunTest(SRC("arrays/arrays1.arco"), "21 55 11 56 3 ");
     RunTest(SRC("arrays/arrays2.arco"), "412 21 5 6 4 0 ");
     RunTest(SRC("arrays/arrays3.arco"), "412 77 121 45 56 ");
@@ -221,7 +230,7 @@ int main() {
     RunTest(SRC("named_args/named_args5.arco"), "314 14");
     RunTest(SRC("named_args/named_args6.arco"), "314 14");
     RunTest(SRC("named_args/named_args7.arco"), "42 11 83 61 342");
-
+    
     RunTest(SRC("interfaces/interfaces1.arco"), "42");
     RunTest(SRC("interfaces/interfaces2.arco"), "42 341");
     RunTest(SRC("interfaces/interfaces3.arco"), "52");

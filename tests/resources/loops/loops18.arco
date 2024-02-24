@@ -1,0 +1,7 @@
+
+fn main() {
+    
+    arr int[5] = [ 124, 346, 22, 15, 77 ];
+    loop v int : arr
+        print(v);    
+}

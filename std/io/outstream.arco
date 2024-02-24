@@ -198,6 +198,7 @@ OutStream struct {
             c := fmt[i];
             if c == '%' && arg_idx < args.length {
                 if i+1 < length && fmt[i+1] == 's' {
+                    any Any = args[arg_idx];
                     write(args[arg_idx++]);
                     ++i;
                 }

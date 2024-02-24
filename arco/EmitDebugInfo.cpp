@@ -99,6 +99,7 @@ void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRB
 	);
 
 	DBuilder->insertDeclare(
+		//Func->LLFunction->getArg(Param->ParamIdx),
 		Param->LLAddress,
 		DIVariable,
 		DBuilder->createExpression(),
@@ -265,11 +266,11 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			DebugUnit->getFile(),
 			0,
 			SizeInBits,
-			0,
+			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLSliceTy) * 8, // *8 because wants bits
 			Flags,
 			nullptr,
 			llvm::DINodeArray(),
-			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLSliceTy) * 8, // *8 because wants bits
+			0,
 			nullptr,
 			LLSliceTy->getName()
 		);
@@ -287,13 +288,14 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			DebugUnit->getFile(),
 			0,
 			SizeInBits,
-			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLLengthType) * 8, // *8 because wants bits
+			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLLengthType) * 8, // *8 because wants bits
 			0,
 			llvm::DINode::DIFlags::FlagZero,
 			EmitType(Context.IntType)
 		);
 		DIFieldTys.push_back(DIMemberLengthType);
 
+		Type* ElmTy = SliceTy->GetElementType();
 		PointerType* ArrPtrType = PointerType::Create(SliceTy->GetElementType(), Context);
 		llvm::Type* LLArrPtrType = GenType(Context, ArrPtrType);
 		SizeInBits = Context.LLArcoModule
@@ -305,7 +307,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			DebugUnit->getFile(),
 			0,
 			SizeInBits,
-			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLArrPtrType) * 8, // *8 because wants bits
+			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLArrPtrType) * 8, // *8 because wants bits
 			LLLayout->getElementOffsetInBits(1),
 			llvm::DINode::DIFlags::FlagZero,
 			EmitType(ArrPtrType)
@@ -382,18 +384,18 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 
 		u64 SizeInBits = LLLayout->getSizeInBits();
 
-		llvm::DINode::DIFlags Flags = llvm::DINode::FlagZero;
+		llvm::DINode::DIFlags Flags = llvm::DINode::FlagTypePassByValue; //llvm::DINode::FlagZero;
 		llvm::DICompositeType* DIStructTy = DBuilder->createStructType(
 			nullptr,
 			Struct->Name.Text,
 			DebugUnit->getFile(),
 			Struct->Loc.LineNumber,
 			SizeInBits,
-			0,
+			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(Struct->LLStructTy) * 8, // *8 because wants bits
 			Flags,
 			nullptr, // TODO: Derived from?
 			llvm::DINodeArray(),
-			Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(Struct->LLStructTy) * 8, // *8 because wants bits
+			0, // lang clang ignores so we ignore.
 			nullptr,
 			Struct->LLStructTy->getName()
 		);
@@ -436,7 +438,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitMemberFieldType(llvm::DIType* DIScope,
 		DebugUnit->getFile(),
 		Field->Loc.LineNumber,
 		SizeInBits,
-		Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLType) * 8, // *8 because wants bits
+		0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLType) * 8, // *8 because wants bits
 		BitsOffset,
 		llvm::DINode::DIFlags::FlagZero,
 		EmitType(Field->Ty)

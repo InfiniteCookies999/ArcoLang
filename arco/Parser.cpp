@@ -936,6 +936,17 @@ arco::InterfaceDecl* arco::Parser::ParseInterfaceDecl(Modifiers Mods) {
     return Interface;
 }
 
+void arco::Parser::ParseScopeStmtOrStmts(LexScope& Scope) {
+    if (CTok.Is('{')) {
+        ParseScopeStmts(Scope);
+    } else {
+        // Assuming it is a single statement.
+        Scope.StartLoc = CTok.Loc;
+        Scope.Stmts.push_back(ParseStmt());
+        Scope.EndLoc = PrevToken.Loc;
+    }
+}
+
 void arco::Parser::ParseScopeStmts(LexScope& Scope) {
     Scope.StartLoc = CTok.Loc;
     Match('{');
@@ -982,7 +993,7 @@ arco::IfStmt* arco::Parser::ParseIf() {
     AllowStructInitializer = true;
 
     PUSH_SCOPE();
-    ParseScopeStmts(If->Scope);
+    ParseScopeStmtOrStmts(If->Scope);
     POP_SCOPE();
 
     if (CTok.Is(TokenKind::KW_ELSE)) {
@@ -1001,42 +1012,87 @@ arco::AstNode* arco::Parser::ParseLoop() {
     Token LoopTok = CTok;
     NextToken(); // Consuming 'loop' token.
 
-    if (CTok.Is(';')) { // loop ; ... {}
-        PUSH_SCOPE();
+    PUSH_SCOPE();
+    if (CTok.Is(';')) { // loop ;
         return ParseRangeLoop(LoopTok);
-    } else if (CTok.Is(TokenKind::IDENT)) { // loop i ... {}
+    } else if (CTok.Is(TokenKind::IDENT)) { // loop ident
         switch (PeekToken(1).Kind) {
-        case TokenKind::IDENT:
-        case TYPE_KW_START_CASES:
-        case TokenKind::KW_CONST: {
-            PUSH_SCOPE();
-            ParseVarDeclList(0);
-            // TODO: what if the variable declarations have assignments?
-            if (CTok.Is(':')) {
+        case TokenKind::IDENT: {
+            Token Tok2 = PeekToken(2);
+            // TODO: Once generics are supported disambiguation of the type
+            // information will become needed.
+
+            if (Tok2.Is('*') || Tok2.Is('[')) {
+                // loop ident ident*
+                // loop ident ident[4]
+                ParseVarDeclList(0);
+
+                if (CTok.Is(':')) { // TODO: This should probably make sure there is not an assignment!
+                // loop ident type :
+                    return ParseIteratorLoop(LoopTok);
+                } else if (CTok.Is(';')) {
+                    // loop ident type = expr;
+                    // loop ident type;
+                    return ParseRangeLoop(LoopTok);
+                } else {
+                    return ParsePredicateLoop(LoopTok);
+                }
+            } else if (Tok2.Is(':')) {
+                // loop ident ident :
+                ParseVarDeclList(0);
                 return ParseIteratorLoop(LoopTok);
-            } else {
+            } else if (Tok2.Is(';')) {
+                // loop ident ident ;
                 return ParseRangeLoop(LoopTok);
             }
-            break;
+            else {
+                // This very well might be a parsing error but it
+                // might be something like:   loop ident  foo();
+                return ParsePredicateLoop(LoopTok);
+            }
         }
-        case ':': {
-            PUSH_SCOPE();
-            return ParseIteratorLoop(LoopTok);
+        case TYPE_KW_START_CASES:
+        case TokenKind::KW_CONST:
+        case ',': {
+            // TODO: May want to allow predicate assignment here later.
+
+            ParseVarDeclList(0);
+            if (CTok.Is(':')) { // TODO: This should probably make sure there is not an assignment!
+                // loop ident type :
+                return ParseIteratorLoop(LoopTok);
+            } else {
+                // loop ident type = expr;
+                // loop ident type;
+                return ParseRangeLoop(LoopTok);
+            }
         }
         case TokenKind::COL_EQ:
         case TokenKind::COL_COL: {
-            PUSH_SCOPE();
             ParseVarDeclList(0);
+            // loop ident := expr
+            // loop ident :: expr
+
+            // TODO: May want to allow predicate assignment here later.
             return ParseRangeLoop(LoopTok);
         }
+        case ':': {
+            // loop ident :
+            
+            // Do not call ParseVarDeclList here because the declaration
+            // part is infered.
+            return ParseIteratorLoop(LoopTok);
+        }
         case '=': {
-            PUSH_SCOPE();
+            // loop ident = 
+
+            // TODO: May want to allow predicate assignment here later.
             return ParseRangeLoop(LoopTok);
         }
         default:
+            // loop ident
             return ParsePredicateLoop(LoopTok);
         }
-    } else {
+    } else { // loop expr
         return ParsePredicateLoop(LoopTok);
     }
 }
@@ -1054,7 +1110,12 @@ arco::LoopControlStmt* arco::Parser::ParseLoopControl() {
     return LoopControl;
 }
 
+int* foo() {
+    return nullptr;
+}
+
 arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
+
     PredicateLoopStmt* Loop = NewNode<PredicateLoopStmt>(LoopTok);
     
     if (CTok.IsNot('{')) {
@@ -1071,8 +1132,7 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
         AllowStructInitializer = true;
     }
 
-    PUSH_SCOPE();
-    ParseScopeStmts(Loop->Scope);
+    ParseScopeStmtOrStmts(Loop->Scope);
     POP_SCOPE();
     
     return Loop;
@@ -1099,14 +1159,34 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
 
     if (CTok.IsNot('{')) {
         AllowStructInitializer = false;
-        Loop->Incs.push_back(ParseAssignmentAndExprs());
+        Loop->Scope.StartLoc = CTok.Loc;
+        Expr* E = ParseAssignmentAndExprs();
         AllowStructInitializer = true;
+        if (CTok.Is(';')) {
+            // loop expr; expr;    expr;
+            Loop->Scope.EndLoc = PrevToken.Loc;
+            Loop->Scope.Stmts.push_back(E);
+        } else if (CTok.IsNot('{')) {
+            // loop expr; expr; expr  expr;
+            Loop->Incs.push_back(E);
+            Loop->Scope.StartLoc = CTok.Loc;
+            Loop->Scope.Stmts.push_back(ParseStmt());
+            Loop->Scope.EndLoc = PrevToken.Loc;
+        } else {
+            // loop expr; expr; expr {
+            Loop->Incs.push_back(E);
+            ParseScopeStmts(Loop->Scope);
+        }
+
+        POP_SCOPE();
+        return Loop;
+    } else {
+        // loop expr; expr; {
+
+        ParseScopeStmts(Loop->Scope);
+        POP_SCOPE();
+        return Loop;
     }
-
-    ParseScopeStmts(Loop->Scope);
-    POP_SCOPE();
-
-    return Loop;
 }
 
 arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
@@ -1138,7 +1218,7 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
     AllowStructInitializer = true;
 
     // PUSH_SCOPE(); -- Called in ParseLoop
-    ParseScopeStmts(Loop->Scope);
+    ParseScopeStmtOrStmts(Loop->Scope);
     POP_SCOPE();
 
     return Loop;
@@ -1487,12 +1567,26 @@ arco::Expr* arco::Parser::ParsePrimaryAndPostfixUnaryExpr() {
 
 arco::Expr* arco::Parser::ParsePrimaryAndPostfixUnaryExpr(Expr* LHS) {
     if (CTok.Is(TokenKind::PLUS_PLUS)) {
+        const char* Buf = CTok.GetText().data();
+        if (*(Buf - 1) == ' ') {
+            // NOTE: hack this is used to disambiguate nonsense like:
+            //       'if a++ b;'   and   'if a ++b;'
+            return LHS;
+        }
+
         UnaryOp* UOP = NewNode<UnaryOp>(CTok);
-        UOP->Op = TokenKind::POST_PLUS_PLUS;
+        UOP->Op =  TokenKind::POST_PLUS_PLUS;
         NextToken(); // Consuming the unary operator
         UOP->Value = LHS;
         return UOP;
     } else if (CTok.Is(TokenKind::MINUS_MINUS)) {
+        const char* Buf = CTok.GetText().data();
+        if (*(Buf - 1) == ' ') {
+            // NOTE: hack this is used to disambiguate nonsense like:
+            //       'if a++ b;'   and   'if a ++b;'
+            return LHS;
+        }
+
         UnaryOp* UOP = NewNode<UnaryOp>(CTok);
         UOP->Op = TokenKind::POST_MINUS_MINUS;
         NextToken(); // Consuming the unary operator

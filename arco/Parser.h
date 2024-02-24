@@ -99,6 +99,7 @@ namespace arco {
         EnumDecl* ParseEnumDecl(Modifiers Mods);
         InterfaceDecl* ParseInterfaceDecl(Modifiers Mods);
 
+        void ParseScopeStmtOrStmts(LexScope& Scope);
         void ParseScopeStmts(LexScope& Scope);
 
         ReturnStmt* ParseReturn();

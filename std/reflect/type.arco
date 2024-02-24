@@ -5,7 +5,7 @@ namespace reflect;
  * belongs.
  */
 TypeId enum {
-
+    
     UINT;
     UINT8;
     UINT16;
@@ -31,6 +31,7 @@ TypeId enum {
     ARRAY;
     STRUCT;
     ENUM;
+    INTERFACE;
     FUNCTION;
     
     NULL;
@@ -45,7 +46,9 @@ TypeId enum {
     STRUCT_REF;
     // When referencing an identifier that refers to an enum.
     ENUM_REF;
-    
+    // When referencing an identifier that refers to an interface.
+    INTERFACE_REF;
+
 }
 
 ArrayType struct {
