@@ -55,8 +55,4 @@ fn format(fmt cstr, args Any...) String {
     stream := OutStream{ &fmt_buffer };
     stream.write(fmt, args);
     return fmt_buffer.to_string();
-    //arg0 := args[0];
-    //println(arg0.type.id);
-
-    //return String{ "" };
 }

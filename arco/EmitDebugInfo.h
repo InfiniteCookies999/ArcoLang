@@ -19,10 +19,11 @@ namespace arco {
 
         void EmitFile(FileScope* FScope);
 
-        void EmitFunc(FuncDecl* Func);
+        llvm::DISubprogram* EmitFunc(FuncDecl* Func, bool ForwardDecl = false);
         void EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder);
         void EmitFuncEnd(FuncDecl* Func);
         void EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBuilder);
+        void EmitThisVar(llvm::Value* LLThisAddr, FuncDecl* Func, llvm::IRBuilder<>& IRBuilder);
 
         void EmitGlobalVar(VarDecl* Global, llvm::IRBuilder<>& IRBuilder);
 
@@ -38,12 +39,12 @@ namespace arco {
         ArcoContext& Context;
 
         llvm::DIBuilder*     DBuilder;
-        llvm::DICompileUnit* DebugUnit;
+        llvm::DICompileUnit* DebugUnit = nullptr;
 
         llvm::SmallVector<llvm::DIScope*> DILexicalScopes;
 
-        llvm::DIType* EmitType(Type* Ty);
-        llvm::DIType* EmitFirstSeenType(Type* Ty);
+        llvm::DIType* EmitType(Type* Ty, llvm::DINode::DIFlags DIFlags = llvm::DINode::FlagZero);
+        llvm::DIType* EmitFirstSeenType(Type* Ty, llvm::DINode::DIFlags DIFlags);
         llvm::DIType* EmitMemberFieldType(llvm::DIType* DIScope, VarDecl* Field, u64 BitsOffset);
 
     };

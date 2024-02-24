@@ -244,7 +244,7 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
         }
     }
     LLStructTy->setBody(LLStructFieldTypes);
-    LLStructTy->setName(Struct->Name.Text);
+    LLStructTy->setName(Struct->Name.Text.str());
 
     if (!Struct->Interfaces.empty()) {
         const llvm::StructLayout* LLLayout = Context.LLArcoModule.getDataLayout().getStructLayout(LLStructTy);
@@ -311,6 +311,14 @@ llvm::FunctionType* arco::GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Fu
     }
 
     return llvm::FunctionType::get(LLRetTy, LLParamTypes, false);
+}
+
+llvm::Twine arco::GenFuncLinkName(FuncDecl* Func, bool IsMainFunc) {
+    llvm::Twine LLFuncName = !Func->NativeName.empty() ? Func->NativeName : Func->Name.Text;
+    llvm::Twine LLFullFuncName = (IsMainFunc || (Func->Mods & ModKinds::NATIVE))
+                               ? LLFuncName
+                               : LLFuncName.concat(".arco");
+    return LLFullFuncName;
 }
 
 
@@ -447,16 +455,10 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
 
     llvm::FunctionType* LLFuncType = GenArcoConvFuncType(Context, Func);
 
-    llvm::Twine LLFuncName = !Func->NativeName.empty() ? Func->NativeName : Func->Name.Text;
-    llvm::Twine LLFullFuncName = (Func == Context.MainEntryFunc ||
-                                  (Func->Mods & ModKinds::NATIVE))
-                               ? LLFuncName
-                               : LLFuncName.concat(".arco");
-
     llvm::Function* LLFunc = llvm::Function::Create(
         LLFuncType,
         llvm::Function::ExternalLinkage,
-        LLFullFuncName,
+        GenFuncLinkName(Func, Func == Context.MainEntryFunc),
         LLModule
     );
 
@@ -486,6 +488,9 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
     if (Func->UsesParamRetSlot) {
         ++ImplicitParams;
         GetElisionRetSlotAddr(Func)->setName("ret.addr");
+    }
+    if (Func->Struct) {
+        LLFunc->getArg(0)->addAttr(llvm::Attribute::NoUndef);
     }
     for (ulen i = 0; i < Func->Params.size(); i++) {
         LLFunc->getArg(i + ImplicitParams)->setName(llvm::Twine(Func->Params[i]->Name.Text).concat(".param"));
@@ -550,10 +555,12 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (Func->Struct) {
         // Member function pointer.
         LLThis = LLFunc->getArg(LLParamIndex++);
+        llvm::Type* LLThisFinalTy;
         if (Func->MappedInterfaceFunc) {
             // Must adjust the "this" pointer since the interfaces are not guaranteed to pass the correct address.
             StructDecl* Struct = Func->Struct;
             llvm::StructType* LLStructTy = GenStructType(Func->Struct);
+            LLThisFinalTy = llvm::PointerType::get(LLStructTy, 0);
             ulen InterfaceOffset = 0;
             InterfaceDecl* Interface = Func->MappedInterfaceFunc->Interface;
             for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
@@ -574,8 +581,15 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
                 LLThis = CreateInBoundsGEP(LLThis, { GetLLInt64(-LLInterfaceOffset) });
             }
             LLThis = Builder.CreateBitCast(LLThis, llvm::PointerType::get(LLStructTy, 0));
+        } else {
+            LLThisFinalTy = LLFunc->getArg(0)->getType();
         }
+
+        llvm::Value* LLThisAddr = Builder.CreateAlloca(LLThisFinalTy, nullptr, "this.addr");
+        Builder.CreateStore(LLThis, LLThisAddr);
+        LLThis = CreateLoad(LLThisAddr);
         LLThis->setName("this");
+        EMIT_DI(GetDIEmitter(Func)->EmitThisVar(LLThisAddr, Func, Builder));
     }
     if (Func->UsesParamRetSlot) {
         ++LLParamIndex;

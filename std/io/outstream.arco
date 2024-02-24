@@ -6,7 +6,7 @@ import reflect.TypeId;
  * An output stream for writing to files, sockets, or
  * any streamable handle that is writeable.
  */
-OutStream struct {
+OutStream struct : Writeable {
     
     private handle Writeable*;
 
@@ -14,8 +14,8 @@ OutStream struct {
         : handle(handle) {
     }
 
-    fn write_buffer(msg cstr, length int) {
-        handle.write_buffer(msg, length);
+    fn write_buffer(msg cstr, length int) int {
+        return handle.write_buffer(msg, length);
     }
 
     fn write(msg cstr) {

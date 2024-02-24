@@ -19,13 +19,15 @@ namespace arco {
 
     ulen SizeOfTypeInBytes(llvm::Module& LLModule, llvm::Type* LLType);
 
+    llvm::Twine GenFuncLinkName(FuncDecl* Func, bool IsMainFunc);
+
     class IRGenerator {
     public:
 
         explicit IRGenerator(ArcoContext& Context);
 
         void GenFunc(FuncDecl* Func);
-
+        
         void GenGlobalVar(VarDecl* Global);
 
         void GenImplicitDefaultConstructorBody(StructDecl* Struct);

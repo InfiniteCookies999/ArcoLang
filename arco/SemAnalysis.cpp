@@ -532,6 +532,17 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         A.CheckFuncDecl(Struct->MoveConstructor);
         Context.RequestGen(Struct->MoveConstructor);
     }
+
+    /*if (Context.EmitDebugInfo) {
+        // Terrible but when emitting debug information the type information for the member functions needs to be known
+        // in order to be able to generate proper information for member variables so every single function has to
+        // be generated to not get link errors.
+        for (auto& [Name, FuncList] : Struct->Funcs) {
+            for (FuncDecl* Func : FuncList) {
+                Context.RequestGen(Func);
+            }
+        }
+    }*/
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {

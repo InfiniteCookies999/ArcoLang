@@ -291,7 +291,8 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     if (EmitDebugInfo) {
         for (FileScope* FScope : FileScopes) {
             FScope->DIEmitter = new DebugInfoEmitter(Context);
-            FScope->DIEmitter->EmitFile(FScope);
+            // NOTE: We do not generate the compilation units here anymore
+            //       they are generated on demand as needed.
         }
     }
     IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
@@ -368,7 +369,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
 #endif
         Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
         llvm::NamedMDNode* LLVMIdentMD = Context.LLArcoModule.getOrInsertNamedMetadata("llvm.ident");
-		LLVMIdentMD->addOperand(llvm::MDNode::get(Context.LLContext, { llvm::MDString::get(Context.LLContext, "Eris Compiler")}));
+		LLVMIdentMD->addOperand(llvm::MDNode::get(Context.LLContext, { llvm::MDString::get(Context.LLContext, "Arco Compiler")}));
     
         // Finalizing all files for debug.
         for (FileScope* FScope : FileScopes) {
@@ -394,7 +395,7 @@ void arco::Compiler::Linking(const std::string& AbsoluteObjPath, const std::stri
         LibPaths += std::string("-L") + std::string(LibPath) + " ";
     }
 
-    std::string ClangCommand = "clang ";
+    std::string ClangCommand = "clang -O0 "; // TODO: -O0 should not be needed.
     if (EmitDebugInfo)
         ClangCommand += "-g ";
     ClangCommand += LibPaths + Libs + AbsoluteObjPath;

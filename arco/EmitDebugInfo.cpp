@@ -3,6 +3,7 @@
 #include "Context.h"
 #include "IRGen.h"
 
+
 arco::DebugInfoEmitter::~DebugInfoEmitter() {
     delete DBuilder;
 }
@@ -14,6 +15,9 @@ arco::DebugInfoEmitter::DebugInfoEmitter(ArcoContext& Context)
 }
 
 void arco::DebugInfoEmitter::EmitFile(FileScope* FScope) {
+	if (DebugUnit) { // Do not generate more than once
+		return;
+	}
 
     std::string& FullPath = FScope->FullPath;
     auto Itr = FullPath.find_last_of("/");
@@ -38,8 +42,12 @@ void arco::DebugInfoEmitter::EmitFile(FileScope* FScope) {
 
     llvm::StringRef DebugFlags = "";
 
-    DebugUnit = DBuilder->createCompileUnit(
+	// TODO: Note: DW_LANG_C_plus_plus_14 allows for some stuff related to virtual functions like
+	// "this adjustments" which we will likely need. Therefore, we will probably need to either use
+	// DW_LANG_C_plus_plus_14 at some point or switch to having a custom language definition.
+	DebugUnit = DBuilder->createCompileUnit(
 		llvm::dwarf::DW_LANG_C99,
+		//llvm::dwarf::DW_LANG_C_plus_plus_14,
 		DIUnitFile,
 		"Arco Compiler", // Producer
 		false,           // TODO: Is Optimized
@@ -54,19 +62,63 @@ void arco::DebugInfoEmitter::EmitFile(FileScope* FScope) {
 	);
 }
 
-void arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func) {
-	llvm::DIScope* Scope = DebugUnit->getFile();
+llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool ForwardDecl) {
+	
+	// Ensure the compilation unit exists for this function.
+	EmitFile(Func->FScope);
 
 	llvm::SmallVector<llvm::Metadata*, 4> DIFuncTys;
+	// Return type always comes first.
 	llvm::Metadata* DIRetTy = EmitType(Func->RetTy);
-	
 	DIFuncTys.push_back(DIRetTy);
+
+	// If the struct is a member function then the debugger needs to know about the
+	// "this" pointer. NOTE: This should be fixed for virtual functions because they
+	// perform "ThisAdjustment". That can be handled in the CreateMethod function provided
+	// by the debugger but likely requires the language to be set to DW_LANG_C_Plus_Plus_14
+	//
+	StructType* StructTy;
+	if (Func->Struct) {
+		// TODO: Optimization: Could store the struct type in the struct to reduce having
+		//                     to perform map lookup to make a new struct type. (May be worse
+		//                     or not matter though since it increases the node size).
+		//
+		
+		             StructTy = StructType::Create(Func->Struct, Context);
+		PointerType* LLThisTy = PointerType::Create(StructTy, Context);
+
+		ulen PtrSizeInBits = Context.LLArcoModule
+			                        .getDataLayout()
+			                        .getPointerSizeInBits();
+
+		// createObjectPointerType adds flags FlagObjectPointer and FlagArtificial which
+		// is what we want for "this" pointers.
+		//
+		llvm::DIType* DIObjectPtrTy = DBuilder->createObjectPointerType(EmitType(LLThisTy));
+		DIFuncTys.push_back(DIObjectPtrTy);
+	}
+	
+	// Creating types for the parameters.
 	for (VarDecl* Param : Func->Params) {
 		DIFuncTys.push_back(EmitType(Param->Ty));
 	}
-
+	
+	// TODO: Need to take into account calling convention here.
 	llvm::DISubroutineType* DIFuncTy =
 		DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(DIFuncTys));
+	
+	llvm::DIScope* Scope;
+
+	if (Func->Struct) {
+		// Tell it that the scope is that of the structure. This fixes the problem
+		// where the function is not able to recognize member variables or the "this"
+		// pointer if using DW_LANG_C_Plus_Plus_14.
+		//
+		Scope = EmitType(StructTy);
+	} else {
+		Scope = DebugUnit->getFile();
+	}
+	
 
 	llvm::DISubprogram* DIFunc = DBuilder->createFunction(
 		Scope,
@@ -77,11 +129,14 @@ void arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func) {
 		DIFuncTy,
 		Func->Loc.LineNumber, // TODO: scope line
 		llvm::DINode::DIFlags::FlagPrototyped,
-		llvm::DISubprogram::DISPFlags::SPFlagDefinition
+		llvm::DISubprogram::DISPFlags::SPFlagDefinition,
+		nullptr,
+		nullptr //DIForwardDeclaredFunc // There might have been a forward declaration!
 	);
+
 	Func->LLFunction->setSubprogram(DIFunc);
-	
 	DILexicalScopes.push_back(DIFunc);
+	return DIFunc;
 }
 
 void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder) {
@@ -114,7 +169,14 @@ void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRB
 
 void arco::DebugInfoEmitter::EmitFuncEnd(FuncDecl* Func) {
 	DILexicalScopes.clear();
-	DBuilder->finalizeSubprogram(Func->LLFunction->getSubprogram());
+	llvm::DISubprogram* DIFunc = Func->LLFunction->getSubprogram();
+
+	// !! IF THE PROGRAM HAS A FORWARD DECLARATION YOU STILL HAVE TO FINALIZE IT OR THE RETAINED
+	// NODES WILL BE TEMPORARY !!
+	if (llvm::DISubprogram* DIForwardDecl = DIFunc->getDeclaration()) {
+		DBuilder->finalizeSubprogram(DIForwardDecl);
+	}
+	DBuilder->finalizeSubprogram(DIFunc);
 }
 
 void arco::DebugInfoEmitter::EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBuilder) {
@@ -142,7 +204,40 @@ void arco::DebugInfoEmitter::EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBui
 	);
 }
 
+void arco::DebugInfoEmitter::EmitThisVar(llvm::Value* LLThisAddr, FuncDecl* Func, llvm::IRBuilder<>& IRBuilder) {
+	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
+
+	StructType* StructTy = StructType::Create(Func->Struct, Context);
+	PointerType* LLThisTy = PointerType::Create(StructTy, Context);
+
+	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
+		DIScope,
+		"this",
+		1,
+		DebugUnit->getFile(),
+		0,
+		EmitType(LLThisTy),
+		true,
+		llvm::DINode::FlagArtificial | llvm::DINode::FlagObjectPointer
+	);
+
+	DBuilder->insertDeclare(
+		LLThisAddr,
+		DIVariable,
+		DBuilder->createExpression(),
+		llvm::DILocation::get(
+			Context.LLContext,
+			0,
+			0,
+			DIScope),
+		IRBuilder.GetInsertBlock()
+	);
+}
+
 void arco::DebugInfoEmitter::EmitGlobalVar(VarDecl* Global, llvm::IRBuilder<>& IRBuilder) {
+	// Ensure the compilation unit exists for this function.
+	EmitFile(Global->FScope);
+
 	llvm::DIGlobalVariableExpression* DIGVE = DBuilder->createGlobalVariableExpression(
 		DebugUnit,
 		Global->Name.Text,
@@ -189,18 +284,24 @@ void arco::DebugInfoEmitter::EmitDebugLocation(llvm::Instruction* LLInst, Source
 }
 
 void arco::DebugInfoEmitter::Finalize() {
-	DBuilder->finalize();
+	if (DebugUnit) { // Only finalize if there is something to finalize.
+		DBuilder->finalize();
+	}
 }
 
-llvm::DIType* arco::DebugInfoEmitter::EmitType(Type* Ty) {
+llvm::DIType* arco::DebugInfoEmitter::EmitType(Type* Ty, llvm::DINode::DIFlags DIFlags) {
+	if (DIFlags != llvm::DINode::FlagZero) {
+		// TODO: should probably still cache.
+		return EmitFirstSeenType(Ty, DIFlags);
+	}
 	auto Itr = Context.LLDITypeCache.find(Ty->GetUniqueId());
 	if (Itr != Context.LLDITypeCache.end()) {
 		return Itr->second;
 	}
-	return EmitFirstSeenType(Ty);
+	return EmitFirstSeenType(Ty, DIFlags);
 }
 
-llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
+llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::DIFlags DIFlags) {
 #define MAKE_BASIC_TY(Name, BitSize, DT) {                             \
 	llvm::DIType* DITy = DBuilder->createBasicType(Name, BitSize, DT); \
 	Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DITy });         \
@@ -235,15 +336,22 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 	case TypeKind::Pointer:
 	case TypeKind::CStr: {
 		ulen PtrSizeInBits = Context.LLArcoModule
-			.getDataLayout()
-			.getPointerSizeInBits();
+			                        .getDataLayout()
+			                        .getPointerSizeInBits();
 		
 		llvm::DIType* DITy;
 		if (Ty->GetPointerElementType(Context)->GetKind() == TypeKind::Interface) {
-			DITy = DBuilder->createPointerType(EmitType(Context.VoidType), PtrSizeInBits);
+			DITy = DBuilder->createPointerType(
+				EmitType(Context.VoidType),
+				PtrSizeInBits,
+				0 // TODO alignment
+				);
 		} else {
 			DITy = DBuilder->createPointerType(
-				EmitType(Ty->GetPointerElementType(Context)), PtrSizeInBits);
+				EmitType(Ty->GetPointerElementType(Context)),
+				PtrSizeInBits,
+				0 // TODO alignment
+				);
 		}
 
 		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DITy });
@@ -259,7 +367,6 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 
 		u64 SizeInBits = LLLayout->getSizeInBits();
 
-		llvm::DINode::DIFlags Flags = llvm::DINode::FlagZero;
 		llvm::DICompositeType* DIStructTy = DBuilder->createStructType(
 			nullptr,
 			LLSliceTy->getName(),
@@ -267,7 +374,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			0,
 			SizeInBits,
 			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLSliceTy) * 8, // *8 because wants bits
-			Flags,
+			DIFlags,
 			nullptr,
 			llvm::DINodeArray(),
 			0,
@@ -290,7 +397,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			SizeInBits,
 			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(LLLengthType) * 8, // *8 because wants bits
 			0,
-			llvm::DINode::DIFlags::FlagZero,
+			DIFlags,
 			EmitType(Context.IntType)
 		);
 		DIFieldTys.push_back(DIMemberLengthType);
@@ -384,7 +491,28 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 
 		u64 SizeInBits = LLLayout->getSizeInBits();
 
-		llvm::DINode::DIFlags Flags = llvm::DINode::FlagTypePassByValue; //llvm::DINode::FlagZero;
+		
+		// NOTE: Commenting just to leave this here for future reference in case it is needed:
+		//       LLVM creates the type as distinct. I think distinct only refers to internal
+		//       storage and does not actually effect debug results. However, I could be wrong
+		//       and in case it is needed to make distinct this is a valid approach but it is likely
+		//       having to make a copy of the type which is wasteful.
+		//
+		/*llvm::DICompositeType* DIStructTy = DBuilder->createReplaceableCompositeType(
+			llvm::dwarf::DW_TAG_structure_type,
+			Struct->Name.Text,
+			DebugUnit->getFile(), // TODO: Scope?
+			DebugUnit->getFile(),
+			Struct->Loc.LineNumber,
+			0, // runtime language (clang leaves out so we will leave out)
+			SizeInBits,
+			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(Struct->LLStructTy) * 8, // *8 because wants bits
+			DIFlags | llvm::DINode::FlagTypePassByValue,
+			Struct->LLStructTy->getName(),
+			nullptr // annotations
+		);*/
+		//DIStructTy = DIStructTy->replaceWithDistinct(llvm::TempDICompositeType(DIStructTy));
+
 		llvm::DICompositeType* DIStructTy = DBuilder->createStructType(
 			nullptr,
 			Struct->Name.Text,
@@ -392,7 +520,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			Struct->Loc.LineNumber,
 			SizeInBits,
 			0, //Context.LLArcoModule.getDataLayout().getPrefTypeAlignment(Struct->LLStructTy) * 8, // *8 because wants bits
-			Flags,
+			DIFlags | llvm::DINode::FlagTypePassByValue,
 			nullptr, // TODO: Derived from?
 			llvm::DINodeArray(),
 			0, // lang clang ignores so we ignore.
@@ -407,11 +535,24 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty) {
 			u64 OffsetInBits = LLLayout->getElementOffsetInBits(Field->FieldIdx);
 			DIFieldTys.push_back(EmitMemberFieldType(DIStructTy, Field, OffsetInBits));
 		}
+		// NOTE: Commented out for now since it seems not to matter but the clang
+		//       version actual adds the functions as part of the type information.
+		// 
+		// Also have to emit all the member functions as elements.
+		/*IRGenerator IRGen(Context);
+		for (auto& [Name, FuncList] : Struct->Funcs) {
+			for (FuncDecl* Func : FuncList) {
+				DIFieldTys.push_back(EmitFunc(Func, true));
+			}
+		}*/
+
 		DBuilder->replaceArrays(DIStructTy, DBuilder->getOrCreateArray(DIFieldTys));
 
 		return DIStructTy;
 	}
 	case TypeKind::Enum: {
+		// TODO: There is a createEnumerationType function under DIbuilder
+
 		// TODO: Is there a way to also carray the name information around?
 		EnumDecl* Enum = Ty->AsStructType()->GetEnum();
 		Type* IndexType = Enum->IndexingInOrder ? Enum->ValuesType : Context.IntType;
