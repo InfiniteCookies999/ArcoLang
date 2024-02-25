@@ -147,15 +147,22 @@ void arco::Parser::Parse() {
 
         if (Stmt->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
-            if (Func->Name == Context.MainIdentifier && !(Func->Mods & ModKinds::PRIVATE)) {
-                if (!Context.MainEntryFunc) {
-                    Context.MainEntryFunc = Func;
-                } else {
-                    // Duplicate entry function.
-                    Error(Func->Loc,
-                        "Duplicate entry point found. First declared at: %s:%s",
-                        Context.MainEntryFunc->FScope->Path,
-                        Context.MainEntryFunc->Loc.LineNumber);
+            if (Func->Name == Context.MainIdentifier) {
+                llvm::SmallVector<VarDecl*, 2>& Params = Func->Params;
+                ulen NumParams = Func->Params.size();
+                if (!Func->IsVariadic &&
+                    (NumParams == 0 ||
+                     (NumParams == 2 && Params[0]->Ty->Equals(Context.IntType) && Params[1]->Ty->Equals(Context.CharPtrPtrType))
+                    )) {
+                    if (!Context.MainEntryFunc) {
+                        Context.MainEntryFunc = Func;
+                    } else {
+                        // Duplicate entry function.
+                        Error(Func->Loc,
+                            "Duplicate entry point found. First declared at: %s:%s",
+                            Context.MainEntryFunc->FScope->Path,
+                            Context.MainEntryFunc->Loc.LineNumber);
+                    }
                 }
             }
 

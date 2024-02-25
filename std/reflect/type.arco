@@ -63,11 +63,11 @@ Field struct {
 }
 
 Struct struct {
-    name       cstr;
-    num_fields int;
-    fields     Field*;
-
-    // TODO: Want to have information about the v-table in here as well.
+    name            cstr;
+    num_fields      int;
+    fields          Field*;
+    
+    // TODO: provide specific information about which interfaces this struct inherits.
 }
 
 Enum struct {

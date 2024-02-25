@@ -183,8 +183,9 @@ void arco::ArcoContext::Initialize() {
         TokenKeywordInvertedMap.insert({ static_cast<u32>(Kind), Text });
     }
 
-    VoidPtrType = PointerType::Create(VoidType, *this);
-    CharPtrType = PointerType::Create(CharType, *this);
+    VoidPtrType    = PointerType::Create(VoidType, *this);
+    CharPtrType    = PointerType::Create(CharType, *this);
+    CharPtrPtrType = PointerType::Create(CharPtrType, *this);
 
     LLVMValidIntrinsicArgs = {
         { Identifier("memcpy"), { VoidPtrType, VoidPtrType, UIntType }, VoidType },

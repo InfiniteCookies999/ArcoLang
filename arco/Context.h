@@ -123,6 +123,7 @@ namespace arco {
         Type* ImportType;
         Type* VoidPtrType;
         Type* CharPtrType;
+        Type* CharPtrPtrType;
         Type* FuncRefType;
         Type* StructRefType;
         Type* EnumRefType;
