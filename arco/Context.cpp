@@ -19,6 +19,7 @@ arco::ArcoContext::ArcoContext()
     ArrayTypeIdentifier(Identifier("ArrayType")),
     StructTypeIdentifier(Identifier("Struct")),
     FieldTypeIdentifier(Identifier("Field")),
+    EnumTypeIdentifier(Identifier("Enum")),
 
     CallConventions({
         { StdcallIdentifier,  llvm::CallingConv::X86_StdCall  },

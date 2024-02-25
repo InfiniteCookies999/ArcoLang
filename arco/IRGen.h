@@ -157,6 +157,7 @@ namespace arco {
         llvm::Constant* GenTypeOfType(Type* GetTy);
         llvm::GlobalVariable* GenTypeOfArrayTypeGlobal(ArrayType* ArrayTy);
         llvm::GlobalVariable* GenTypeOfStructTypeGlobal(StructType* StructTy);
+        llvm::GlobalVariable* GenTypeOfEnumTypeGlobal(EnumDecl* Enum);
 
         llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
         llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);

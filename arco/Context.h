@@ -92,12 +92,14 @@ namespace arco {
         Identifier ArrayTypeIdentifier;
         Identifier StructTypeIdentifier;
         Identifier FieldTypeIdentifier;
+        Identifier EnumTypeIdentifier;
         StructDecl* StdStringStruct      = nullptr;
         StructDecl* StdAnyStruct         = nullptr;
         StructDecl* StdTypeStruct        = nullptr;
         StructDecl* StdArrayTypeStruct   = nullptr;
         StructDecl* StdStructTypeStruct  = nullptr;
         StructDecl* StdFieldTypeStruct   = nullptr;
+        StructDecl* StdEnumTypeStruct    = nullptr;
 
         Type* IntType;
         Type* UIntType;

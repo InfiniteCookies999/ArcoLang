@@ -2757,35 +2757,49 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
     llvm::StructType* LLTypeType          = GenStructType(Context.StdTypeStruct);
     llvm::StructType* LLArrayStructType   = GenStructType(Context.StdArrayTypeStruct);
     llvm::StructType* LLStructStructType  = GenStructType(Context.StdStructTypeStruct);
+    llvm::StructType* LLEnumStructType    = GenStructType(Context.StdEnumTypeStruct);
 
-    llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(GetTy->GetKind()));
-    llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo;
-    if (GetTy->GetKind() == TypeKind::Pointer || GetTy->GetKind() == TypeKind::CStr) {
+    // We use the GetRealKind() so as to not loose enum information.
+    TypeKind Kind = GetTy->GetRealKind();
+
+    llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(Kind));
+    llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo, *LLEnumInfo;
+    if (Kind == TypeKind::Pointer || Kind == TypeKind::CStr) {
         LLPointerInfo = GenTypeOfGlobal(GetTy->GetPointerElementType(Context));
-    } else if (GetTy->GetKind() == TypeKind::Slice) {
+    } else if (Kind == TypeKind::Slice) {
         LLPointerInfo = GenTypeOfGlobal(GetTy->AsSliceTy()->GetElementType());
     } else {
         LLPointerInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLTypeType, 0));
     }
-    if (GetTy->GetKind() == TypeKind::Array) {
+    if (Kind == TypeKind::Array) {
         LLArrayInfo = GenTypeOfArrayTypeGlobal(GetTy->AsArrayTy());
     } else {
         LLArrayInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLArrayStructType, 0));
     }
-    if (GetTy->GetKind() == TypeKind::Struct) {
+    if (Kind == TypeKind::Struct) {
         LLStructInfo = GenTypeOfStructTypeGlobal(GetTy->AsStructType());
     } else {
         LLStructInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLStructStructType, 0));
     }
+    if (Kind == TypeKind::Enum) {
+        LLEnumInfo = GenTypeOfEnumTypeGlobal(static_cast<StructType*>(GetTy)->GetEnum());
+    } else {
+        LLEnumInfo = llvm::Constant::getNullValue(llvm::PointerType::get(LLEnumStructType, 0));
+    }
 
     // TODO: Should this change? (The size in bytes include interface data?)
-    ulen SizeInBytes = GetTy->GetKind() == TypeKind::Void ? 0 : SizeOfTypeInBytes(GenType(GetTy));
-    llvm::SmallVector<llvm::Constant*, 5> LLElements = {
+    // 
+    // TODO: Should this report the size information of enum instead of the underlying type?
+    ulen SizeInBytes = GetTy->GetKind() == TypeKind::Void     ? 0  :
+                       GetTy->GetKind() == TypeKind::Function ? LLModule.getDataLayout().getPointerSize() : // functions types are unsized but we treat them as pointers.
+                                                                SizeOfTypeInBytes(GenType(GetTy));
+    llvm::SmallVector<llvm::Constant*> LLElements = {
         LLTypeId,
         GetSystemInt(SizeInBytes),
         LLPointerInfo,
         LLArrayInfo,
-        LLStructInfo
+        LLStructInfo,
+        LLEnumInfo
     };
 
     return llvm::ConstantStruct::get(LLTypeType, LLElements);
@@ -2834,7 +2848,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
     LLFieldsArrayGlobal->setInitializer(llvm::ConstantArray::get(LLFieldArrayTy, LLFields));
 
     Identifier StructName = Struct->Name;
-    llvm::SmallVector<llvm::Constant*, 2> LLElements = {
+    llvm::SmallVector<llvm::Constant*> LLElements = {
         llvm::cast<llvm::Constant>(GenStringLiteral(StructName.Text.data(), StructName.Text.size())),
         GetSystemInt(Struct->Fields.size()),
         llvm::cast<llvm::Constant>(DecayArray(LLFieldsArrayGlobal))
@@ -2843,6 +2857,36 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
     std::string LLGlobalTypeInfoName = "__global.typeinfo.struct." + std::to_string(Context.NumGeneratedGlobalVars++);
     llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLStructStructType);
     LLGlobal->setInitializer(llvm::ConstantStruct::get(LLStructStructType, LLElements));
+    return LLGlobal;
+}
+
+llvm::GlobalVariable* arco::IRGenerator::GenTypeOfEnumTypeGlobal(EnumDecl* Enum) {
+
+    // Generating the names array.
+    llvm::SmallVector<llvm::Constant*> LLNames;
+    LLNames.reserve(Enum->Values.size());
+    for (EnumDecl::EnumValue& Value : Enum->Values) {
+        Identifier& Name = Value.Name;
+        llvm::Constant* LLConstName = llvm::cast<llvm::Constant>(GenStringLiteral(Name.Text.data(), Name.Text.size()));
+        LLNames.push_back(LLConstName);
+    }
+    std::string LLGlobalEnumNameArrayName = "__global.typeinfo.enum.names.arr." + std::to_string(Context.NumGeneratedGlobalVars++);
+    llvm::ArrayType* LLEnumNameArrayTy = llvm::ArrayType::get(GenType(Context.CStrType), LLNames.size());
+    llvm::GlobalVariable* LLEnumNameArrayGlobal = GenLLVMGlobalVariable(LLGlobalEnumNameArrayName, LLEnumNameArrayTy);
+    LLEnumNameArrayGlobal->setInitializer(llvm::ConstantArray::get(LLEnumNameArrayTy, LLNames));
+
+    Type* IndexType = Enum->IndexingInOrder ? Enum->ValuesType : Context.IntType;
+    llvm::SmallVector<llvm::Constant*> LLElements = {
+         GenTypeOfGlobal(Enum->ValuesType),
+         GenTypeOfGlobal(IndexType),
+         GetSystemInt(Enum->Values.size()),
+         llvm::cast<llvm::Constant>(DecayArray(LLEnumNameArrayGlobal))
+    };
+
+    llvm::StructType* LLEnumStructType = GenStructType(Context.StdEnumTypeStruct);
+    std::string LLGlobalTypeInfoName = "__global.typeinfo.enum." + std::to_string(Context.NumGeneratedGlobalVars++);
+    llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLEnumStructType);
+    LLGlobal->setInitializer(llvm::ConstantStruct::get(LLEnumStructType, LLElements));
     return LLGlobal;
 }
 
@@ -2914,6 +2958,14 @@ void arco::IRGenerator::GenBlock(llvm::BasicBlock* LLBB, ScopeStmts& Stmts) {
 llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Value* LLValue) {
 
     if (FromType->GetRealKind() == TypeKind::Enum) {
+        if (ToType->GetKind() == TypeKind::Struct) {
+            // If generating to Any then we actually need to perserve the enum information
+            // rather than stripping it away.
+            llvm::Value* LLAny = CreateUnseenAlloca(GenStructType(Context.StdAnyStruct), "tmp.any");
+            GenToAny(LLAny, LLValue, FromType);
+            return LLAny;
+        }
+
         // KEEP static cast here because AsStructTy will strip away enum information.
         EnumDecl* Enum = static_cast<StructType*>(FromType)->GetEnum();
         FromType = Enum->ValuesType;
@@ -3143,7 +3195,7 @@ void arco::IRGenerator::GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type*
         // b Any = a;   -- the pointer would refer to the address of a not the pointer of a.
 
         // TODO: Is there a better way to do this? This seems rather hacky.
-        if (ValueTy->IsPointer()) {
+        if (ValueTy->IsPointer() && ValueTy->GetKind() != TypeKind::Function) {
             if (LLValue->getType() != GenType(ValueTy)) {
                 LLValue = CreateLoad(LLValue);
             }

@@ -66,13 +66,26 @@ Struct struct {
     name       cstr;
     num_fields int;
     fields     Field*;
+
+    // TODO: Want to have information about the v-table in here as well.
+}
+
+Enum struct {
+    values_type Type*;
+    // Sometimes the values are not able to be indexed so
+    // a compiler generated index_type is created instead.
+    // If the values_type is indexable then values_type and
+    // index_type are the same.
+    index_type  Type*;
+    num_names   int;
+    names       cstr*;
 }
 
 /*
  * A compiler generated struct for determining
  * information about a type. Example: typeof(int).
  */
-// TODO: support enum and function information.
+// TODO: support  function information.
 Type struct {
     // Unique ID to identifier which type catagory
     // this type belongs to.
@@ -86,7 +99,8 @@ Type struct {
     element_type Type*;
     array_info   ArrayType*;
     struct_info  Struct*;
-    
+    enum_info    Enum*;
+
     /*
      * Tells if the type is an integer.
      */

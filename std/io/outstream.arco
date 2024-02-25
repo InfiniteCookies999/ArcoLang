@@ -157,6 +157,35 @@ OutStream struct : Writeable {
             }
             
             write(" }");
+        } else if type.id == TypeId.ENUM {
+            
+            index int;
+            index_type := type.enum_info.index_type;
+            if type.id == TypeId.INT {
+                index = *cast(int*) value;
+            } else if type.id == TypeId.UINT {
+                index = cast(int) *cast(uint*) value;
+            } else if type.id == TypeId.UINT8 {
+                index = cast(int) *cast(uint8*) value;
+            } else if type.id == TypeId.UINT16 {
+                index = cast(int) *cast(uint16*) value;
+            } else if type.id == TypeId.UINT32 {
+                index = cast(int) *cast(uint32*) value;
+            } else if type.id == TypeId.UINT64 {
+                index = cast(int) *cast(uint64*) value;
+            } else if type.id == TypeId.INT8 {
+                index = cast(int) *cast(int8*) value;
+            } else if type.id == TypeId.INT16 {
+                index = cast(int) *cast(int16*) value;
+            } else if type.id == TypeId.INT32 {
+                index = cast(int) *cast(int32*) value;
+            } else if type.id == TypeId.INT64 {
+                index = cast(int) *cast(int64*) value;
+            } else if type.id == TypeId.CHAR {
+                index = cast(int) *cast(char*) value;
+            }  
+
+            write(type.enum_info.names[index]);
         } else {
             write("do not know how to write type!");
         }
