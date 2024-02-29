@@ -150,10 +150,6 @@ namespace arco {
         /// that need assignment are stored here until their assignments
         /// are generated.
         ///
-        /// Using a priority queue so that declarations which appear earlier
-        /// in files are generated first.
-        /// 
-        /// 
         llvm::SmallVector<VarDecl*, 16> GlobalPostponedAssignments;
         
         // ----- LLVM -----
