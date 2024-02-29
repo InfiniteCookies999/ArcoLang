@@ -4108,6 +4108,22 @@ void arco::SemAnalyzer::DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToT
             IdentRef* Ref = static_cast<IdentRef*>(FromExpr);
             OS << "If you wish to get the function type use: &" << Ref->Ident << ".";
         });
+    } else if (ToTy->IsInt() && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
+        // The integer does not fit into the destination type. So adding additional
+        // information to report about that case.
+        Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+            NumberLiteral* Number = static_cast<NumberLiteral*>(FromExpr);
+            
+            OS << "The value ";
+            if (FromExpr->Ty->IsSigned()) {
+                OS << Number->SignedIntValue;
+            } else {
+                OS << Number->UnsignedIntValue;
+            }
+            OS << " could not fit into '" << ToTy->ToString() << "' ";
+            OS << "(" << ToTy->GetSizeInBytes(Context.LLArcoModule) * 8 << " bits)";
+            });
+
     }
 }
 
