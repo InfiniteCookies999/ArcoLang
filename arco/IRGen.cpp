@@ -2619,8 +2619,24 @@ llvm::Value* arco::IRGenerator::GenTypeCast(TypeCast* Cast) {
 }
 
 llvm::Value* arco::IRGenerator::GenTypeBitCast(TypeBitCast* Cast) {
-    // TODO: Deal with enum nonsense.
+   
     llvm::Value* LLValue = GenRValue(Cast->Value);
+    Type* FromType = Cast->Value->Ty;
+    // Enum values may be floats and which are not indexable so need to load.
+    //
+    if (FromType->GetRealKind() == TypeKind::Enum) {
+        
+        // KEEP static cast here because AsStructTy will strip away enum information.
+        EnumDecl* Enum = static_cast<StructType*>(FromType)->GetEnum();
+        FromType = Enum->ValuesType;
+        if (!Enum->IndexingInOrder) {
+            // Not indexing in order so we have to get the values out of a global array.
+            llvm::Value* LLGlobalEnumArray = GenGlobalEnumArray(Enum);
+            llvm::Value* LLIndexAddress = GetArrayIndexAddress(LLGlobalEnumArray, LLValue);
+            LLValue = CreateLoad(LLIndexAddress);
+        }
+    }
+
     return Builder.CreateBitCast(LLValue, GenType(Cast->Ty));
 }
 
