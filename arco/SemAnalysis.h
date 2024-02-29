@@ -141,6 +141,7 @@ namespace arco {
         void CheckArray(Array* Arr);
         void CheckArrayAccess(ArrayAccess* Access);
         void CheckTypeCast(TypeCast* Cast);
+        void CheckTypeBitCast(TypeBitCast* Cast);
         void CheckStructInitializer(StructInitializer* StructInit);
         FuncDecl* CheckStructInitArgs(StructDecl* Struct,
                                       SourceLoc ErrorLoc,

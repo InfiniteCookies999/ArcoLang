@@ -293,6 +293,8 @@ fn open(path cstr, flags IOFlag) FileHandle {
         share_flags |= win32.FILE_SHARE_READ;
     }
 
+    // TODO: The create flag should create it it doesn't exist at the moment
+    // it won't open if the file already exists.
     if (flags & IOFlag.CREATE) != 0 {
         create_flags |= win32.CREATE_NEW;
     } else {

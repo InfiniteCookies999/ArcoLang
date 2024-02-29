@@ -62,6 +62,7 @@ namespace arco {
         KW_ENUM,
         KW_INTERFACE,
         KW_CAST,
+        KW_BITCAST,
         KW_LOOP,
         KW_BREAK,
         KW_CONTINUE,

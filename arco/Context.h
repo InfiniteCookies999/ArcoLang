@@ -7,6 +7,7 @@
 #include <queue>
 #include <unordered_set>
 #include <llvm/ADT/StringMap.h>
+#include <llvm/ADT/PriorityQueue.h>
 
 namespace llvm {
     class LLVMContext;
@@ -43,6 +44,10 @@ namespace llvm {
 }
 
 namespace arco {
+
+    struct OrderGlobalsComparitor {
+        constexpr bool operator()(const VarDecl* Global1, const VarDecl* Global2) const;
+    };
 
     class ArcoContext {
     public:
@@ -145,8 +150,12 @@ namespace arco {
         /// that need assignment are stored here until their assignments
         /// are generated.
         ///
+        /// Using a priority queue so that declarations which appear earlier
+        /// in files are generated first.
+        /// 
+        /// 
         llvm::SmallVector<VarDecl*, 16> GlobalPostponedAssignments;
-
+        
         // ----- LLVM -----
         llvm::LLVMContext& LLContext;
         llvm::Module&      LLArcoModule;

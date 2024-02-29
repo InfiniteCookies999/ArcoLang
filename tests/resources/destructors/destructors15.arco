@@ -1,0 +1,22 @@
+
+S struct {
+    
+    val int;
+    
+    ~S() {
+        val = 0;
+    }
+
+    fn foo() S {
+        val += 5;
+        return *this;
+    }
+}
+
+fn main() {
+
+    s S = S{ 5 };
+    s = s.foo();
+    print(s.val);
+
+}

@@ -166,6 +166,7 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "enum"     , TokenKind::KW_ENUM      });
     TokenKeywordMap.insert({ "interface", TokenKind::KW_INTERFACE });
     TokenKeywordMap.insert({ "cast"     , TokenKind::KW_CAST      });
+    TokenKeywordMap.insert({ "bitcast"  , TokenKind::KW_BITCAST   });
     TokenKeywordMap.insert({ "loop"     , TokenKind::KW_LOOP      });
     TokenKeywordMap.insert({ "break"    , TokenKind::KW_BREAK     });
     TokenKeywordMap.insert({ "continue" , TokenKind::KW_CONTINUE  });
@@ -221,4 +222,8 @@ void arco::ArcoContext::RequestGen(Decl* D) {
     if (D->GenRequestedAlready) return;
     D->GenRequestedAlready = true;
     QueuedDeclsToGen.push(D);
+}
+
+constexpr bool arco::OrderGlobalsComparitor::operator()(const VarDecl* Global1, const VarDecl* Global2) const {
+    return Global1->Loc.LineNumber < Global2->Loc.LineNumber;
 }

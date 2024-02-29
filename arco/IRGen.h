@@ -146,6 +146,7 @@ namespace arco {
         void FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy);
         llvm::Value* GenArrayAccess(ArrayAccess* Access);
         llvm::Value* GenTypeCast(TypeCast* Cast);
+        llvm::Value* GenTypeBitCast(TypeBitCast* Cast);
         llvm::Value* GenStructInitializer(StructInitializer* StructInit, llvm::Value* LLAddr);
         void GenStructInitArgs(llvm::Value* LLAddr,
                                StructDecl* Struct,
@@ -217,6 +218,7 @@ namespace arco {
 
         void GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Value* LLSlot);
 
+        void CopyOrMoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
         void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
         void MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
 
@@ -265,7 +267,7 @@ namespace arco {
 
         void GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, llvm::BasicBlock* LLFalseBB);
 
-        void GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr* Value, bool IsConstAddress);
+        void GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr* Value, bool IsConstAddress, bool DestroyIfNeeded = false);
         void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
 
         void GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment);

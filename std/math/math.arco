@@ -210,6 +210,9 @@ fn max(a int, b int) int {
     }
 }
 
+// ---------------------------------------------
+// Numeric limits
+
 MIN_INT8   :: -128;
 MAX_INT8   :: +127;
 MIN_UINT8  :: 0;
@@ -229,3 +232,39 @@ MIN_INT64  :: -9223372036854775808;
 MAX_INT64  :: +9223372036854775807;
 MIN_UINT64 :: 0;
 MAX_UINT64 :: 18446744073709551615;
+
+/*
+ * Constant 64 bit floating value which represents
+ * positive infinity.
+ */
+FLOAT64_POSITIVE_INF :: bitcast(f64) (0b11111111111'u64 << 52);
+
+/*
+ * Constant 64 bit floating value which represents
+ * negative infinity.
+ */
+FLOAT64_NEGATIVE_INF :: bitcast(f64) ((0b11111111111'u64 << 52) | (1'u64 << 63));
+
+/*
+ * Constant 64 bit floating value which represnts
+ * "not a number".
+ */
+FLOAT64_NAN :: FLOAT64_POSITIVE_INF * 0.0;
+
+/*
+ * Constant 32 bit floating value which represents
+ * positive infinity.
+ */
+FLOAT32_POSITIVE_INF :: bitcast(f32) (0b11111111'u32 << 23'u32);
+
+/*
+ * Constant 32 bit floating value which represents
+ * negative infinity.
+ */
+FLOAT32_NEGATIVE_INF :: bitcast(f32) ((0b11111111'u32 << 23'u32) | (1'u32 << 31'u32));
+
+/*
+ * Constant 32 bit floating value which represnts
+ * "not a number".
+ */
+FLOAT32_NAN :: FLOAT64_POSITIVE_INF * 0.0f;

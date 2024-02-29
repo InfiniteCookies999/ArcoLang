@@ -1,6 +1,7 @@
 #include "FloatConversions.h"
 
 #include <cmath>
+#include <iostream>
 
 #include "Source.h"
 
@@ -411,6 +412,12 @@ namespace FD {
         }
     }
 
+    void BigIntFD::PrintBlocks() {
+        for (int i = 0; i < Length; i++) {
+            std::cout << Blocks[i] << "L, ";
+        }
+    }
+
     
     i64 BigIntFD::Compare(BigIntFD& o) {
         if (this->Length > o.Length) {
@@ -572,6 +579,7 @@ namespace FD {
 
 
     void InitializeCache() {
+        // TODO: This is copying the memory this should be calling std::move!!!
         for (ulen i = 0; i < POW5_TABLE_SIZE; i++) {
             BigIntFD BigPow5;
             BigPow5.Blocks = new u32[1];
@@ -579,6 +587,7 @@ namespace FD {
             *BigPow5.Blocks = POW5_TABLE[i];
             POW5_CACHE[i] = BigPow5;
         }
+        // TODO: We are also making uneeded copying of every previous value.
         BigIntFD PrevPow5 = POW5_CACHE[POW5_TABLE_SIZE - 1];
         for (ulen i = POW5_TABLE_SIZE; i < MAX_POW5_CACHE; i++) {
             PrevPow5 = PrevPow5.Multiply(5);
@@ -604,7 +613,8 @@ namespace FD {
         //
         ulen Idx = 0;
         ulen NLeadingZeros = 0;
-        ulen SeenDecPt = 0, DecPt = 0;
+        bool SeenDecPt = false;
+        ulen DecPt = 0;
         ulen SeperatorCount = 0, SeperatorCountBeforeDot = 0;
         while (Idx < Len) {
             char C = Text[Idx];
@@ -619,7 +629,7 @@ namespace FD {
                 // Ex.  0000.00001   has 0 leading zeros.
                 SeperatorCountBeforeDot = SeperatorCount;
                 DecPt     = Idx;
-                SeenDecPt = 1;
+                SeenDecPt = true;
             } else {
                 break;
             }
@@ -629,7 +639,7 @@ namespace FD {
         // Continue consuming digits as long as
         // they can fit into the integer.
     
-        u64   IValue = 0;
+        u64  IValue = 0;
         ulen ZeroTrailCount = 0;
         ulen IValueNDigits = 0;
         while (IValueNDigits+ZeroTrailCount < MAX_DOUBLE_DECIMAL_DIGITS && Idx < Len) {
@@ -651,7 +661,7 @@ namespace FD {
                 ++SeperatorCount;
             } else if (C == '.') {
                 SeperatorCountBeforeDot = SeperatorCount;
-                SeenDecPt = 1;
+                SeenDecPt = true;
                 DecPt     = Idx;
             } else {
                 break;
@@ -662,6 +672,9 @@ namespace FD {
 
         // May still place some of the trailing zeros
         // into the IValue if the zeros are not all trailing.
+        //
+        // Because they may all be trailing we have to continue looping that
+        // is the reason for this instead of just adding them directly to the IValue.
         if (ZeroTrailCount != 0 && IValueNDigits < MAX_DOUBLE_DECIMAL_DIGITS) {
             // Need to determine if the remaining digits are all
             // trailing or not!
@@ -670,7 +683,7 @@ namespace FD {
                 if (C >= 49 && C <= 57) { // Digits non-inclusive of 0.
                     // Okay so the remaining digits are not trailing zeros!
                     ulen TakenZeros = MAX_DOUBLE_DECIMAL_DIGITS - IValueNDigits;
-                    IValue *= POW10_INT64_TABLE[ZeroTrailCount];
+                    IValue *= POW10_INT64_TABLE[TakenZeros];
                     IValueNDigits = MAX_DOUBLE_DECIMAL_DIGITS;
                     ZeroTrailCount -= TakenZeros;
                     break;
@@ -680,7 +693,7 @@ namespace FD {
                     ++SeperatorCount;
                 } else if (C == '.') {
                     SeperatorCountBeforeDot = SeperatorCount;
-                    SeenDecPt = 1;
+                    SeenDecPt = true;
                     DecPt     = Idx;
                 } else {
                     break;
@@ -692,7 +705,11 @@ namespace FD {
         // Create a small digit buffer that does not contain the seperators
         // to make the calculations later on a bit easier.
         ulen DigitCount = 0;
-        char* Digits = Idx < Len ? new char[Len - Idx + ZeroTrailCount + 1] : nullptr;
+        ulen BufferSize = Len - Idx + ZeroTrailCount + 1;
+        char* Digits = Idx < Len ? new char[BufferSize] : nullptr;
+        if (Digits) {
+            memset(Digits, '0', BufferSize);
+        }
         while (Idx < Len) {
             char C = Text[Idx];
             if (C >= 49 && C <= 57) { // Digits non-inclusive of 0.
@@ -705,13 +722,13 @@ namespace FD {
                 Digits[DigitCount++] = C;
             } else if (C == '0') {
                 // Could be trailing.
-                Digits[DigitCount + ZeroTrailCount] = '0';
+                // memset to zero  Digits[DigitCount + ZeroTrailCount] = '0';
                 ++ZeroTrailCount;
             } else if (C == NUMBER_SEPERATOR) {
                 ++SeperatorCount;
             } else if (C == '.') {
                 SeperatorCountBeforeDot = SeperatorCount;
-                SeenDecPt = 1;
+                SeenDecPt = true;
                 DecPt     = Idx;
             } else {
                 break;
@@ -908,8 +925,7 @@ VTy CorrectionRoutine(VTy Value, ParseData& ParseData) {
                                       ParseData.Digits,
                                       ParseData.DigitCount,
                                       ParseData.NDigits);
-
-
+    
     BigIntFD ExactBigInt;
     bool ConstructedExactBigInt = false;
     if (X5 != 0) {
@@ -1073,7 +1089,7 @@ return V;
                     Value *= POW10_DOUBLE_TABLE[E];
                     RETURN_AND_CLEANUP(Value);
                 }
-                i64 Slop = MAX_DOUBLE_DECIMAL_DIGITS - ParseData.IValueNDigits;
+                i64 Slop = MAX_DOUBLE_DECIMAL_DIGITS - ParseData.IValueNDigits - 1;
                 if (E <= DOUBLE_POW10_TABLE_LIMIT + Slop) {
                     Value *= POW10_DOUBLE_TABLE[Slop];
                     Value *= POW10_DOUBLE_TABLE[E - Slop];
@@ -1158,7 +1174,7 @@ return V;
                         Error = FloatParseError::UNDERFLOWED;
                         RETURN_AND_CLEANUP(0.0);
                     }
-                    ValuePotUnderflow = std::numeric_limits<double>::min();
+                    ValuePotUnderflow = std::numeric_limits<double>::denorm_min();
                 }
                 Value = ValuePotUnderflow;
             }
@@ -1197,7 +1213,7 @@ return V;
                     SingleValue *= POW10_SINGLE_TABLE[E];
                     RETURN_AND_CLEANUP(SingleValue);
                 }
-                i64 Slop = MAX_SINGLE_DECIMAL_DIGITS - ParseData.IValueNDigits;
+                i64 Slop = MAX_SINGLE_DECIMAL_DIGITS - ParseData.IValueNDigits - 1;
                 if (E <= SINGLE_POW10_TABLE_LIMIT + Slop) {
                     SingleValue *= POW10_SINGLE_TABLE[Slop];
                     SingleValue *= POW10_SINGLE_TABLE[E - Slop];
@@ -1212,8 +1228,8 @@ return V;
 
                 // Else continue below for harder case
             }
-        } else if (ParseData.DecExp >= ParseData.NDigits &&
-                   (ParseData.NDigits + ParseData.DecExp) <= MAX_DOUBLE_DECIMAL_DIGITS) {
+        } else if (ParseData.DecExp >= static_cast<i64>(ParseData.NDigits) &&
+                   (ParseData.NDigits + ParseData.DecExp) <= MAX_DOUBLE_DECIMAL_DIGITS - 1) {
             double DoubleValue = static_cast<double>(IValue);
             DoubleValue *= POW10_DOUBLE_TABLE[E];
             RETURN_AND_CLEANUP(static_cast<float>(DoubleValue));
@@ -1257,8 +1273,11 @@ return V;
                 }
             }
         }
-        float SingleValue = MAXX(std::numeric_limits<float>::min(),
-                            MINN(std::numeric_limits<float>::max(), DoubleValue));
+        // This used to be wrong. C++ std::numeric_limits<float>::min() returns the normalized minimum
+        // which is not the minimum! Why they choose this convention I have no idea but denorm_min gives
+        // us the actual smallest possible value.
+        float SingleValue = MAXX(std::numeric_limits<float>::denorm_min(),
+                            MINN(std::numeric_limits<float>::max(), static_cast<float>(DoubleValue)));
 
         float ResultValue = CorrectionRoutine<float>(SingleValue, ParseData);
         if (ResultValue == 0.0f) {

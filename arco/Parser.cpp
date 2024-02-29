@@ -592,6 +592,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
         }
     }
 
+    FinishVarDecl(Var);
     if (NumErrs != TotalAccumulatedErrors) {
         Var->ParsingError = true;
     }
@@ -638,6 +639,7 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
         
         if (NumErrs != TotalAccumulatedErrors) {
             for (VarDecl* Var : SingleVarDeclList->List) {
+                FinishVarDecl(Var);
                 Var->ParsingError = true;
             }
             return SingleVarDeclList;
@@ -685,6 +687,10 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
             }
         }
 
+        for (VarDecl* Var : SingleVarDeclList->List) {
+            FinishVarDecl(Var);
+        }
+
     } else {
         // Assume its a single declaration.
         SingleVarDeclList->List.push_back(ParseVarDecl(0));
@@ -701,20 +707,22 @@ arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers
     Var->Mods       = Mods;
     Var->NativeName = NativeModifierName;
     NativeModifierName = "";
+    return Var;
+}
 
-    if (LocScope && !Name.IsNull()) {
-        auto Itr = LocScope->VarDecls.find(Name);
+void arco::Parser::FinishVarDecl(VarDecl* Var) {
+    if (LocScope && !Var->Name.IsNull()) {
+        auto Itr = LocScope->VarDecls.find(Var->Name);
         if (Itr != LocScope->VarDecls.end()) {
             Error(Var->Loc, "Redeclaration of variable '%s'. First declared on line: %s",
                 Var->Name, Itr->second->Loc.LineNumber);
         }
-        LocScope->VarDecls.insert({ Name, Var });
-    
+        LocScope->VarDecls.insert({ Var->Name, Var });
+
         if (CFunc) {
             CFunc->AllocVars.push_back(Var);
         }
     }
-    return Var;
 }
 
 arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
@@ -1207,6 +1215,7 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
     } else if (CTok.Is(TokenKind::IDENT)) {
         // Infered type.
         Loop->VarVal = CreateVarDecl(CTok, Identifier(CTok.GetText()), 0);
+        FinishVarDecl(Loop->VarVal);
         Loop->VarVal->Ty = nullptr;
         NextToken();
     }
@@ -1733,6 +1742,15 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
         return Cast;
     }
+    case TokenKind::KW_BITCAST: {
+        TypeBitCast* Cast = NewNode<TypeBitCast>(CTok);
+        NextToken(); // Consuming 'cast' token.
+        Match('(');
+        Cast->ToType = ParseType(false);
+        Match(')');
+        Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
+        return Cast;
+    }
     case TokenKind::KW_SIZEOF: {
         SizeOf* SOf = NewNode<SizeOf>(CTok);
         NextToken(); // Consuming 'sizeof' token.
@@ -1914,7 +1932,7 @@ arco::NumberLiteral* arco::Parser::ParseBinLiteral() {
     u64 IntValue = 0, PrevValue;
     while (Idx < Text.size()) {
         char C = Text[Idx];
-        if (C == '\'') {
+        if (C == NUMBER_SEPERATOR) {
             ++Idx;
             continue;
         }

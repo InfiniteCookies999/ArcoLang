@@ -332,7 +332,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 	case TypeKind::Char:    MAKE_BASIC_TY("char"  , 8,  llvm::dwarf::DW_ATE_signed_char);
 	case TypeKind::Bool:    MAKE_BASIC_TY("bool"  , 8, llvm::dwarf::DW_ATE_boolean);
 	case TypeKind::Float32: MAKE_BASIC_TY("f32"   , 32, llvm::dwarf::DW_ATE_float);
-	case TypeKind::Float64: MAKE_BASIC_TY("f64"   , 32, llvm::dwarf::DW_ATE_float);
+	case TypeKind::Float64: MAKE_BASIC_TY("f64"   , 64, llvm::dwarf::DW_ATE_float);
 	case TypeKind::Pointer:
 	case TypeKind::CStr: {
 		ulen PtrSizeInBits = Context.LLArcoModule
@@ -484,6 +484,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 	}
 	case TypeKind::Struct: {
 		StructDecl* Struct = Ty->AsStructType()->GetStruct();
+		GenStructType(Context, Struct);
 		
 		const llvm::StructLayout* LLLayout = Context.LLArcoModule
 			                                        .getDataLayout()

@@ -46,6 +46,14 @@ fn print(c char) {
     out.write(c);
 }
 
+fn print(f f64) {
+    out.write(f);
+}
+
+fn print(f f32) {
+    out.write(f);
+}
+
 fn print(any Any) {
     out.write(any);
 }
@@ -80,6 +88,14 @@ fn println(b bool) {
 
 fn println(c char) {
     out.writeln(c);
+}
+
+fn println(f f64) {
+    out.writeln(f);
+}
+
+fn println(f f32) {
+    out.writeln(f);
 }
 
 fn println() {
@@ -125,6 +141,14 @@ fn eprint(c char) {
     err.write(c);
 }
 
+fn eprint(f f64) {
+    err.writeln(f);
+}
+
+fn eprint(f f32) {
+    err.writeln(f);
+}
+
 fn eprint(fmt cstr, args Any...) {
     err.write(fmt, args);
 }
@@ -155,6 +179,14 @@ fn eprintln(b bool) {
 
 fn eprintln(c char) {
     err.writeln(c);
+}
+
+fn eprintln(f f64) {
+    err.writeln(f);
+}
+
+fn eprintln(f f32) {
+    err.writeln(f);
 }
 
 fn eprintln(fmt cstr, args Any...) {

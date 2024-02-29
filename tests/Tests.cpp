@@ -87,7 +87,7 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
 }
 
 int main() {
-
+    
     RunTest(SRC("hello_world.arco"), "Hello World!");
     RunTest(SRC("binary_operators.arco"), "464");
     RunTest(SRC("hex_literals.arco"), "43809 1048575 0 11259375");
@@ -200,6 +200,7 @@ int main() {
     RunTest(SRC("destructors/destructors12.arco"), "Destroyed!Destroyed!Destroyed!");
     RunTest(SRC("destructors/destructors13.arco"), "NoContinueDestroyed!NoContinueDestroyed!Destroyed!NoContinueDestroyed!NoContinueDestroyed!");
     RunTest(SRC("destructors/destructors14.arco"), "Begin Destroyed!Destroyed!");
+    RunTest(SRC("destructors/destructors15.arco"), "10");
     
     RunTest(SRC("enums/enums1.arco"), "0 1 2 3 4 5 6");
     RunTest(SRC("enums/enums2.arco"), "0 1 2 3 4 5 6");
@@ -235,6 +236,8 @@ int main() {
     RunTest(SRC("interfaces/interfaces2.arco"), "42 341");
     RunTest(SRC("interfaces/interfaces3.arco"), "52");
     RunTest(SRC("interfaces/interfaces4.arco"), "42 32 56 88");
+    
+    RunTest(SRC("multiarray_to_voidptr_craziness.arco"), "hello hello hello hello hello hello hello hello hello ");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

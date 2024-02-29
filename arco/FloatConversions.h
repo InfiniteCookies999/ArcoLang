@@ -47,6 +47,8 @@ namespace FD {
 
         void TrimLeadingZeros();
 
+        void PrintBlocks();
+
         i64 Compare(BigIntFD& o);
 
     };

@@ -656,6 +656,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::TYPE_CAST:
         CheckTypeCast(static_cast<TypeCast*>(Node));
         break;
+    case AstKind::TYPE_BITCAST:
+        CheckTypeBitCast(static_cast<TypeBitCast*>(Node));
+        break;
     case AstKind::STRUCT_INITIALIZER:
         CheckStructInitializer(static_cast<StructInitializer*>(Node));
         break;
@@ -1134,11 +1137,6 @@ return;
         VAR_YIELD(, true);
     }
 
-    if (Var->IsGlobal) {
-        Context.RequestGen(Var);
-    }
-
-
     if (Var->Assignment) {
         CheckNode(Var->Assignment);
         if (Var->Assignment->Ty == Context.ErrorType) {
@@ -1296,6 +1294,12 @@ return;
 
     if (Var->Ty->Equals(Context.VoidType)) {
         VAR_YIELD(Error(Var, "Variables cannot have type 'void'"), true);
+    }
+
+    // Keep this after having checked the assignment so that they are generated based
+    // on dependency order.
+    if (Var->IsGlobal) {
+        Context.RequestGen(Var);
     }
 
     VAR_YIELD(, false);
@@ -1495,9 +1499,10 @@ bool arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope) {
 namespace arco {
 
 static Type* DetermineTypeFromIntTypes(ArcoContext& Context, Expr* LHS, Expr* RHS) {
-    if (LHS->Is(AstKind::NUMBER_LITERAL)) {
+    // TODO: Should probably consider this more carefully.
+    if (LHS->IsFoldable) {
         return RHS->Ty;
-    } else if (RHS->Is(AstKind::NUMBER_LITERAL)) {
+    } else if (RHS->IsFoldable) {
         return LHS->Ty;
     } else if (RHS->Ty->Equals(LHS->Ty)) {
         return RHS->Ty;
@@ -1834,29 +1839,37 @@ YIELD_ERROR(BinOp)
     case TokenKind::EQ_EQ: case TokenKind::EXL_EQ:
     case '<': case '>':
     case TokenKind::LT_EQ: case TokenKind::GT_EQ: {
-        if (LTy->IsPointer() || LTy->GetKind() == TypeKind::Null) {
+        if (LTy->IsPointer()) {
 
-            if (!(RTy->IsPointer() || RTy->GetKind() == TypeKind::Null)) {
+            if (!RTy->IsPointer()) {
                 Error(BinOp->RHS, "Expected to be a pointer");
             }
 
             if (RTy->GetKind() == TypeKind::Null) {
+                BinOp->ResultType = BinOp->LHS->Ty;
                 CreateCast(BinOp->RHS, BinOp->LHS->Ty);
             } else if (LTy->GetKind() == TypeKind::Null) {
                 CreateCast(BinOp->LHS, BinOp->RHS->Ty);
+                BinOp->ResultType = BinOp->RHS->Ty;
+            } else {
+                BinOp->ResultType = BinOp->RHS->Ty;
             }
 
             BinOp->Ty = Context.BoolType;
-        } else if (RTy->IsPointer() || RTy->GetKind() == TypeKind::Null) {
+        } else if (RTy->IsPointer()) {
             
-            if (!(LTy->IsPointer() || LTy->GetKind() == TypeKind::Null)) {
+            if (!LTy->IsPointer()) {
                 Error(BinOp->LHS, "Expected to be a pointer");
             }
 
             if (RTy->GetKind() == TypeKind::Null) {
                 CreateCast(BinOp->RHS, BinOp->LHS->Ty);
+                BinOp->ResultType = BinOp->LHS->Ty;
             } else if (LTy->GetKind() == TypeKind::Null) {
                 CreateCast(BinOp->LHS, BinOp->RHS->Ty);
+                BinOp->ResultType = BinOp->RHS->Ty;
+            } else {
+                BinOp->ResultType = BinOp->RHS->Ty;
             }
 
             BinOp->Ty = Context.BoolType;
@@ -3133,6 +3146,31 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
     if (!IsCastableTo(Cast->Ty, Cast->Value->Ty)) {
         Error(Cast, "Cannot cast from type '%s' to type '%s'",
             Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+    }
+}
+
+void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
+    Cast->Ty = Cast->ToType;
+    if (!FixupType(Cast->Ty)) {
+        YIELD_ERROR(Cast);
+    }
+
+    CheckNode(Cast->Value);
+    YIELD_ERROR_WHEN(Cast, Cast->Value);
+    Cast->IsFoldable = Cast->Value->IsFoldable;
+    Cast->HasConstAddress = Cast->Value->HasConstAddress;
+
+    Type* ValueTy = Cast->Value->Ty;
+    if (!( (Cast->Ty->IsNumber() || Cast->Ty->IsPointer()) &&
+           (ValueTy->IsNumber()  || ValueTy->IsPointer() )
+         )
+        ) {
+        Error(Cast, "Cannot bitcast from type '%s' to type '%s'",
+            Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+    } else {
+        if (Cast->Ty->GetSizeInBytes(Context.LLArcoModule) != ValueTy->GetSizeInBytes(Context.LLArcoModule)) {
+            Error(Cast, "Cannot bitcast types of different sizes");
+        }
     }
 }
 

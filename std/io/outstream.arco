@@ -63,6 +63,20 @@ OutStream struct : Writeable {
         write(cast(uint64) i, base);
     }
 
+    fn write(f f64) {
+        buffer char[30] = ---;
+        length int;
+        chars_of_f64(f, buffer, &length);
+        write_buffer(buffer, length);
+    }
+
+    fn write(f f32) {
+        buffer char[30] = ---;
+        length int;
+        chars_of_f32(f, buffer, &length);
+        write_buffer(buffer, length);
+    }
+
     fn write(any Any) {
         write_any(any.value, any.type);
     }
@@ -109,9 +123,9 @@ OutStream struct : Writeable {
         } else if type.id == TypeId.EMPTY_ARRAY_ELM {
             write("[ ]");
         } else if type.id == TypeId.F32 {
-            write("printing floats not supported yet");
+            write(*cast(f32*) value);
         } else if type.id == TypeId.F64 {
-            write("printing floats not supported yet");
+            write(*cast(f64*) value);
         } else if type.id == TypeId.SLICE {
             slice_length  := *cast(int*) value;
             slice_arr_ptr := value + sizeof(int);
@@ -282,6 +296,16 @@ OutStream struct : Writeable {
 
     fn writeln(any Any) {
         write(any);
+        write("\n", 1);
+    }
+
+    fn writeln(f f64) {
+        write(f);
+        write("\n", 1);
+    }
+
+    fn writeln(f f32) {
+        write(f);
         write("\n", 1);
     }
 

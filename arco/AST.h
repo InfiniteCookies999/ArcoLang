@@ -65,6 +65,7 @@ namespace arco {
         ARRAY,
         ARRAY_ACCESS,
         TYPE_CAST,
+        TYPE_BITCAST,
         STRUCT_INITIALIZER,
         HEAP_ALLOC,
         SIZEOF,
@@ -696,6 +697,15 @@ namespace arco {
     // Ex.  'cast(int)'
     struct TypeCast : Expr {
         TypeCast() : Expr(AstKind::TYPE_CAST) {}
+
+        Type* ToType;
+        Expr* Value;
+
+    };
+
+    // Ex.   'bitcast(f64) 66'
+    struct TypeBitCast : Expr {
+        TypeBitCast() : Expr(AstKind::TYPE_BITCAST) {}
 
         Type* ToType;
         Expr* Value;
