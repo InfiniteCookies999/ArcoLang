@@ -255,13 +255,13 @@ FLOAT64_NAN :: FLOAT64_POSITIVE_INF * 0.0;
  * Constant 32 bit floating value which represents
  * positive infinity.
  */
-FLOAT32_POSITIVE_INF :: bitcast(f32) (0b11111111'u32 << 23'u32);
+FLOAT32_POSITIVE_INF :: bitcast(f32) (0b11111111'u32 << 23);
 
 /*
  * Constant 32 bit floating value which represents
  * negative infinity.
  */
-FLOAT32_NEGATIVE_INF :: bitcast(f32) ((0b11111111'u32 << 23'u32) | (1'u32 << 31'u32));
+FLOAT32_NEGATIVE_INF :: bitcast(f32) ((0b11111111'u32 << 23) | (1'u32 << 31));
 
 /*
  * Constant 32 bit floating value which represnts

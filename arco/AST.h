@@ -522,7 +522,15 @@ namespace arco {
     struct NumberLiteral : Expr {
         NumberLiteral() : Expr(AstKind::NUMBER_LITERAL) {}
 
+        bool TempFold = false;
+
         union {
+            i8     SignedInt8Value;
+            u8     UnsignedInt8Value;
+            i16    SignedInt16Value;
+            u16    UnsignedInt16Value;
+            i32    SignedInt32Value;
+            u32    UnsignedInt32Value;
             i64    SignedIntValue;
             u64    UnsignedIntValue;
             float  Float32Value;

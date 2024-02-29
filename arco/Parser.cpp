@@ -7,19 +7,17 @@
 #include "FloatConversions.h"
 
 namespace arco {
+    
     template<typename N>
-    static inline N* NewNode(Token STok) {
+    static inline N* NewNode(SourceLoc Loc) {
         N* Node = new N;
-        Node->Loc = STok.Loc;
+        Node->Loc = Loc;
         return Node;
     }
-
-    static inline BinaryOp* NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
-        BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
-        BinOp->Op  = OpTok.Kind;
-        BinOp->LHS = LHS;
-        BinOp->RHS = RHS;
-        return BinOp;
+    
+    template<typename N>
+    static inline N* NewNode(Token STok) {
+        return NewNode<N>(STok.Loc);
     }
     
     VarDecl* Parser::Scope::FindVariable(Identifier Name) {
@@ -35,7 +33,7 @@ namespace arco {
     }
 
     // Satisfying linkage.
-    VarDeclList* SingleVarDeclList = NewNode<VarDeclList>({});
+    VarDeclList* SingleVarDeclList = NewNode<VarDeclList>(SourceLoc{});
 }
 
 
@@ -1530,6 +1528,7 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
         Expr* E;
     };
     std::stack<StackUnit> OpStack;
+    llvm::SmallVector<NumberLiteral, 32> FoldNumbers;
 
     Token Op = CTok, NextOp;
     llvm::DenseMap<u16, u32>::iterator OpItr;
@@ -1538,9 +1537,41 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
 
         NextToken(); // Consuming the operator
 
-        llvm::DenseMap<u16, u32>::iterator NextOpItr;
-        Expr* RHS = ParsePrimaryAndPostfixUnaryExpr();
+        Expr* RHS;
+        if (LHS->Is(AstKind::NUMBER_LITERAL)) {
+            // Checking to see if we can perform numeric folding.
+            NumberLiteral FoldNumber;
+            if (CTok.Is(TokenKind::INT_LITERAL)) {
+                ParseIntLiteral(&FoldNumber);
+                FoldNumber.TempFold = true;
+                FoldNumbers.push_back(FoldNumber);
+                RHS = &FoldNumber;
+            } else if (CTok.Is(TokenKind::HEX_LITERAL)) {
+                ParseHexLiteral(&FoldNumber);
+                FoldNumber.TempFold = true;
+                FoldNumbers.push_back(FoldNumber);
+                RHS = &FoldNumber;
+            } else if (CTok.Is(TokenKind::FLOAT32_LITERAL) ||
+                       CTok.Is(TokenKind::FLOAT64_LITERAL)) {
+                ParseFloatLiteral(&FoldNumber);
+                FoldNumber.TempFold = true;
+                FoldNumbers.push_back(FoldNumber);
+                RHS = &FoldNumber;
+            } else if (CTok.Is(TokenKind::BIN_LITERAL)) {
+                ParseBinLiteral(&FoldNumber);
+                FoldNumber.TempFold = true;
+                FoldNumbers.push_back(FoldNumber);
+                RHS = &FoldNumber;
+            } else {
+                RHS = ParsePrimaryAndPostfixUnaryExpr();
+            }
+        } else {
+            RHS = ParsePrimaryAndPostfixUnaryExpr();
+        }
         NextOp = CTok;
+
+
+        llvm::DenseMap<u16, u32>::iterator NextOpItr;
         bool MoreOperators = (NextOpItr = Context.BinaryOpsPrecedence.find(NextOp.Kind))
                                        != Context.BinaryOpsPrecedence.end();
         if (MoreOperators && NextOpItr->second > OpItr->second) {
@@ -1616,12 +1647,12 @@ arco::Expr* arco::Parser::ParsePrimaryAndPostfixUnaryExpr(Expr* LHS) {
 arco::Expr* arco::Parser::ParsePrimaryExpr() {
     switch (CTok.Kind) {
     // ---- Literals ----
-    case TokenKind::INT_LITERAL:     return ParseIntLiteral();
-    case TokenKind::HEX_LITERAL:     return ParseHexLiteral();
-    case TokenKind::BIN_LITERAL:     return ParseBinLiteral();
+    case TokenKind::INT_LITERAL:     return ParseIntLiteral(NewNode<NumberLiteral>(CTok));
+    case TokenKind::HEX_LITERAL:     return ParseHexLiteral(NewNode<NumberLiteral>(CTok));
+    case TokenKind::BIN_LITERAL:     return ParseBinLiteral(NewNode<NumberLiteral>(CTok));
     case TokenKind::ERROR_FLOAT_LITERAL:
     case TokenKind::FLOAT32_LITERAL:
-    case TokenKind::FLOAT64_LITERAL: return ParseFloatLiteral();
+    case TokenKind::FLOAT64_LITERAL: return ParseFloatLiteral(NewNode<NumberLiteral>(CTok));
     case TokenKind::CHAR_LITERAL:    return ParseCharLiteral();
     case TokenKind::STRING_LITERAL:  return ParseStringLiteral();
     case TokenKind::IDENT: {
@@ -1860,8 +1891,7 @@ arco::Expr* arco::Parser::ParseIdentPostfix(Expr* Site) {
         }
     }
 }
-
-arco::NumberLiteral* arco::Parser::ParseIntLiteral() {
+arco::NumberLiteral* arco::Parser::ParseIntLiteral(NumberLiteral* Number) {
     llvm::StringRef Text = CTok.GetText();
 
     ulen Idx = 0;
@@ -1876,8 +1906,8 @@ arco::NumberLiteral* arco::Parser::ParseIntLiteral() {
         ++Idx;
 
         PrevValue = IntValue;
-        IntValue  = IntValue * 10 + ((u64)C - '0');
-    
+        IntValue = IntValue * 10 + ((u64)C - '0');
+
         // Check for overflow
         if (IntValue / 10 < PrevValue) {
             Error(CTok, "Integer value is too large");
@@ -1885,10 +1915,10 @@ arco::NumberLiteral* arco::Parser::ParseIntLiteral() {
         }
     }
 
-    return FinalizeIntLiteral(Idx, IntValue);
+    return FinalizeIntLiteral(Idx, IntValue, Number);
 }
 
-arco::NumberLiteral* arco::Parser::ParseHexLiteral() {
+arco::NumberLiteral* arco::Parser::ParseHexLiteral(NumberLiteral* Number) {
     llvm::StringRef Text = CTok.GetText();
     // TODO: replace with array
     static std::unordered_map<char, u64> HexToDecimalMapping =
@@ -1911,9 +1941,9 @@ arco::NumberLiteral* arco::Parser::ParseHexLiteral() {
         }
         if (!IsHex(C)) break;
         ++Idx;
-    
+
         PrevValue = IntValue;
-        IntValue  = IntValue * 16 + HexToDecimalMapping[C];
+        IntValue = IntValue * 16 + HexToDecimalMapping[C];
 
         // Check for overflow
         if (IntValue / 16 < PrevValue) {
@@ -1922,10 +1952,10 @@ arco::NumberLiteral* arco::Parser::ParseHexLiteral() {
         }
     }
 
-    return FinalizeIntLiteral(Idx, IntValue);
+    return FinalizeIntLiteral(Idx, IntValue, Number);
 }
 
-arco::NumberLiteral* arco::Parser::ParseBinLiteral() {
+arco::NumberLiteral* arco::Parser::ParseBinLiteral(NumberLiteral* Number) {
     llvm::StringRef Text = CTok.GetText();
 
     ulen Idx = 2; // Skip 0b
@@ -1938,7 +1968,7 @@ arco::NumberLiteral* arco::Parser::ParseBinLiteral() {
         }
         if (!(C == '0' || C == '1')) break;
         ++Idx;
-    
+
         PrevValue = IntValue;
         IntValue = IntValue * 2 + ((u64)C - '0');
 
@@ -1949,7 +1979,7 @@ arco::NumberLiteral* arco::Parser::ParseBinLiteral() {
         }
     }
 
-    return FinalizeIntLiteral(Idx, IntValue);
+    return FinalizeIntLiteral(Idx, IntValue, Number);
 }
 
 // Returns 0xFF is invalid escape
@@ -2009,8 +2039,7 @@ arco::NumberLiteral* arco::Parser::ParseCharLiteral() {
     }
 }
 
-arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue) {
-    NumberLiteral* Number = NewNode<NumberLiteral>(CTok);
+arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue, NumberLiteral* Number) {
     
     llvm::StringRef Text = CTok.GetText();
     
@@ -2132,8 +2161,7 @@ arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue) {
     return Number;
 }
 
-arco::NumberLiteral* arco::Parser::ParseFloatLiteral() {
-    NumberLiteral* Number = NewNode<NumberLiteral>(CTok);
+arco::NumberLiteral* arco::Parser::ParseFloatLiteral(NumberLiteral* Number) {
     if (CTok.Is(TokenKind::ERROR_FLOAT_LITERAL)) {
         // Error generated during lexing so not even going
         // to attempt to parse.
@@ -2352,6 +2380,310 @@ void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Value
         }
     } while (MoreValues);
 
+}
+
+template<typename T>
+T arco::Parser::FoldInt(Token OpTok, T LHS, T RHS, bool& OpApplies) {
+    OpApplies = true;
+    switch (OpTok.Kind) {
+    case '+': {
+        if (RHS > 0 && LHS > std::numeric_limits<T>::max() - RHS) {
+            Error(OpTok.Loc, "Operation results in overflow for type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+        if (RHS < 0 && LHS < std::numeric_limits<T>::min() - RHS) {
+            Error(OpTok.Loc, "Operation results in underflow for type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+        
+        T Result = LHS + RHS;
+        return Result;
+    }
+    case '-': {
+        if (RHS < 0 && LHS > std::numeric_limits<T>::max() + RHS) {
+            Error(OpTok.Loc, "Operation results in overflow for type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+        if (RHS > 0 && LHS < std::numeric_limits<T>::min() + RHS) {
+            Error(OpTok.Loc, "Operation results in underflow for type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+
+        T Result = LHS - RHS;
+        return Result;
+    }
+    case '*': {
+        if (RHS != 0 && LHS != 0) {
+            if (LHS > std::numeric_limits<T>::max() / RHS) {
+                Error(OpTok.Loc, "Operation results in overflow for type '%s'",
+                    Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+            }
+            if (LHS < std::numeric_limits<T>::min() / RHS) {
+                Error(OpTok.Loc, "Operation results in underflow for type '%s'",
+                    Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+            }
+        }
+        
+        T Result = LHS * RHS;
+        return Result;
+    }
+    case '%': {
+        if (RHS == 0) {
+            Error(OpTok.Loc, "Division by zero");
+            return 0;
+        }
+        T Result = LHS % RHS;
+        return Result;
+    }
+    case '/': {
+        if (RHS == 0) {
+            Error(OpTok.Loc, "Division by zero");
+            return 0;
+        }
+        T Result = LHS / RHS;
+        return Result;
+    }
+    case TokenKind::LT_LT: { 
+        if (RHS < 0) {
+            Error(OpTok.Loc, "Cannot shift using a negative value");
+        } else if (static_cast<ulen>(RHS) - 1 > sizeof(T) * 8) {
+            Error(OpTok.Loc, "Shifting bits larger than bit size of type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+        T Result = LHS << RHS;
+        return Result;
+    }
+    case TokenKind::GT_GT: {
+        if (RHS < 0) {
+            Error(OpTok.Loc, "Cannot shift using a negative value");
+        } else if (static_cast<ulen>(RHS) - 1 > sizeof(T) * 8) {
+            Error(OpTok.Loc, "Shifting bits larger than bit size of type '%s'",
+                Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
+        }
+        T Result = LHS >> RHS;
+        return Result;
+    }
+    case '<':               return LHS < RHS;
+    case '>':               return LHS > RHS;
+    case TokenKind::LT_EQ:  return LHS <= RHS;
+    case TokenKind::GT_EQ:  return LHS >= RHS;
+    case TokenKind::EQ_EQ:  return LHS == RHS;
+    case TokenKind::EXL_EQ: return LHS != RHS;
+    case '&':               return LHS & RHS;
+    case '^':               return LHS ^ RHS;
+    case '|':               return LHS | RHS;
+    default:
+        OpApplies = false;
+        return 0;
+    }
+}
+
+template<typename T>
+T arco::Parser::FoldFloat(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies) {
+    // TODO: Check for underflow and overflow?
+
+    OpApplies = true;
+    switch (OpTok.Kind) {
+    case '+': {
+        T Result = LHSVal + RHSVal;
+        return Result;
+    }
+    case '-': {
+        T Result = LHSVal - RHSVal;
+        return Result;
+    }
+    case '*': {
+        T Result = LHSVal * RHSVal;
+        return Result;
+    }
+    case '/': {
+        if (RHSVal == 0) {
+            Error(OpTok.Loc, "Division by zero");
+            return 0;
+        }
+        T Result = LHSVal / RHSVal;
+        return Result;
+    }
+    case '<':               return LHSVal < RHSVal;
+    case '>':               return LHSVal > RHSVal;
+    case TokenKind::LT_EQ:  return LHSVal <= RHSVal;
+    case TokenKind::GT_EQ:  return LHSVal >= RHSVal;
+    case TokenKind::EQ_EQ:  return LHSVal == RHSVal;
+    case TokenKind::EXL_EQ: return LHSVal != RHSVal;
+    default:
+        OpApplies = false;
+        return 0;
+    }
+}
+
+arco::Expr* arco::Parser::FoldNumbers(Token OpTok, NumberLiteral* Number1, NumberLiteral* Number2) {
+    // TODO: Could probably optimize this with adding bitsets to the kind information
+    //       of the type kinds.
+
+    u16 Op = OpTok.Kind;
+
+#define APPLY_OP(V, FoldFunc) \
+bool OpApplies;               \
+Number1->V = FoldFunc(OpTok,  \
+    Number1->V,               \
+    Number2->V,               \
+    OpApplies);
+    
+
+#define FOLD(V, FoldFunc) {  \
+    APPLY_OP(V, FoldFunc)    \
+if (OpApplies)               \
+    return Number1; }
+
+    Type* Ty1 = Number1->Ty, * Ty2 = Number2->Ty;
+    switch (Ty1->GetKind()) {
+    case TypeKind::Float32:
+        if (Ty2->GetKind() == TypeKind::Float64) {
+            Number1->Ty = Context.Float64Type;
+            FOLD(Float64Value, FoldFloat);
+        } else {
+            // Promote everything else to float32
+            FOLD(Float32Value, FoldFloat);
+        }
+        break;
+    case TypeKind::Float64:
+        FOLD(Float64Value, FoldFloat)
+            break;
+    case TypeKind::Int:
+    case TypeKind::UInt:
+    case TypeKind::Int8:
+    case TypeKind::UInt8:
+    case TypeKind::Int16:
+    case TypeKind::UInt16:
+    case TypeKind::Int32:
+    case TypeKind::UInt32:
+    case TypeKind::Int64:
+    case TypeKind::UInt64:
+    case TypeKind::Char:
+        if (Ty2->GetKind() == TypeKind::Float64) {
+            Number1->Ty = Context.Float64Type;
+            FOLD(Float64Value, FoldFloat);
+        } else if (Ty2->GetKind() == TypeKind::Float32) {
+            Number1->Ty = Context.Float32Type;
+            FOLD(Float32Value, FoldFloat);
+        } else {
+            bool Error = false;
+            Type* UseType;
+            if (Ty1->GetKind() == TypeKind::Int) {
+                UseType = Ty2;
+            } else if (Ty2->GetKind() == TypeKind::Int) {
+                UseType = Ty1;
+            } else {
+                if (Ty1->IsSigned() != Ty2->IsSigned()) {
+                    // Not allowing this. Signed unsigned mismatch will be considered
+                    // an error unless they are using the system integer type.
+                    Error = true;
+                } else if (Ty1->GetKind() == TypeKind::UInt) {
+                    UseType = Ty2;
+                } else if (Ty2->GetKind() == TypeKind::UInt) {
+                    UseType = Ty1;
+                } else {
+                    ulen Size1 = Ty1->GetTrivialTypeSizeInBytes();
+                    ulen Size2 = Ty2->GetTrivialTypeSizeInBytes();
+                    ulen UseSize = Size1 > Size2 ? Size1 : Size2;
+                    UseType = Type::GetIntTypeBasedOnByteSize(UseSize, Ty1->IsSigned(), Context);
+                }
+            }
+            if (!Error) {
+                Number1->Ty = UseType;
+                switch (UseType->GetKind()) {
+                case TypeKind::Int: {
+                    APPLY_OP(SignedIntValue, FoldInt);
+                    // Promote the type to a larger size if it did not fit into 32 bits.
+                    if (Number1->SignedIntValue > std::numeric_limits<i32>::max()) {
+                        Number1->Ty = Context.Int64Type;
+                    }
+                    if (OpApplies)
+                        return Number1;
+                    break;
+                }
+                case TypeKind::UInt: {
+                    APPLY_OP(UnsignedIntValue, FoldInt);
+                    // Promote the type to a larger size if it did not fit into 32 bits.
+                    if (Number1->UnsignedIntValue > std::numeric_limits<u32>::max()) {
+                        Number1->Ty = Context.UInt64Type;
+                    }
+                    if (OpApplies)
+                        return Number1;
+                    break;
+                }
+                case TypeKind::Int8:
+                    FOLD(SignedInt8Value, FoldInt);
+                    break;
+                case TypeKind::UInt8:
+                    FOLD(UnsignedInt8Value, FoldInt);
+                    break;
+                case TypeKind::Int16:
+                    FOLD(SignedInt16Value, FoldInt);
+                    break;
+                case TypeKind::UInt16:
+                    FOLD(UnsignedInt16Value, FoldInt);
+                    break;
+                case TypeKind::Int32:
+                    FOLD(SignedInt32Value, FoldInt);
+                    break;
+                case TypeKind::UInt32:
+                    FOLD(UnsignedInt32Value, FoldInt);
+                    break;
+                case TypeKind::Int64:
+                    FOLD(SignedIntValue, FoldInt);
+                    break;
+                case TypeKind::UInt64:
+                    FOLD(UnsignedIntValue, FoldInt);
+                    break;
+                default:
+                    assert(!"unreachable");
+                    break;
+                }
+            }
+        }
+        break;
+    }
+
+    // If we get here it means there is some type of semantic error so
+    // just going to create the node and let the semantic analysis deal
+    // with the problem.
+
+    BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
+    BinOp->Op = OpTok.Kind;
+    BinOp->LHS = Number1;
+    BinOp->RHS = Number2;
+    return BinOp;
+
+#undef FOLD
+#undef APPLY_OP
+}
+
+arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
+    if (LHS->Is(AstKind::NUMBER_LITERAL) && RHS->Is(AstKind::NUMBER_LITERAL)) {
+        // We fold the numbers!
+        NumberLiteral* LHSNumber = static_cast<NumberLiteral*>(LHS);
+        NumberLiteral* RHSNumber = static_cast<NumberLiteral*>(RHS);
+
+        if (!LHSNumber->TempFold) {
+            return FoldNumbers(OpTok, LHSNumber, RHSNumber);
+        } if (!RHSNumber->TempFold) {
+            return FoldNumbers(OpTok, RHSNumber, LHSNumber);
+        } else {
+            // Neither has memory that can be used, well going to create some then!
+            NumberLiteral* ResultNode = NewNode<NumberLiteral>(LHSNumber->Loc);
+            // TODO: memcpying here seems really messy.
+            memcpy(ResultNode, LHSNumber, sizeof(NumberLiteral));
+            ResultNode->TempFold = false;
+            return FoldNumbers(OpTok, LHSNumber, RHSNumber);
+        }
+    } else {
+        BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
+        BinOp->Op = OpTok.Kind;
+        BinOp->LHS = LHS;
+        BinOp->RHS = RHS;
+        return BinOp;
+    }
 }
 
 //===-------------------------------===//

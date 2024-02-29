@@ -1499,10 +1499,9 @@ bool arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope) {
 namespace arco {
 
 static Type* DetermineTypeFromIntTypes(ArcoContext& Context, Expr* LHS, Expr* RHS) {
-    // TODO: Should probably consider this more carefully.
-    if (LHS->IsFoldable) {
+    if (LHS->Is(AstKind::NUMBER_LITERAL)) {
         return RHS->Ty;
-    } else if (RHS->IsFoldable) {
+    } else if (RHS->Is(AstKind::NUMBER_LITERAL)) {
         return LHS->Ty;
     } else if (RHS->Ty->Equals(LHS->Ty)) {
         return RHS->Ty;
@@ -1784,7 +1783,7 @@ YIELD_ERROR(BinOp)
             IRGenerator IRGen(Context);
             llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
             if (LLInt->getZExtValue()-1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
-                Error(BinOp, "Shifting bits larger than bit size of type");
+                Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy->ToString());
             }
         }
 

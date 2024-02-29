@@ -15,11 +15,11 @@ int main() {
     Sources.push_back(arco::Source{ true, "default.program.module", SRC("workpad") });
     
     arco::Compiler Compiler;
-    Compiler.StandAlone = true;
-    Compiler.EmitDebugInfo = true;
-    Compiler.DisplayLLVMIR = true;
+    //Compiler.StandAlone = true;
+    //Compiler.EmitDebugInfo = true;
+    //Compiler.DisplayLLVMIR = true;
     //Compiler.SetOutputDirectory("abc");
-    //Compiler.DisplayTimes = true;
+    Compiler.DisplayTimes = true;
     Compiler.Compile(Sources);
     
     if (!arco::FoundCompileError) {

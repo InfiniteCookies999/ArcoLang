@@ -129,12 +129,12 @@ namespace arco {
         Expr* ParsePrimaryAndPostfixUnaryExpr(Expr* LHS);
         Expr* ParsePrimaryExpr();
         Expr* ParseIdentPostfix(Expr* Site);
-        NumberLiteral* ParseIntLiteral();
-        NumberLiteral* ParseHexLiteral();
-        NumberLiteral* ParseBinLiteral();
+        NumberLiteral* ParseIntLiteral(NumberLiteral* Number);
+        NumberLiteral* ParseHexLiteral(NumberLiteral* Number);
+        NumberLiteral* ParseBinLiteral(NumberLiteral* Number);
         NumberLiteral* ParseCharLiteral();
-        NumberLiteral* FinalizeIntLiteral(ulen Idx, u64 IntValue);
-        NumberLiteral* ParseFloatLiteral();
+        NumberLiteral* FinalizeIntLiteral(ulen Idx, u64 IntValue, NumberLiteral* Number);
+        NumberLiteral* ParseFloatLiteral(NumberLiteral* Number);
         StringLiteral* ParseStringLiteral();
         FuncCall* ParseFuncCall(Expr* Site);
         Array* ParseArray();
@@ -151,6 +151,13 @@ namespace arco {
                                    llvm::SmallVector<NamedValue>& NamedValues,
                                    u16 EndDelimTok,
                                    bool AllowTrailingComma);
+
+        template<typename T>
+        T FoldInt(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
+        template<typename T>
+        T FoldFloat(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
+        Expr* FoldNumbers(Token OpTok, NumberLiteral* Number1, NumberLiteral* Number2);
+        Expr* NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS);
 
         //===-------------------------------===//
         // Utilities
