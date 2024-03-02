@@ -1,5 +1,5 @@
 
-native fn memcpy(dest void*, src const void*, count uint) void;
+native fn memcpy(dest void*, src const void*, count int) void;
 
 fn foo1(buffer char[6]) {
     memcpy(buffer, "hello ", 6);

@@ -34,10 +34,6 @@ fn print(i int, base := 10) {
     out.write(i, base);
 }
 
-fn print(i uint, base := 10) {
-    out.write(i, base);
-}
-
 fn print(b bool) {
     out.write(b);
 }
@@ -46,11 +42,11 @@ fn print(c char) {
     out.write(c);
 }
 
-fn print(f f64) {
+fn print(f float64) {
     out.write(f);
 }
 
-fn print(f f32) {
+fn print(f float32) {
     out.write(f);
 }
 
@@ -78,10 +74,6 @@ fn println(i int, base := 10) {
     out.writeln(i);
 }
 
-fn println(i uint, base := 10) {
-    out.writeln(i);
-}
-
 fn println(b bool) {
     out.writeln(b);
 }
@@ -90,11 +82,11 @@ fn println(c char) {
     out.writeln(c);
 }
 
-fn println(f f64) {
+fn println(f float64) {
     out.writeln(f);
 }
 
-fn println(f f32) {
+fn println(f float32) {
     out.writeln(f);
 }
 
@@ -125,10 +117,6 @@ fn eprint(i int) {
     err.write(i);
 }
 
-fn eprint(i uint) {
-    err.write(i);
-}
-
 fn eprint(msg cstr) {
     err.write(msg);
 }
@@ -141,11 +129,11 @@ fn eprint(c char) {
     err.write(c);
 }
 
-fn eprint(f f64) {
+fn eprint(f float64) {
     err.writeln(f);
 }
 
-fn eprint(f f32) {
+fn eprint(f float32) {
     err.writeln(f);
 }
 
@@ -158,10 +146,6 @@ fn eprintln(msg cstr) {
 }
 
 fn eprintln(i int) {
-    err.writeln(i);
-}
-
-fn eprintln(i uint) {
     err.writeln(i);
 }
 
@@ -181,11 +165,11 @@ fn eprintln(c char) {
     err.writeln(c);
 }
 
-fn eprintln(f f64) {
+fn eprintln(f float64) {
     err.writeln(f);
 }
 
-fn eprintln(f f32) {
+fn eprintln(f float32) {
     err.writeln(f);
 }
 

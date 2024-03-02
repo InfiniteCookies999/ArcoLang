@@ -315,11 +315,11 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 			                         .getPointerSizeInBits();
 		MAKE_BASIC_TY("int", PtrSizeInBits, llvm::dwarf::DW_ATE_signed);
 	}
-	case TypeKind::UInt: {
+	case TypeKind::Ptrsize: {
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                         .getDataLayout()
 			                         .getPointerSizeInBits();
-		MAKE_BASIC_TY("uint", PtrSizeInBits, llvm::dwarf::DW_ATE_unsigned);
+		MAKE_BASIC_TY("ptrsize", PtrSizeInBits, llvm::dwarf::DW_ATE_unsigned);
 	}
 	case TypeKind::Int8:    MAKE_BASIC_TY("int8"  , 8 , llvm::dwarf::DW_ATE_signed);
 	case TypeKind::Int16:   MAKE_BASIC_TY("int16" , 16, llvm::dwarf::DW_ATE_signed);

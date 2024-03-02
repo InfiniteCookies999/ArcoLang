@@ -3594,8 +3594,9 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
         }
         return false;
     }
-    case TypeKind::Int:
-    case TypeKind::UInt: {
+    case TypeKind::Ptrsize:
+        return FromTy->Equals(Context.PtrsizeType);
+    case TypeKind::Int: {
         if (FromTy->IsSystemInt()) return true;
         if (FromTy->IsInt()) return FromTy->GetTrivialTypeSizeInBytes() <= 4;
         if (FromTy->IsFloat() && FromExpr && FromExpr->Is(AstKind::NUMBER_LITERAL)) {
@@ -3797,7 +3798,7 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
     case TypeKind::UInt32:
     case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
     case TypeKind::Char:
         if (FromTy->IsNumber() || FromTy->IsPointer() || FromTy->GetKind() == TypeKind::Bool) {
             // Allow pointers/numbers/bools to cast to integers.

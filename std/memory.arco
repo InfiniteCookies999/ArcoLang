@@ -5,14 +5,14 @@
  *
  * Warning: This is not a safe function. Use with caution.
  */
-native fn memcpy(dest void*, src const void*, count uint) void;
+native fn memcpy(dest void*, src const void*, count int) void;
 
 /*
  * Sets n copies of the value c to the dest.
  *
  * Warning: This is not a safe function. Use with caution.
  */
-native fn memset(dest void*, c int8, n uint) void*;
+native fn memset(dest void*, c int8, n int) void*;
 
 /*
  * Compares two blocks of memory lhs and rhs.
@@ -25,9 +25,9 @@ fn memcmp(lhs const void*, rhs const void*, count int) int {
     if count <= 0 {
         panic("count <= 0");
     }
-    return cast(int) _memcmp(lhs, rhs, cast(uint) count);
+    return cast(int) _memcmp(lhs, rhs, cast(ptrsize) count);
 }
-private native("memcmp") fn(cdecl) _memcmp(lhs const void*, rhs const void*, count uint) int32;
+private native("memcmp") fn(cdecl) _memcmp(lhs const void*, rhs const void*, count ptrsize) int32;
 
 /*
  * Compares two blocks of memory lhs and rhs.
@@ -71,7 +71,7 @@ fn streq(str1 cstr, str2 cstr) bool {
 fn strlen(s cstr) int {
     return cast(int) _strlen(s);
 }
-private native("strlen") fn(cdecl) _strlen(s cstr) uint;
+private native("strlen") fn(cdecl) _strlen(s cstr) ptrsize;
 
 /*
  * Calculates the number of trailing zero bits in x. That is it

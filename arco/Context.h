@@ -107,7 +107,7 @@ namespace arco {
         StructDecl* StdEnumTypeStruct    = nullptr;
 
         Type* IntType;
-        Type* UIntType;
+        Type* PtrsizeType;
         Type* VoidType;
         Type* CharType;
         Type* BoolType;

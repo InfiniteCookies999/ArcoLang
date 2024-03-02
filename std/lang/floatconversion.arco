@@ -12,7 +12,7 @@ import math;
  * @param chars     the buffer to be filled with characters.
  * @param num_chars how long the resulting string is after conversion.
  */
-fn chars_of_f64(value f64, chars char[30], num_chars int*) {
+fn chars_of_float64(value float64, chars char[30], num_chars int*) {
 
     bits      := bitcast(uint64) value;
     is_neg    := (bits >> 63) != 0;
@@ -85,7 +85,7 @@ fn chars_of_f64(value f64, chars char[30], num_chars int*) {
  * @param chars     the buffer to be filled with characters.
  * @param num_chars how long the resulting string is after conversion.
  */
-fn chars_of_f32(value f32, chars char[30], num_chars int*) {
+fn chars_of_float32(value float32, chars char[30], num_chars int*) {
 
     bits      := bitcast(uint32) value;
     is_neg    := (bits >> 31) != 0;

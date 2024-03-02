@@ -254,12 +254,6 @@ arco::Token arco::Lexer::NextNumber() {
 }
 
 arco::Token arco::Lexer::FinishNumber(const char* TokStart, TokenKind Kind) {
-    if (*CurPtr == 'u') {
-        // The expected type is an unsigned integer number.
-        ++CurPtr;
-        return CreateToken(Kind, CreateText(TokStart));
-    }
-
     if (*CurPtr == '\'') {
         ++CurPtr;
 

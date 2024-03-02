@@ -28,7 +28,7 @@ arco::ArcoContext::ArcoContext()
         }),
 
     IntType(new Type(TypeKind::Int, UniqueTypeIdCounter++)),
-    UIntType(new Type(TypeKind::UInt, UniqueTypeIdCounter++)),
+    PtrsizeType(new Type(TypeKind::Ptrsize, UniqueTypeIdCounter++)),
     Int8Type(new Type(TypeKind::Int8, UniqueTypeIdCounter++)),
     Int16Type(new Type(TypeKind::Int16, UniqueTypeIdCounter++)),
     Int32Type(new Type(TypeKind::Int32, UniqueTypeIdCounter++)),
@@ -103,7 +103,7 @@ arco::ArcoContext::~ArcoContext() {
     delete &LLContext;
 
     delete IntType;
-    delete UIntType;
+    delete PtrsizeType;
     delete Int8Type;
     delete Int16Type;
     delete Int32Type;
@@ -133,7 +133,7 @@ arco::ArcoContext::~ArcoContext() {
 void arco::ArcoContext::Initialize() {
     
     TokenKeywordMap.insert({ "int"      , TokenKind::KW_INT       });
-    TokenKeywordMap.insert({ "uint"     , TokenKind::KW_UINT      });
+    TokenKeywordMap.insert({ "ptrsize"  , TokenKind::KW_PTRSIZE   });
     TokenKeywordMap.insert({ "int8"     , TokenKind::KW_INT8      });
     TokenKeywordMap.insert({ "int16"    , TokenKind::KW_INT16     });
     TokenKeywordMap.insert({ "int32"    , TokenKind::KW_INT32     });
@@ -142,8 +142,8 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "uint16"   , TokenKind::KW_UINT16    });
     TokenKeywordMap.insert({ "uint32"   , TokenKind::KW_UINT32    });
     TokenKeywordMap.insert({ "uint64"   , TokenKind::KW_UINT64    });
-    TokenKeywordMap.insert({ "f32"      , TokenKind::KW_F32       });
-    TokenKeywordMap.insert({ "f64"      , TokenKind::KW_F64       });
+    TokenKeywordMap.insert({ "float32"  , TokenKind::KW_FLOAT32   });
+    TokenKeywordMap.insert({ "float64"  , TokenKind::KW_FLOAT64   });
     TokenKeywordMap.insert({ "char"     , TokenKind::KW_CHAR      });
     TokenKeywordMap.insert({ "void"     , TokenKind::KW_VOID      });
     TokenKeywordMap.insert({ "cstr"     , TokenKind::KW_CSTR      });
@@ -189,8 +189,8 @@ void arco::ArcoContext::Initialize() {
     CharPtrPtrType = PointerType::Create(CharPtrType, *this);
 
     LLVMValidIntrinsicArgs = {
-        { Identifier("memcpy"), { VoidPtrType, VoidPtrType, UIntType }, VoidType },
-        { Identifier("memset"), { VoidPtrType, Int8Type, UIntType }, VoidPtrType },
+        { Identifier("memcpy"), { VoidPtrType, VoidPtrType, IntType }, VoidType },
+        { Identifier("memset"), { VoidPtrType, Int8Type, IntType }, VoidPtrType },
         { Identifier("floor") ,  { Float64Type }, Float64Type },
         { Identifier("floor") ,  { Float32Type }, Float32Type },
         { Identifier("ceil")  ,  { Float64Type }, Float64Type },

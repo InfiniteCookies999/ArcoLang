@@ -48,7 +48,7 @@ LocScope = LocScope->Parent;
 
 #define TYPE_KW_START_CASES \
      TokenKind::KW_INT:     \
-case TokenKind::KW_UINT:    \
+case TokenKind::KW_PTRSIZE: \
 case TokenKind::KW_INT8:    \
 case TokenKind::KW_INT16:   \
 case TokenKind::KW_INT32:   \
@@ -57,8 +57,8 @@ case TokenKind::KW_UINT8:   \
 case TokenKind::KW_UINT16:  \
 case TokenKind::KW_UINT32:  \
 case TokenKind::KW_UINT64:  \
-case TokenKind::KW_F32:     \
-case TokenKind::KW_F64:     \
+case TokenKind::KW_FLOAT32: \
+case TokenKind::KW_FLOAT64: \
 case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_BOOL:    \
@@ -1457,7 +1457,7 @@ arco::Type* arco::Parser::ParseBasicType() {
     arco::Type* Ty = nullptr;
     switch (CTok.Kind) {
     case TokenKind::KW_INT:    Ty = Context.IntType;     NextToken(); break;
-    case TokenKind::KW_UINT:   Ty = Context.UIntType;    NextToken(); break;
+    case TokenKind::KW_PTRSIZE:   Ty = Context.PtrsizeType;    NextToken(); break;
     case TokenKind::KW_INT8:   Ty = Context.Int8Type;    NextToken(); break;
     case TokenKind::KW_INT16:  Ty = Context.Int16Type;   NextToken(); break;
     case TokenKind::KW_INT32:  Ty = Context.Int32Type;   NextToken(); break;
@@ -1466,8 +1466,8 @@ arco::Type* arco::Parser::ParseBasicType() {
     case TokenKind::KW_UINT16: Ty = Context.UInt16Type;  NextToken(); break;
     case TokenKind::KW_UINT32: Ty = Context.UInt32Type;  NextToken(); break;
     case TokenKind::KW_UINT64: Ty = Context.UInt64Type;  NextToken(); break;
-    case TokenKind::KW_F32:    Ty = Context.Float32Type; NextToken(); break;
-    case TokenKind::KW_F64:    Ty = Context.Float64Type; NextToken(); break;
+    case TokenKind::KW_FLOAT32:    Ty = Context.Float32Type; NextToken(); break;
+    case TokenKind::KW_FLOAT64:    Ty = Context.Float64Type; NextToken(); break;
     case TokenKind::KW_CHAR:   Ty = Context.CharType;    NextToken(); break;
     case TokenKind::KW_VOID:   Ty = Context.VoidType;    NextToken(); break;
     case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
@@ -1724,7 +1724,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
                 case TypeKind::UInt16:
                 case TypeKind::UInt32:
                 case TypeKind::UInt64:
-                case TypeKind::UInt:
+                case TypeKind::Ptrsize:
                     Num->UnsignedIntValue = -Num->UnsignedIntValue;
                     break;
                 case TypeKind::Float32:
@@ -2055,7 +2055,7 @@ arco::NumberLiteral* arco::Parser::FinalizeIntLiteral(ulen Idx, u64 IntValue, Nu
         if (Text[Idx] == 'u') {
             // The number is forced to be unsigned.
             if (IntValue <= std::numeric_limits<u32>::max()) {
-                Number->Ty = Context.UIntType;
+                Number->Ty = Context.PtrsizeType;
             } else {
                 Number->Ty = Context.UInt64Type;
             }
@@ -2558,7 +2558,7 @@ if (OpApplies)               \
         FOLD(Float64Value, FoldFloat)
             break;
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
     case TypeKind::Int8:
     case TypeKind::UInt8:
     case TypeKind::Int16:
@@ -2586,9 +2586,9 @@ if (OpApplies)               \
                     // Not allowing this. Signed unsigned mismatch will be considered
                     // an error unless they are using the system integer type.
                     Error = true;
-                } else if (Ty1->GetKind() == TypeKind::UInt) {
+                } else if (Ty1->GetKind() == TypeKind::Ptrsize) {
                     UseType = Ty2;
-                } else if (Ty2->GetKind() == TypeKind::UInt) {
+                } else if (Ty2->GetKind() == TypeKind::Ptrsize) {
                     UseType = Ty1;
                 } else {
                     ulen Size1 = Ty1->GetTrivialTypeSizeInBytes();
@@ -2605,16 +2605,6 @@ if (OpApplies)               \
                     // Promote the type to a larger size if it did not fit into 32 bits.
                     if (Number1->SignedIntValue > std::numeric_limits<i32>::max()) {
                         Number1->Ty = Context.Int64Type;
-                    }
-                    if (OpApplies)
-                        return Number1;
-                    break;
-                }
-                case TypeKind::UInt: {
-                    APPLY_OP(UnsignedIntValue, FoldInt);
-                    // Promote the type to a larger size if it did not fit into 32 bits.
-                    if (Number1->UnsignedIntValue > std::numeric_limits<u32>::max()) {
-                        Number1->Ty = Context.UInt64Type;
                     }
                     if (OpApplies)
                         return Number1;
@@ -2642,6 +2632,7 @@ if (OpApplies)               \
                     FOLD(SignedIntValue, FoldInt);
                     break;
                 case TypeKind::UInt64:
+                case TypeKind::Ptrsize:
                     FOLD(UnsignedIntValue, FoldInt);
                     break;
                 default:
@@ -2679,6 +2670,8 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
             return FoldNumbers(OpTok, RHSNumber, LHSNumber);
         } else {
             // Neither has memory that can be used, well going to create some then!
+            // TODO: Is this actually needed? Can we not just rely on the stack based
+            //       node since we know there will be a node later on that has heap memory?
             NumberLiteral* ResultNode = NewNode<NumberLiteral>(LHSNumber->Loc);
             // TODO: memcpying here seems really messy.
             memcpy(ResultNode, LHSNumber, sizeof(NumberLiteral));

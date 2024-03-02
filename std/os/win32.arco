@@ -94,7 +94,7 @@ native fn CreateFileA(lpFileName            cstr,
 
 native fn GetFileAttributesA(lpFileName cstr) uint32;
 
-native fn GetFileSize(hFile void*, lpFileSizeHigh uint*) uint32;
+native fn GetFileSize(hFile void*, lpFileSizeHigh ptrsize*) uint32;
 
 native fn GetFileTime(hFile void*,
                       lpCreationTime uint64*,

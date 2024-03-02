@@ -63,7 +63,7 @@ OutStream struct : Writeable {
 
         ptr char* = chars_of_uint64(i, buffer + BUFFER_SIZE - 1, base);
 
-        length := cast(uint)(buffer + BUFFER_SIZE) - cast(uint)ptr;
+        length := cast(int)(buffer + BUFFER_SIZE) - cast(int)ptr;
         write_buffer(ptr, length);
     }
 
@@ -71,21 +71,17 @@ OutStream struct : Writeable {
         write(cast(int64) i, base);
     }
 
-    fn write(i uint, base := 10) {
-        write(cast(uint64) i, base);
-    }
-
-    fn write(f f64) {
+    fn write(f float64) {
         buffer char[30] = ---;
         length int;
-        chars_of_f64(f, buffer, &length);
+        chars_of_float64(f, buffer, &length);
         write_buffer(buffer, length);
     }
 
-    fn write(f f32) {
+    fn write(f float32) {
         buffer char[30] = ---;
         length int;
-        chars_of_f32(f, buffer, &length);
+        chars_of_float32(f, buffer, &length);
         write_buffer(buffer, length);
     }
 
@@ -102,8 +98,8 @@ OutStream struct : Writeable {
         // size otherwise it won't be able to interpret the size right.
         else if type.id == TypeId.INT {
             write(*cast(int*) value);
-        } else if type.id == TypeId.UINT {
-            write(*cast(uint*) value);
+        } else if type.id == TypeId.PTRSIZE {
+            write(*cast(ptrsize*) value);
         } else if type.id == TypeId.UINT8 {
             write(*cast(uint8*) value);
         } else if type.id == TypeId.UINT16 {
@@ -132,10 +128,10 @@ OutStream struct : Writeable {
             write(*cast(bool*) value);
         } else if type.id == TypeId.EMPTY_ARRAY_ELM {
             write("[ ]");
-        } else if type.id == TypeId.F32 {
-            write(*cast(f32*) value);
-        } else if type.id == TypeId.F64 {
-            write(*cast(f64*) value);
+        } else if type.id == TypeId.FLOAT32 {
+            write(*cast(float32*) value);
+        } else if type.id == TypeId.FLOAT64 {
+            write(*cast(float64*) value);
         } else if type.id == TypeId.SLICE {
             slice_length  := *cast(int*) value;
             slice_arr_ptr := value + sizeof(int);
@@ -187,8 +183,8 @@ OutStream struct : Writeable {
             index_type := type.enum_info.index_type;
             if type.id == TypeId.INT {
                 index = *cast(int*) value;
-            } else if type.id == TypeId.UINT {
-                index = cast(int) *cast(uint*) value;
+            } else if type.id == TypeId.PTRSIZE {
+                index = cast(int) *cast(ptrsize*) value;
             } else if type.id == TypeId.UINT8 {
                 index = cast(int) *cast(uint8*) value;
             } else if type.id == TypeId.UINT16 {
@@ -279,11 +275,6 @@ OutStream struct : Writeable {
         write_buffer("\n", 1);
     }
 
-    fn writeln(i uint, base := 10) {
-        write(cast(uint64) i, base);
-        write_buffer("\n", 1);
-    }
-
     fn writeln(i int64, base := 10) {
         write(i);
         write_buffer("\n", 1);
@@ -309,12 +300,12 @@ OutStream struct : Writeable {
         write_buffer("\n", 1);
     }
 
-    fn writeln(f f64) {
+    fn writeln(f float64) {
         write(f);
         write_buffer("\n", 1);
     }
 
-    fn writeln(f f32) {
+    fn writeln(f float32) {
         write(f);
         write_buffer("\n", 1);
     }

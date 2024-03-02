@@ -102,7 +102,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
     case TypeKind::UInt64:
         return llvm::Type::getInt64Ty(LLContext);
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
         return GetSystemIntType(LLContext, Context.LLArcoModule);
     case TypeKind::Bool:
         return llvm::Type::getInt1Ty(LLContext);
@@ -2018,7 +2018,7 @@ llvm::Value* arco::IRGenerator::GenNumberLiteral(NumberLiteral* Number) {
         return llvm::ConstantFP::get(LLContext, llvm::APFloat(Number->Float64Value));
     case TypeKind::Int:
         return GetSystemInt(Number->SignedIntValue);
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
         return GetSystemUInt(Number->UnsignedIntValue);
     default:
         assert(!"Unimplemented GenNumberLiteral() case");
@@ -3114,7 +3114,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
     case TypeKind::UInt32:
     case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
     case TypeKind::Char:
         //  --- TO Integers ---
         if (FromType->IsInt()) {
@@ -3343,14 +3343,14 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
     case TypeKind::Int8: case TypeKind::Char:
         return GetLLInt8(0);
     case TypeKind::UInt8:    return GetLLUInt8(0);
-    case TypeKind::Int16:           return GetLLInt16(0);
+    case TypeKind::Int16:    return GetLLInt16(0);
     case TypeKind::UInt16:   return GetLLUInt16(0);
-    case TypeKind::Int32:           return GetLLInt32(0);
+    case TypeKind::Int32:    return GetLLInt32(0);
     case TypeKind::UInt32:   return GetLLUInt32(0);
-    case TypeKind::Int64:           return GetLLInt64(0);
+    case TypeKind::Int64:    return GetLLInt64(0);
     case TypeKind::UInt64:   return GetLLUInt64(0);
-    case TypeKind::Int:             return GetSystemInt(0);
-    case TypeKind::UInt:     return GetSystemUInt(0);
+    case TypeKind::Int:      return GetSystemInt(0);
+    case TypeKind::Ptrsize:  return GetSystemUInt(0);
     case TypeKind::Bool:
         return llvm::ConstantInt::getFalse(LLContext);
     case TypeKind::Float32:
@@ -3956,7 +3956,7 @@ llvm::Value* arco::IRGenerator::GetOneValue(Type* Ty) {
     case TypeKind::Int:
         LLOne = GetSystemInt(1);
         break;
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
         LLOne = GetSystemUInt(1);
         break;
     default: assert(!"unimplementd!"); break;

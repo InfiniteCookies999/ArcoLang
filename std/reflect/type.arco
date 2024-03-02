@@ -6,7 +6,7 @@ namespace reflect;
  */
 TypeId enum {
     
-    UINT;
+    PTRSIZE;
     UINT8;
     UINT16;
     UINT32;
@@ -20,8 +20,8 @@ TypeId enum {
 
     CHAR;
 
-    F32;
-    F64;
+    FLOAT32;
+    FLOAT64;
     
     VOID;
     BOOL;
@@ -112,7 +112,7 @@ Type struct {
      * Tells if the type is a number.
      */
     fn is_number() bool {
-        return id <= TypeId.F64;
+        return id <= TypeId.FLOAT64;
     }
     
     /*
@@ -120,7 +120,7 @@ Type struct {
      * this type may have negative values.
      */
     fn is_signed() bool {
-        return id >= TypeId.INT && id <= TypeId.F64;
+        return id >= TypeId.INT && id <= TypeId.FLOAT64;
     }
     
     /*

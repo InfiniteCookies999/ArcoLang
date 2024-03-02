@@ -28,7 +28,7 @@ namespace arco {
 
     enum class TypeKind {
 
-        UInt,
+        Ptrsize,
         UInt8,
         UInt16,
         UInt32,

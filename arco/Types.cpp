@@ -27,7 +27,7 @@ bool arco::Type::IsNumber() const {
     case TypeKind::UInt32:
     case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
     case TypeKind::Char:
     case TypeKind::Float32:
     case TypeKind::Float64:
@@ -48,7 +48,7 @@ bool arco::Type::IsInt() const {
     case TypeKind::UInt32:
     case TypeKind::UInt64:
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
     case TypeKind::Char:
         return true;
     default:
@@ -79,7 +79,7 @@ bool arco::Type::IsSigned() const {
 
 bool arco::Type::IsSystemInt() const {
     TypeKind Kind = GetKind();
-    return Kind == TypeKind::Int || Kind == TypeKind::UInt;
+    return Kind == TypeKind::Int || Kind == TypeKind::Ptrsize;
 }
 
 bool arco::Type::IsPointer() const {
@@ -230,7 +230,7 @@ ulen arco::Type::GetSizeInBytes(llvm::Module& LLModule) const {
     case TypeKind::Float64:
         return 8;
     case TypeKind::Int:
-    case TypeKind::UInt:
+    case TypeKind::Ptrsize:
         return LLModule.getDataLayout().getPointerSize();
     default:
         assert(!"unreachable!");
@@ -274,7 +274,7 @@ std::string arco::Type::ToString() const {
     case TypeKind::Float64:         return "f64";
     case TypeKind::Char:            return "char";
     case TypeKind::Int:             return "int";
-    case TypeKind::UInt:            return "uint";
+    case TypeKind::Ptrsize:         return "ptrsize";
     case TypeKind::Void:            return "void";
     case TypeKind::Null:            return "null";
     case TypeKind::CStr:            return "cstr";

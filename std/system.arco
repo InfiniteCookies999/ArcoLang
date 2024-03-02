@@ -35,7 +35,7 @@ fn time_in_nanosecs() int64 {
     }
     current int64;
     win32.QueryPerformanceCounter(&current);
-    return cast(int64) ((cast(f64) (current * 1E+9) /performance_freq));
+    return cast(int64) ((cast(float64) (current * 1E+9) /performance_freq));
 }
 
 fn time_in_millisecs() int64 {
