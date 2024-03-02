@@ -534,11 +534,13 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
             NextToken(); // Consuming ':' token.
             bool MoreInitializers = false;
             do {
+                Token NameTok = CTok;
                 Identifier FieldName = ParseIdentifier("Expected identifier for field of initializer value");
                 Match('(', "For initializer value");
                 Expr* Assignment = ParseExpr();
                 Match(')', "For initializer value");
                 Func->InitializerValues.push_back(FuncDecl::InitializerValue{
+                    NameTok.Loc,
                     FieldName,
                     Assignment
                     });
@@ -1014,7 +1016,11 @@ arco::IfStmt* arco::Parser::ParseIf() {
         if (CTok.Is(TokenKind::KW_IF)) {
             If->Else = ParseIf(); // 'else if'
         } else {
-            If->Else = ParseNestedScope(); // 'else'
+            NestedScopeStmt* NestedScope = NewNode<NestedScopeStmt>(CTok);
+            If->Else = NestedScope;
+            PUSH_SCOPE();
+            ParseScopeStmtOrStmts(NestedScope->Scope);
+            POP_SCOPE();
         }
     }
 

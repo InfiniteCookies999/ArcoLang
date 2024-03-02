@@ -47,34 +47,22 @@ void arco::Logger::EndError() {
         return;
     }
 
-    std::string Between = ReplaceTabsWithSpaces(PrimaryErrLoc.Text.str());
-    if (Between == "\n" || Between == "\r\n" || Between == "\r") {
-        Between = "";
-    }
-
     // Breaking the between location into seperate lines.
     std::string BetweenLine;
-    std::vector<std::string> BetweenLines;
-    const char* BPtr = Between.c_str();
-    while (*BPtr) {
-        if (*BPtr == '\n') {
-            BetweenLines.push_back(BetweenLine);
-            BetweenLine = "";
-        } else if (*BPtr == '\r') {
-            BetweenLines.push_back(BetweenLine);
-            BetweenLine = "";
-            if (*(BPtr + 1) == '\n') {
-                ++BPtr;
-            }
-        } else {
-            BetweenLine += *BPtr;
-        }
-        ++BPtr;
+    std::vector<std::string> PrimaryBetweenLines = GenerateBetweenLines(PrimaryErrLoc.Text);
+   
+    for (auto& MarkMessage : MarkMessages) {
+        MarkMessage.BetweenLines = GenerateBetweenLines(MarkMessage.Loc.Text);
     }
-    if (!BetweenLine.empty())
-        BetweenLines.push_back(BetweenLine);
 
-    LargestLineNum = PrimaryErrLoc.LineNumber + BetweenLines.size() - 1;
+    LargestLineNum = PrimaryErrLoc.LineNumber + PrimaryBetweenLines.size() - 1;
+    for (auto& MarkMessage : MarkMessages) {
+        ulen LinesLength = MarkMessage.Loc.LineNumber + MarkMessage.BetweenLines.size() - 1;
+        if (LinesLength > LargestLineNum) {
+            LargestLineNum = LinesLength;
+        }
+    }
+
     LNPad = std::string(std::to_string(LargestLineNum).size(), ' ');
 
     if (ExtErrMsgAbovePrimaryLocAligned) {
@@ -90,7 +78,17 @@ void arco::Logger::EndError() {
         }
         ExtErrMsgAbovePrimaryLocAligned = nullptr;	
     }
-    DisplayErrorLoc(PrimaryErrLoc, BetweenLines);
+    DisplayErrorLoc(PrimaryErrLoc, PrimaryBetweenLines, TerminalColorDefault);
+
+    for (auto MarkMessage : MarkMessages) {
+        if (MarkMessage.Message != "") {
+            SetTerminalColor(TerminalColorCyan);
+            OS << "\n" << LNPad << "  >> " << MarkMessage.Message;
+        }
+        DisplayErrorLoc(MarkMessage.Loc, MarkMessage.BetweenLines, TerminalColorCyan);
+    }
+    MarkMessages.clear();
+    OS << "\n";
 
     if (!NoteLines.empty()) {
         SetTerminalColor(TerminalColorYellow);
@@ -155,7 +153,38 @@ void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::functio
     FoundCompileError = true;
 }
 
-void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines) {
+std::vector<std::string> arco::Logger::GenerateBetweenLines(llvm::StringRef Text) {
+    std::string Between = ReplaceTabsWithSpaces(Text.str());
+    if (Between == "\n" || Between == "\r\n" || Between == "\r") {
+        Between = "";
+    }
+
+    // Breaking the between location into seperate lines.
+    std::string BetweenLine;
+    std::vector<std::string> BetweenLines;
+    const char* BPtr = Between.c_str();
+    while (*BPtr) {
+        if (*BPtr == '\n') {
+            BetweenLines.push_back(BetweenLine);
+            BetweenLine = "";
+        } else if (*BPtr == '\r') {
+            BetweenLines.push_back(BetweenLine);
+            BetweenLine = "";
+            if (*(BPtr + 1) == '\n') {
+                ++BPtr;
+            }
+        } else {
+            BetweenLine += *BPtr;
+        }
+        ++BPtr;
+    }
+    if (!BetweenLine.empty())
+        BetweenLines.push_back(BetweenLine);
+
+    return BetweenLines;
+}
+
+void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode) {
 
     std::string Backwards = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.begin(), -40));
     std::string Forwards  = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.end() - 1, +40));
@@ -163,6 +192,7 @@ void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>
     assert(Backwards.find('\n', 0) == std::string::npos && "New Line in display!");
     assert(Forwards.find('\n', 0) == std::string::npos && "New Line in display!");
 
+    SetTerminalColor(ColorCode);
     OS << "\n";
     OS << LNPad << "  |\n";
 
@@ -202,9 +232,12 @@ void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>
         OS << std::string(Line.size() - NonTrailingWhitespaceStr.size(), ' ')
            << std::string(NonTrailingWhitespaceStr.size(), '~');
 
-        OS << '\n';
-        SetTerminalColor(TerminalColorDefault);
+        if (i + 1 != Lines.size()) {
+            OS << '\n';
+        }
+        SetTerminalColor(ColorCode);
     }
+    SetTerminalColor(TerminalColorDefault);
 }
 
 std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {

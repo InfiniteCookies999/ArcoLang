@@ -691,7 +691,7 @@ private BigIntFD struct {
         ptr uint32* = blocks + length - 1;
         loop ptr >= blocks {
             if *ptr == 0  --length;
-            else { break; } // TODO: Parser is broken to resolve this correctly.
+            else break;
             --ptr;
         }
     }

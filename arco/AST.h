@@ -326,6 +326,7 @@ namespace arco {
         llvm::SmallVector<VarDecl*, 4> AllocVars;
 
         struct InitializerValue {
+            SourceLoc  ErrorLoc;
             Identifier FieldName;
             Expr*      Assignment;
         };

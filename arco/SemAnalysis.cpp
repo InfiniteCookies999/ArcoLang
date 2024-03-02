@@ -363,7 +363,7 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
             for (const FuncDecl::InitializerValue& InitValue : Func->InitializerValues) {
                 CheckNode(InitValue.Assignment);
                 if (!Struct->FindField(InitValue.FieldName)) {
-                    Error(Func, "No field '%s' for initializer value", InitValue.FieldName);
+                    Error(InitValue.ErrorLoc, "No field '%s' for initializer value", InitValue.FieldName);
                 }
             }
 

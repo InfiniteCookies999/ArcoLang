@@ -60,6 +60,10 @@ namespace arco {
             NoteLines.push_back(NoteLinePrinter);
         }
 
+        inline void AddMarkMessage(SourceLoc Loc, std::string OptMessage = "") {
+            MarkMessages.push_back(MarkMessage{ OptMessage, Loc });
+        }
+
         void EndError();
 
     private:
@@ -74,11 +78,19 @@ namespace arco {
         std::string LNPad; // New line pad for displaying error location.
         ulen LargestLineNum;
 
+        struct MarkMessage {
+            std::string              Message;
+            SourceLoc                Loc;
+            std::vector<std::string> BetweenLines;
+        };
+
         llvm::SmallVector<std::function<void(llvm::raw_ostream&)>> NoteLines;
+        llvm::SmallVector<MarkMessage>                             MarkMessages;
 
         void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod);
 
-        void DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines);
+        std::vector<std::string> GenerateBetweenLines(llvm::StringRef Text);
+        void DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode);
 
         std::string RangeFromWindow(const char* Loc, i64 Direction);
 
