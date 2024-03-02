@@ -1521,7 +1521,20 @@ arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
 }
 
 arco::Expr* arco::Parser::ParseExpr() {
-    return ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+    Expr* LHS = ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+
+    if (CTok.Is('?')) {
+        // Parsing ternary expression.
+        Ternary* Tern = NewNode<Ternary>(CTok);
+        Tern->Cond = LHS;
+        NextToken();
+        Tern->LHS = ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+        Match(':', "for ternary expression");
+        Tern->RHS = ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+        return Tern;
+    } else {
+        return LHS;
+    }
 }
 
 arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {

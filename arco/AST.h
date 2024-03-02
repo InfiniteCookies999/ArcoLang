@@ -70,7 +70,8 @@ namespace arco {
         HEAP_ALLOC,
         SIZEOF,
         TYPEOF,
-        MOVEOBJ
+        MOVEOBJ,
+        TERNARY
 
     };
 
@@ -785,6 +786,15 @@ namespace arco {
 
         u16 Op;
 
+        Expr* LHS;
+        Expr* RHS;
+
+    };
+
+    struct Ternary : Expr {
+        Ternary() : Expr(AstKind::TERNARY) {}
+
+        Expr* Cond;
         Expr* LHS;
         Expr* RHS;
 

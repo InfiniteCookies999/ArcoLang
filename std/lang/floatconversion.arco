@@ -582,12 +582,7 @@ private BigIntFD struct {
 			lhsv := this.blocks[i];
 			rhsv := o.blocks[i];
 			if lhsv != rhsv {
-				// TODO: replace with ternary once supported!
-				if lhsv < rhsv {
-					return -1;
-				} else {
-					return +1;
-				} 
+                return lhsv < rhsv ? -1 : +1;
 			}
 		}
 	
@@ -617,12 +612,7 @@ private BigIntFD struct {
 			small = x;
 		}
 		if large.length == 0 {
-			// TODO: replace with ternary once supported
-			if this.length == 0 {
-				return 0;
-			} else {
-				return 1;
-			}
+            return this.length == 0 ? 0 : 1;
 		}
 		if small.length == 0 {
 			return compare(large);

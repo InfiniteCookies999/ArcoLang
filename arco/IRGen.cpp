@@ -790,6 +790,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
         return GenTypeOf(static_cast<TypeOf*>(Node));
     case AstKind::MOVEOBJ:
         return GenNode(static_cast<MoveObj*>(Node)->Value);
+    case AstKind::TERNARY:
+        return GenTernary(static_cast<Ternary*>(Node), nullptr, false);
     default:
         assert(!"Unimplemented GenNode() case!");
         return nullptr;
@@ -955,6 +957,9 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             }
             // Checking for cases in which no no existing LValue exists and the value needs
             // to be passed to prevent irrelevent copies.
+            //
+            // TODO: If we checked to make sure there are no lvalues in the ternary operator
+            //       we could also get away with it here!
             else if (Ret->Value->Is(AstKind::STRUCT_INITIALIZER) ||
                      Ret->Value->Is(AstKind::FUNC_CALL)) {
                 GenReturnByStoreToElisionRetSlot(Ret->Value, GetElisionRetSlotAddr(CFunc));
@@ -1024,6 +1029,9 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             }
             // Checking for cases in which no no existing LValue exists and the value needs
             // to be passed to prevent irrelevent copies.
+            // 
+            // TODO: If we checked to make sure there are no lvalues in the ternary operator
+            //       we could also get away with it here!
             else if (Ret->Value->Is(AstKind::STRUCT_INITIALIZER) ||
                      Ret->Value->Is(AstKind::FUNC_CALL)) {
                 GenReturnByStoreToElisionRetSlot(Ret->Value, LLToAddr);
@@ -3014,6 +3022,42 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfEnumTypeGlobal(EnumDecl* Enum)
     return LLGlobal;
 }
 
+llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded) {
+    
+    if (Tern->Ty->GetKind() == TypeKind::Struct) {
+        llvm::BasicBlock* LLThenBB = llvm::BasicBlock::Create(LLContext, "tif.then", LLFunc);
+        llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "tif.end", LLFunc);
+        llvm::BasicBlock* LLElseBB = llvm::BasicBlock::Create(LLContext, "tif.else", LLFunc);
+        
+        if (!LLAddr) {
+            LLAddr = CreateUnseenAlloca(GenType(Tern->Ty), "tern.result");
+        }
+
+        GenBranchOnCond(Tern->Cond, LLThenBB, LLElseBB);
+        
+        // Then block
+        Builder.SetInsertPoint(LLThenBB);
+        GenAssignment(LLAddr, Tern->Ty, Tern->LHS, Tern->HasConstAddress, DestroyIfNeeded);
+        GenBranchIfNotTerm(LLEndBB);
+
+        // Else block
+        Builder.SetInsertPoint(LLElseBB);
+        GenAssignment(LLAddr, Tern->Ty, Tern->RHS, Tern->HasConstAddress, DestroyIfNeeded);
+        GenBranchIfNotTerm(LLEndBB);
+
+
+        // Finally continuing forward into a new block after the ternary.
+        GenBranchIfNotTerm(LLEndBB);
+        Builder.SetInsertPoint(LLEndBB);
+
+        return LLAddr;
+    } else if (Tern->Ty->GetKind() == TypeKind::Array) {
+        // TODO
+    } else {
+        return Builder.CreateSelect(GenCond(Tern->Cond), GenRValue(Tern->LHS), GenRValue(Tern->RHS));
+    }
+}
+
 llvm::Value* arco::IRGenerator::GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty) {
     if (Ty->IsInt()) {
         return Builder.CreateAdd(LLLHS, LLRHS);
@@ -4067,7 +4111,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr
             // the destructor delete the original memory.
             llvm::Value* LLTempAddr =
                 CreateUnseenAlloca(LLAddress->getType()->getPointerElementType(), "tmp");
-            GenStructInitializer(static_cast<StructInitializer*>(Value), LLAddress);
+            GenStructInitializer(static_cast<StructInitializer*>(Value), LLTempAddr);
             // Destroy the original memory.
             CallDestructors(AddrTy, LLAddress);
             // Copy/move the new value.
@@ -4126,7 +4170,15 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress, Type* AddrTy, Expr
                 CallDestructors(AddrTy, LLAddress);
             Builder.CreateStore(LLAssignment, LLAddress);
         }
-    } else if (Value->Ty->GetKind() == TypeKind::Struct) {
+    } else if (Value->Is(AstKind::TERNARY)) {
+        if (Value->Ty->GetKind() == TypeKind::Struct ||
+            Value->Ty->GetKind() == TypeKind::Array
+            ) {
+            GenTernary(static_cast<Ternary*>(Value), LLAddress, DestroyIfNeeded);
+        } else {
+            Builder.CreateStore(GenTernary(static_cast<Ternary*>(Value), nullptr, false), LLAddress);
+        }
+    } else if (Value->Ty->GetKind() == TypeKind::Struct) { 
         StructDecl* Struct = AddrTy->AsStructType()->GetStruct();
         if (Struct->Destructor && DestroyIfNeeded) {
             // See comments for struct initializer for explaination.

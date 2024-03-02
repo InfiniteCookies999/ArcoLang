@@ -676,6 +676,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::MOVEOBJ:
         CheckMoveObj(static_cast<MoveObj*>(Node));
         break;
+    case AstKind::TERNARY:
+        CheckTernary(static_cast<Ternary*>(Node));
+        break;
     case AstKind::NUMBER_LITERAL:
     case AstKind::STRING_LITERAL:
     case AstKind::NULLPTR:
@@ -3480,6 +3483,31 @@ void arco::SemAnalyzer::CheckMoveObj(MoveObj* Move) {
         Error(Move, "Expected to be a modifiable value for move");
     } else if (Move->HasConstAddress) {
         Error(Move, "Cannot move constant memory");
+    }
+}
+
+void arco::SemAnalyzer::CheckTernary(Ternary* Tern) {
+    CheckCondition(Tern->Cond, "Ternary");
+
+    CheckNode(Tern->LHS);
+    CheckNode(Tern->RHS);
+    if (Tern->LHS->Ty == Context.ErrorType ||
+        Tern->RHS->Ty == Context.ErrorType) {
+        YIELD_ERROR(Tern);
+    }
+
+    // TODO: lossen foldable constraint
+    Tern->IsFoldable = false;
+    Tern->HasConstAddress = Tern->LHS->HasConstAddress || Tern->RHS->HasConstAddress;
+
+    if (IsAssignableTo(Tern->LHS->Ty, Tern->RHS)) {
+        Tern->Ty = Tern->LHS->Ty;
+        CreateCast(Tern->RHS, Tern->Ty);
+    } else if (IsAssignableTo(Tern->RHS->Ty, Tern->LHS)) {
+        Tern->Ty = Tern->RHS->Ty;
+        CreateCast(Tern->LHS, Tern->Ty);
+    } else {
+        Error(Tern, "Incompatible values for ternary expression");
     }
 }
 

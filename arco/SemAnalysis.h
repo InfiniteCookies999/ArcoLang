@@ -155,6 +155,7 @@ namespace arco {
         void CheckTypeOf(TypeOf* TOf);
         void CheckRange(Range* Rg);
         void CheckMoveObj(MoveObj* Move);
+        void CheckTernary(Ternary* Tern);
 
         void CheckCondition(Expr* Cond, const char* PreErrorText);
 
