@@ -390,7 +390,7 @@ namespace arco {
         Expr* Assignment = nullptr;
 
         inline bool IsComptime() const {
-            return Ty->IsNumber() && HasConstAddress;
+            return Ty->IsNumber() && HasConstAddress && ParamIdx == -1;
         }
 
         inline bool IsParam() const {

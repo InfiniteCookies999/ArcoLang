@@ -476,16 +476,17 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 
     FixupInterfaces(Struct);
 
+    // Skip over pointers to vtable.
+    ulen LLFieldIdx = Struct->Interfaces.size();
     for (VarDecl* Field : Struct->Fields) {
         CheckVarDecl(Field);
         if (Field->Assignment) {
             Struct->FieldsHaveAssignment = true;
         }
 
-        if (!Struct->Interfaces.empty()) {
-            Field->LLFieldIdx = Field->FieldIdx + Struct->Interfaces.size();
-        } else {
-            Field->LLFieldIdx = Field->FieldIdx;
+        if (!Field->IsComptime()) {
+            Field->LLFieldIdx = LLFieldIdx;
+            ++LLFieldIdx;
         }
 
         // TODO: Does the field need to be checked for a complete type here?

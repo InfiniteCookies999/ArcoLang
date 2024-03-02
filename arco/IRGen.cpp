@@ -226,7 +226,11 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
     if (!Struct->Interfaces.empty()) {
         NumFields += Struct->Interfaces.size();
     }
-    NumFields += Struct->Fields.size();
+    // Count the fields which are not compile time generated.
+    for (VarDecl* Field : Struct->Fields) {
+        if (!Field->IsComptime())
+            ++NumFields;
+    }
     LLStructFieldTypes.resize(NumFields);
     for (ulen i = 0; i < Struct->Interfaces.size(); i++) {
         InterfaceDecl* Interface = Struct->Interfaces[i];
@@ -597,7 +601,6 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
         ++LLParamIndex;
     }
     for (VarDecl* Param : Func->Params) {
-        if (Param->IsComptime()) continue; // TODO: This should not be needed parameters should not be comptime.
         Builder.CreateStore(LLFunc->getArg(LLParamIndex++), Param->LLAddress);
         AddObjectToDestroyOpt(Param->Ty, Param->LLAddress);
 
@@ -2088,10 +2091,15 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
         return llvm::ConstantInt::get(GenType(IndexType), EnumIndex, false);
     }
 
-    if (FieldAcc->RefKind == IdentRef::RK::Var && FieldAcc->Var->IsGlobal) {
-        return GenIdentRef(FieldAcc);
+    if (FieldAcc->RefKind == IdentRef::RK::Var) {
+        if (FieldAcc->Var->IsGlobal) {
+            return GenIdentRef(FieldAcc);
+        }
+        if (FieldAcc->Var->IsComptime()) {
+            return GenComptimeValue(FieldAcc->Var);
+        }
     }
-
+    
     Expr* Site = FieldAcc->Site;
     llvm::Value* LLSite;	
     if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
