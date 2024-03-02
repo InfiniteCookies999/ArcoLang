@@ -69,7 +69,8 @@ namespace arco {
         STRUCT_INITIALIZER,
         HEAP_ALLOC,
         SIZEOF,
-        TYPEOF
+        TYPEOF,
+        MOVEOBJ
 
     };
 
@@ -220,6 +221,7 @@ namespace arco {
         llvm::StructType* LLStructTy         = nullptr;
         llvm::Function* LLDefaultConstructor = nullptr;
         llvm::Function* LLInitVTableFunc     = nullptr;
+        llvm::Function* LLTypeIdFunc         = nullptr;
 
         // At least one field has assignment.
         // This also takes into account fields which are structs
@@ -229,6 +231,8 @@ namespace arco {
         // destructor or if the structure contains another
         // structure which needs destruction.
         bool NeedsDestruction = false;
+
+        bool ImplementsInterface(InterfaceDecl* Interface);
 
         VarDecl* FindField(Identifier Name);
     };
@@ -264,8 +268,12 @@ namespace arco {
 
         // Functions that must be implemented by any struct
         // which implements this interface.
-        llvm::DenseMap<Identifier, FuncsList> Funcs;
-
+        // 
+        // This must be kept as an ordered data structure since
+        // the IR generator relies on the ordering to create a
+        // valid vtable.
+        FuncsList Funcs;
+        
     };
 
     struct FuncDecl : Decl {
@@ -761,6 +769,12 @@ namespace arco {
         TypeOf() : Expr(AstKind::TYPEOF) {}
 
         Type* TypeToGetTypeOf;
+    };
+
+    struct MoveObj : Expr {
+        MoveObj() : Expr(AstKind::MOVEOBJ) {}
+
+        Expr* Value;
     };
 
     // TODO: Should this just be a binary operator?

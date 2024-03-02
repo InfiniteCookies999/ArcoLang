@@ -1,0 +1,146 @@
+
+/*
+ * A token stream which seperates by whitespace.
+ */
+TokenStream struct {
+    
+    private handle Readable*;
+    
+    private BUFFER_SIZE :: 1024;
+    private buffer char[BUFFER_SIZE];
+    
+    private buffer_length := 0;
+    // Position offset into the buffer.
+    private pos           := 0;
+
+    TokenStream(handle Readable*)
+        : handle(handle) {
+    }
+
+    TokenStream(o TokenStream*)
+        : handle(o.handle),
+          buffer_length(o.buffer_length),
+          pos(o.pos) {
+        o.handle = null;
+        o.buffer_length = 0;
+        o.pos = 0;
+        memcpy(this.buffer, o.buffer, buffer_length);
+        memset(o.buffer, 0, BUFFER_SIZE);
+    }
+
+    /*
+     * When at the end of the current buffer_length read the next bytes
+     * into the buffer. Will try and read buffer_size but may read less.
+     */
+    private fn fill() {
+        // TODO: should make sure the stream is still open.
+        if pos >= buffer_length {
+            buffer_length = handle.read_buffer(buffer, BUFFER_SIZE);
+        }
+    }
+
+    private fn is_delim(c char) bool {
+        // TODO: Would be nice to support custom delimiters.
+        return c == ' '  || c == '\t' || 
+               c == '\n' || c == '\r';
+    }
+
+    private fn skip_delimiters() {
+        loop {
+            fill();
+            if pos == buffer_length  break;  // Nothing more to read.
+            if !is_delim(buffer[pos++]) {
+                break;
+            }
+        }
+    }
+
+    fn next_token() String {
+        
+        skip_delimiters();
+
+        token := String{};
+        offset := pos;
+
+        // keep moving over characters until we hit the next delimiter.
+        loop {
+            fill();
+            if pos == buffer_length  break;  // Nothing more to read.
+            if is_delim(buffer[pos++]) {
+                break;
+            }
+            if pos >= buffer_length {
+                // Copy over what we have read so far because the buffer is
+                // about to be overwritten.
+                token.append(buffer + offset, pos - offset);
+                offset = 0;
+            }
+        }
+
+        if pos - offset != 0 {
+            token.append(buffer + offset, pos - offset);
+        }
+
+        return token;
+    }
+
+    fn read_line() String {
+        
+        line := String{};
+        offset := pos;
+
+        // Keep reading till we hit the new line or we hit the end of stream.
+        loop {
+            fill();
+            if pos == buffer_length  break;  // Nothing more to read.
+            if buffer[pos] == '\r' || buffer[pos] == '\n' {
+                break;
+            }
+            ++pos;
+            if pos >= buffer_length {
+                // Copy over what we have read so far because the buffer is
+                // about to be overwritten.
+                line.append(buffer + offset, pos - offset);
+                offset = 0;
+            }
+        }
+
+        if pos - offset != 0 {
+            line.append(buffer + offset, pos - offset);
+        }
+
+        // Skipping the new line characters.
+        if pos != buffer_length {
+            if buffer[pos] == '\n' {
+                ++pos;
+            } else if buffer[pos] == '\r' {
+                ++pos;
+                if pos != buffer_length && buffer[pos] == '\n' {
+                    ++pos; //   \r\n   new line nonsense. 
+                }
+            }
+        }
+
+        return line;
+    }
+
+    fn read_string() String {
+        return next_token();
+    }
+
+    fn read_int() int {
+        return next_token().parse_int();
+    }
+
+    fn read_int32(base int) int32 {
+        return next_token().parse_int32(base);
+    }
+
+    fn read_bool() bool {
+        return next_token().parse_bool();
+    }
+
+    fn read_char() char {
+        return next_token().parse_char();
+    }
+}

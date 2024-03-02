@@ -928,12 +928,12 @@ arco::InterfaceDecl* arco::Parser::ParseInterfaceDecl(Modifiers Mods) {
                 POP_SCOPE();
 
                 ++Interface->NumFuncs;
-                Interface->Funcs[Func->Name].push_back(Func);
-
+                Interface->Funcs.push_back(Func);
                 CFunc = PrevFunc;
 
             } else {
                 Error(CTok, "Expected function declaration for interface");
+                NextToken();
                 SkipRecovery();
             }
         }
@@ -1848,6 +1848,14 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         B->TOF = false;
         B->Ty  = Context.BoolType;
         return B;
+    }
+    case TokenKind::KW_MOVEOBJ: {
+        MoveObj* Move = NewNode<MoveObj>(CTok);
+        NextToken();
+        Match('(');
+        Move->Value = ParseExpr();
+        Match(')');
+        return Move;
     }
     default:
         Error(CTok.Loc, "Expected an expression");

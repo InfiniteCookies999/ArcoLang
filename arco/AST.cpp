@@ -15,6 +15,11 @@ arco::Expr* arco::FuncDecl::GetInitializerValue(VarDecl* Field) {
     return Itr->Assignment;
 }
 
+bool arco::StructDecl::ImplementsInterface(InterfaceDecl* Interface) {
+    auto Itr = std::find(Interfaces.begin(), Interfaces.end(), Interface);
+    return Itr != Interfaces.end();
+}
+
 arco::VarDecl* arco::StructDecl::FindField(Identifier Name) {
     auto Itr = std::find_if(Fields.begin(), Fields.end(), [=](VarDecl* Field) {
         return Field->Name == Name;

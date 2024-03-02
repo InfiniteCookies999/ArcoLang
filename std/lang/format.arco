@@ -5,7 +5,7 @@ import math;
  * A buffer for efficient appending of characters into a
  * buffer which can produce a String as a result.
  */
-StringFormatBuffer struct : Writeable {
+private StringFormatBuffer struct : Writeable {
 
     private buffer   char*;
     private length   int;
@@ -26,6 +26,11 @@ StringFormatBuffer struct : Writeable {
             memcpy(buffer, old_buffer, length);
             delete old_buffer;
         }
+    }
+
+    fn set_flushable(flushable Flushable*) {
+        // Just uses the OutStream which doesn't flush so there
+        // isn't a need to set anything.
     }
 
     fn write_buffer(buffer cstr, length int) int {

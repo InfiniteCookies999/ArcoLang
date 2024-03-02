@@ -62,7 +62,7 @@ fn to_digit_for_base(c char, base int) int {
 }
 
 /*
- * Fills a buffer with the digits of the valie given the
+ * Fills a buffer with the digits of the value given the
  * provided base. This function does NOT null terminate
  * the buffer.
  *

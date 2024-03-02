@@ -1,0 +1,33 @@
+namespace files;
+
+/*
+ * A wrapper around a BufferedInStream for reading
+ * to files.
+ */
+FileReader struct : Readable {
+    handle FileHandle;
+    stream BufferedInStream;
+    
+    // TODO: Should we have the default flag behavior also create the file
+    // if it does not exist?
+    FileReader(path cstr, flags := IOFlag.IN)
+        : handle(open(path, flags | IOFlag.IN)),
+          stream(BufferedInStream{ &handle }) {
+    }
+
+    FileReader(path String^, flags := IOFlag.IN)
+        : handle(open(path, flags | IOFlag.IN)),
+          stream(BufferedInStream{ &handle }) {
+    }
+
+    FileReader moveobj(o FileReader*)
+        : handle(o.handle),
+          stream(moveobj(o.stream)) {
+        // Got to reset the handle since it no longer points to the same location.
+        this.stream.reapply_handle(&this.handle);
+    }
+
+    fn read_buffer(buffer char*, length int) int {
+        return stream.read_buffer(buffer, length);
+    }
+}

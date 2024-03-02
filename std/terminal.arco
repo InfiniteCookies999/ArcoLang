@@ -9,7 +9,7 @@ private in_file_handle  := FileHandle{ win32.GetStdHandle(win32.STD_INPUT_HANDLE
 out := OutStream{ &out_file_handle };
 err := OutStream{ &err_file_handle };
 
-in  := LineStream{ &in_file_handle };
+in  := TokenStream{ &in_file_handle };
 
 
 // TODO: Functions are redundent because there is no support for

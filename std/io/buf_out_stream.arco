@@ -1,0 +1,77 @@
+import std.math;
+
+BufferedOutStream struct : Writeable, Flushable {
+
+    private handle    Writeable*;
+    private flushable Flushable*;
+
+    private buffer      char*;
+    private buffer_size int;
+    
+    // Position offset into the buffer.
+    private pos := 0;
+    
+    BufferedOutStream(handle Writeable*, buffer_size := 8192)
+        : handle(handle) {
+        //println("what tf is happening?");
+        if buffer_size < 0 {
+            panic("buffer_size < 0");
+        }
+        //println("Ok...");
+        handle.set_flushable(this);
+        this.buffer_size = buffer_size;
+        buffer = new char[buffer_size];
+    }
+
+    /*
+     * This should only ever be called if the handle is on
+     * the stack and the handle now has new memory and needs
+     * redirection.
+     */
+    fn reapply_handle(handle Writeable*) {
+        // wow this causes the compiler to only sometimes warn!
+        handle.set_flushable(this);
+        this.handle = handle;
+    }
+
+    fn write_buffer(buffer cstr, length int) int {
+        loop {
+            if length == 0 {
+                // Nothing left to write.
+                break;
+            }
+            available := buffer_size - pos;
+            if available == 0 {
+                flush();
+                available = buffer_size;
+            }
+            copy_amount := math.min(available, length);
+            memcpy(this.buffer + pos, buffer, copy_amount);
+            length -= copy_amount;
+            pos += copy_amount;
+        }
+        if pos == buffer_size {
+            flush();
+        }
+        return length;
+    }
+
+    fn set_flushable(flushable Flushable*) {
+        this.flushable = flushable;
+    }
+
+    fn flush() {
+        if pos != 0 {
+            handle.write_buffer(buffer, pos);
+        }
+        pos = 0;
+    }
+
+    ~BufferedOutStream() {
+        if flushable {
+            flushable.flush();
+        }
+        flush();
+        delete buffer;
+    }    
+}

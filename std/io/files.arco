@@ -25,9 +25,23 @@ IOFlag enum : uint32 {
      */
     SHARE  :: 0x0004;
     
-    /* Creates the file if it does not exist. */
+    /* Creates the file if it does not exist.
+     * Will override the contents of the old
+     * file.
+     *
+     * The default behavior is to override the
+     * file it it exists. If you wish to append
+     * to an existing file use APPEND.
+     */
     CREATE :: 0x0008;
     
+    /*
+     * Will append to an existing file or may be used
+     * in conjunction with CREATE to create the file
+     * if it does not exist and append to the new file.
+     */
+    APPEND :: 0x0010;
+
 }
 
 /*
@@ -39,6 +53,11 @@ FileHandle struct : Writeable, Readable {
     
     private handle     void*;
     private auto_close bool;
+
+    // When writing to files with a Flushable which
+    // buffers this should be set so that the bytes
+    // may be flushed prior to closing the file handle.
+    private flushable Flushable*;
     
     FileHandle(handle void*, auto_close := true) {
         this.handle     = handle;
@@ -50,6 +69,10 @@ FileHandle struct : Writeable, Readable {
         fhandle.handle = null;
     }
     
+    fn set_flushable(flushable Flushable*) {
+        this.flushable = flushable;
+    }
+
     ~FileHandle() {
         if auto_close {
             close();
@@ -82,6 +105,9 @@ FileHandle struct : Writeable, Readable {
     }
     
     fn close() {
+        if flushable {
+            flushable.flush();
+        }
         win32.CloseHandle(handle);
         handle = null;
     }
@@ -272,6 +298,10 @@ fn current_dir() String {
     return String{ buffer, path_length - 1, false };
 }
 
+fn open(path String^, flags IOFlag) FileHandle {
+    return open(path.buffer, flags);
+}
+
 fn open(path cstr, flags IOFlag) FileHandle {
     access_flags uint32 = 0;
     share_flags  uint32 = 0;
@@ -285,7 +315,9 @@ fn open(path cstr, flags IOFlag) FileHandle {
         access_flags |= win32.GENERIC_READ;
     }
 
-    if (flags & IOFlag.OUT) != 0 {
+    if (flags & IOFlag.APPEND) != 0 {
+        access_flags |= win32.FILE_APPEND_DATA;
+    } else if (flags & IOFlag.OUT) != 0 {
         access_flags |= win32.GENERIC_WRITE;
     }
 
@@ -293,10 +325,16 @@ fn open(path cstr, flags IOFlag) FileHandle {
         share_flags |= win32.FILE_SHARE_READ;
     }
 
-    // TODO: The create flag should create it it doesn't exist at the moment
-    // it won't open if the file already exists.
     if (flags & IOFlag.CREATE) != 0 {
-        create_flags |= win32.CREATE_NEW;
+        if (flags & IOFlag.APPEND) != 0 {
+            create_flags |= win32.OPEN_ALWAYS;
+        } else {
+            // Windows is weird and none of the create options allow us to simply
+            // overwrite the old file. We will simply remove the existing file if
+            // it exists then create a new one.
+            remove(path);
+            create_flags |= win32.CREATE_NEW;
+        }
     } else {
         create_flags |= win32.OPEN_EXISTING;
     }

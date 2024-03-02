@@ -110,6 +110,7 @@ int main() {
     RunTest(SRC("infered_types.arco"), "5 a message! 16 31 53 99 6 8 nice");
     RunTest(SRC("constructor_initializers.arco"), "77 32");
     RunTest(SRC("copy_constructors.arco"), "Begin a created Called!");
+    RunTest(SRC("move_constructors.arco"), "Begin a created Called!Called!");
      
     RunTest(SRC("loops/loops1.arco"), "10");
     RunTest(SRC("loops/loops2.arco"), "10");

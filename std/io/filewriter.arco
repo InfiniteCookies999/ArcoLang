@@ -1,0 +1,48 @@
+namespace files;
+
+/*
+ * A wrapper around a BufferedOutStream for writing
+ * to files.
+ *
+ * The default behavior set by the flags is that the existing
+ * file will be deleted and overwritten by the new contents
+ * written.
+ *
+ * See IOFlag for flag options if you wish for the behavior to
+ * be different.
+ */
+FileWriter struct : Writeable {
+    handle FileHandle;
+    stream BufferedOutStream;
+    
+    DEFAULT_FLAGS :: IOFlag.OUT | IOFlag.CREATE;
+
+    FileWriter(path cstr, flags IOFlag = DEFAULT_FLAGS)
+        : handle(open(path, flags | IOFlag.OUT)),
+          stream(BufferedOutStream{ &handle }) {
+    }
+
+    FileWriter(path String^, flags IOFlag = DEFAULT_FLAGS)
+        : handle(open(path, flags | IOFlag.OUT)),
+          stream(BufferedOutStream{ &handle }) {
+    }
+
+    FileWriter moveobj(o FileWriter*)
+        : handle(o.handle),
+          stream(moveobj(o.stream)) {
+        // Got to reset the handle since it no longer points to the same location.
+        this.stream.reapply_handle(&this.handle);
+    }
+
+    fn write_buffer(buffer cstr, length int) int {
+        return stream.write_buffer(buffer, length);
+    }
+
+    fn set_flushable(flushable Flushable*) {
+        handle.set_flushable(flushable);
+    }
+
+    fn flush() {
+        stream.flush();
+    }
+}

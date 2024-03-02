@@ -96,12 +96,14 @@ namespace arco {
         void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
         void CheckThisRef(ThisRef* This);
         void CheckFuncCall(FuncCall* Call);
-        FuncDecl* CheckCallToCanidates(SourceLoc ErrorLoc,
+        FuncDecl* CheckCallToCanidates(Identifier FuncName,
+                                       SourceLoc ErrorLoc,
                                        FuncsList* Canidates,
                                        llvm::SmallVector<NonNamedValue>& Args,
                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                        bool& VarArgsPassAlong);
-        FuncDecl* FindBestFuncCallCanidate(FuncsList* Canidates,
+        FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
+                                           FuncsList* Canidates,
                                            llvm::SmallVector<NonNamedValue>& Args,
                                            llvm::SmallVector<NamedValue>& NamedArgs,
                                            bool& SelectedVarArgsPassAlong);
@@ -152,6 +154,7 @@ namespace arco {
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);
         void CheckRange(Range* Rg);
+        void CheckMoveObj(MoveObj* Move);
 
         void CheckCondition(Expr* Cond, const char* PreErrorText);
 

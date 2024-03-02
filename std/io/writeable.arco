@@ -13,4 +13,11 @@ Writeable interface {
      */
     fn write_buffer(buffer cstr, length int) int;
 
+    /*
+     * If a stream flushes bytes it may provide the Writable
+     * object with an interface of Flushable so that the Writable
+     * can enforce that the bytes are flushed during destruction.
+     */
+    fn set_flushable(flushable Flushable*);
+
 }

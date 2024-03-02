@@ -1,0 +1,9 @@
+
+/*
+ * An interface for flushing bytes of data.
+ */
+Flushable interface {
+
+    fn flush();
+
+}

@@ -83,6 +83,20 @@ String struct {
         }
     }
 
+    /*
+     * Creates a string with count c characters.
+    */
+    String(c char, count int) {
+        if count < 0 {
+            panic("String count < 0");
+        }
+
+        this.length = count;
+        this.buffer = new char[count + 1]; // +1 for null terminator.
+        memset(this.buffer, c, count);
+        this.buffer[count] = '\0';
+    }
+
     String copyobj(string String*) {
         this.length = string.length;
         this.buffer = new char[length + 1]; // +1 for null terminator.
@@ -456,6 +470,31 @@ String struct {
         return this;
     }
 
+    fn append_front(s String^) String* {
+        return append_front(s.buffer, s.length);
+    }
+
+    fn append_front(s cstr) String* {
+        return append_front(s, strlen(s));
+    }
+
+    fn append_front(s cstr, length int) String* {
+        // TODO: should probably use capacities and grow by *2 when not enough space.
+
+        new_length := this.length + length;
+        new_buffer := new char[new_length + 1];
+
+        memcpy(new_buffer, s, length);
+        memcpy(new_buffer + length, this.buffer, this.length);
+
+        delete this.buffer;
+        this.buffer = new_buffer;
+        this.length = new_length;
+        this.buffer[this.length] = '\0';
+
+        return this;
+    }
+
     fn equals(s String^) bool {
         return equals(s.buffer, s.length);
     }
@@ -567,6 +606,20 @@ fn to_string(c char) String {
     return String{ &c, 1 };
 }
 
+fn to_string(f f64) String {
+    buffer char[30] = ---;
+    length int;
+    chars_of_f64(f, buffer, &length);
+    return String{ buffer, length };
+}
+
+fn to_string(f f32) String {
+    buffer char[30] = ---;
+    length int;
+    chars_of_f32(f, buffer, &length);
+    return String{ buffer, length };
+}
+
 fn to_string(any Any) String {
     return any_to_string(any.value, any.type);
 }
@@ -602,11 +655,15 @@ private fn any_to_string(value void*, type const Type*) String {
     } else if type.id == TypeId.CHAR {
         return to_string(*cast(char*) value);
     } else if type.is_pointer() {
-        // TODO: abstract pointer printing out?
-        // TODO: pad 0s.
-        string := String{ "0x" };
-        string.append(to_string(cast(uint) cast(uint*) value, 16));
-        return string;
+        // TODO: Abstract pointers to string once generics with constraints are supported.
+        
+        string := to_string(cast(uint) cast(uint*) value, 16);
+        // zero padding.
+        zeros := sizeof(uint)*2 + 2 - string.length; // +2 for 0x 
+        if zeros > 0 {
+            string = *string.append_front(String{ '0', zeros });
+        }
+        return *string.append_front("0x");
     } else if type.id == TypeId.ARRAY {
         array_info := type.array_info;
         return array_like_type_to_string(value, array_info.element_type, array_info.length);
@@ -615,11 +672,9 @@ private fn any_to_string(value void*, type const Type*) String {
     } else if type.id == TypeId.EMPTY_ARRAY_ELM {
         return String{ "[ ]" };
     } else if type.id == TypeId.F32 {
-        panic("parsing floats not supported yet");
-        return String{ "" };
+        return to_string(*cast(f32*) value);
     } else if type.id == TypeId.F64 {
-        panic("parsing floats not supported yet");
-        return String{ "" };
+        return to_string(*cast(f64*) value);
     } else if type.id == TypeId.SLICE {
         slice_length  := *cast(int*) value;
         slice_arr_ptr := value + sizeof(int);

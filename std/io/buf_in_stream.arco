@@ -1,8 +1,5 @@
-import files;
-import files.IOFlag;
 
-
-BufferedStream struct {
+BufferedInStream struct : Readable{
     
     private handle Readable*;
     
@@ -17,15 +14,43 @@ BufferedStream struct {
     // Position offset into the buffer.
     private pos           := 0;
     
-    BufferedStream(handle Readable*, buffer_size := 8192, io_flags IOFlag = IOFlag.IN)
+    BufferedInStream(handle Readable*, buffer_size := 8192)
         : handle(handle) {
         if buffer_size < 0 {
             panic("buffer_size < 0");
         }
+        /*if handle == FlushHandler {
+            (cast(FlushHandler*) handle).set_flushable(handle);
+        }*/
         this.buffer_size = buffer_size;
         buffer = new char[buffer_size];
     }
     
+    BufferedInStream moveobj(o BufferedInStream*)
+        : handle(o.handle),
+          buffer(o.buffer),
+          buffer_size(o.buffer_size),
+          buffer_length(o.buffer_length),
+          pos(o.pos) {
+        o.handle = null;
+        o.buffer = null;
+        o.buffer_size = 0;
+        o.buffer_length = 0;
+        o.pos = 0;
+    }
+
+    /*
+     * This should only ever be called if the handle is on
+     * the stack and the handle now has new memory and needs
+     * redirection.
+     */
+    fn reapply_handle(handle Readable*) {
+        /*if handle == FlushHandler {
+            (cast(FlushHandler*) handle).set_flushable(handle);
+        }*/
+        this.handle = handle;
+    }
+
     /*
      * When at the end of the current buffer_length read the next bytes
      * into the buffer. Will try and read buffer_size but may read less.
@@ -54,7 +79,7 @@ BufferedStream struct {
      * Tries to read length bytes into a the pre-allocated buffer
      * and returns the amount of bytes read.
      */
-    fn read(buffer char*, length int) int {
+    fn read_buffer(buffer char*, length int) int {
         available := buffer_length - pos;
         if available >= length {
             // TODO: ensure stream is still open?
@@ -72,6 +97,9 @@ BufferedStream struct {
             pos = available;
         }
         
+        // TODO: This should actually round page to the buffer_length and
+        // read that amount from the handle and put the rest in this buffer.
+
         // No reason to continually fill our buffer just have
         // the handle do the work of reading the remaining bytes.
         amount_read += handle.read_buffer(buffer + amount_read, length - amount_read);
@@ -79,7 +107,7 @@ BufferedStream struct {
         return amount_read;
     }
     
-    ~BufferedStream() {
+    ~BufferedInStream() {
         delete buffer;
     }
 }

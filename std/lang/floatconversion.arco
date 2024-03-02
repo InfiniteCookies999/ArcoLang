@@ -1,6 +1,17 @@
 import math;
 
-
+/*
+ * Fills a buffer with the digits of the value. The format is such that
+ * a decimal point is placed after the first digit and displays an exponent
+ * if needed. Relies on the dragon4 algorithm to perform the floating
+ * point conversion to characters.
+ *
+ * The returned chars buffer is null terminated.
+ *
+ * @param value     the value to convert to characters.
+ * @param chars     the buffer to be filled with characters.
+ * @param num_chars how long the resulting string is after conversion.
+ */
 fn chars_of_f64(value f64, chars char[30], num_chars int*) {
 
     bits      := bitcast(uint64) value;
@@ -62,6 +73,18 @@ fn chars_of_f64(value f64, chars char[30], num_chars int*) {
     *num_chars = fmt_dragon4_chars(is_neg, dec_exp, count, buf_offset, buffer, chars);
 }
 
+/*
+ * Fills a buffer with the digits of the value. The format is such that
+ * a decimal point is placed after the first digit and displays an exponent
+ * if needed. Relies on the dragon4 algorithm to perform the floating
+ * point conversion to characters.
+ *
+ * The returned chars buffer is null terminated.
+ *
+ * @param value     the value to convert to characters.
+ * @param chars     the buffer to be filled with characters.
+ * @param num_chars how long the resulting string is after conversion.
+ */
 fn chars_of_f32(value f32, chars char[30], num_chars int*) {
 
     bits      := bitcast(uint32) value;

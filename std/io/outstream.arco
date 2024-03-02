@@ -5,10 +5,14 @@ import reflect.TypeId;
 /**
  * An output stream for writing to files, sockets, or
  * any streamable handle that is writeable.
+ *
+ * This stream is useful in that it can write out any value
+ * of any type within the language.
  */
 OutStream struct : Writeable {
     
-    private handle Writeable*;
+    private handle    Writeable*;
+    private flushable Flushable*;
 
     OutStream(handle Writeable*)
         : handle(handle) {
@@ -18,8 +22,16 @@ OutStream struct : Writeable {
         return handle.write_buffer(msg, length);
     }
 
+    fn set_flushable(flushable Flushable*) {
+        this.flushable = flushable;
+    }
+
     fn write(msg cstr) {
         write_buffer(msg, strlen(msg));
+    }
+
+    fn write(msg String^) {
+        write_buffer(msg.buffer, msg.length);
     }
 
     fn write(b bool) {
@@ -111,10 +123,8 @@ OutStream struct : Writeable {
         } else if type.id == TypeId.CHAR {
             write(*cast(char*) value);
         } else if type.is_pointer() {
-            // TODO: abstract pointer printing out?
-            // TODO: pad 0s.
-            write("0x");
-            write(cast(uint) cast(uint*) value, 16);
+            // Using the to_string function because we have to buffer out of order.
+            write(to_string(value));
         } else if type.id == TypeId.ARRAY {
             array_info := type.array_info;
             write_array_like_type(value, array_info.element_type, array_info.length);
@@ -255,66 +265,72 @@ OutStream struct : Writeable {
     // writeln functions
 
     fn writeln(msg cstr) {
-        write(msg, strlen(msg));
-        write("\n", 1);
+        write_buffer(msg, strlen(msg));
+        write_buffer("\n", 1);
     }
 
-    fn writeln(msg String*) {
+    fn writeln(msg String^) {
         write(msg);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(i int, base := 10) {
         write(cast(int64) i, base);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(i uint, base := 10) {
         write(cast(uint64) i, base);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(i int64, base := 10) {
         write(i);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(i uint64, base := 10) {
         write(i, base);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(b bool) {
         write(b);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(c char) {
         write(c);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(any Any) {
         write(any);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(f f64) {
         write(f);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(f f32) {
         write(f);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln(fmt cstr, args Any...) {
         write(fmt, args);
-        write("\n", 1);
+        write_buffer("\n", 1);
     }
 
     fn writeln() {
-        write("\n", 1);
+        write_buffer("\n", 1);
+    }
+
+    ~OutStream() {
+        if flushable {
+            flushable.flush();
+        }
     }
 }

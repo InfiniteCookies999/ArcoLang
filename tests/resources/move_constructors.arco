@@ -1,0 +1,17 @@
+
+A struct {
+    A moveobj(a A*) {
+        print("Called!", 7);
+    }
+}
+
+fn foo(b A) {
+}
+
+fn main() {
+    print("Begin ", 6);
+    a A = A{};
+    print("a created ", 10);
+    b A = moveobj(a);
+    foo(moveobj(b));
+}

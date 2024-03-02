@@ -289,9 +289,7 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
             }
         } else if (Dec->Is(AstKind::INTERFACE_DECL)) {
             InterfaceDecl* Interface = static_cast<InterfaceDecl*>(Dec);
-            for (const auto& [Name, FuncList] : Interface->Funcs) {
-                CheckForDuplicateFuncs(FuncList);
-            }
+            CheckForDuplicateFuncs(Interface->Funcs);
         }
     }
 }
@@ -302,6 +300,8 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
     Context.UncheckedDecls.erase(Func);
     if (Func->ParsingError) return;
     
+    CheckFuncParams(Func);
+
     CFunc   = Func;
     CStruct = Func->Struct;
     FScope  = Func->FScope;
@@ -323,7 +323,6 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         Error(Func, "Cannot name member functions the same name as a constructor");
     }
 
-    CheckFuncParams(Func);
     if (Func->RetTy->GetKind() == TypeKind::Array) {
         Error(Func, "Functions cannot return arrays");
     }
@@ -550,6 +549,8 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
     Func->ParamTypesChecked = true;
     if (Func->ParsingError) return;
 
+    assert(!CFunc && "Must create a new semantic analyzer when checking function parameters");
+
     CFunc   = Func;
     CStruct = Func->Struct;
     FScope  = Func->FScope;
@@ -671,6 +672,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::TYPEOF:
         CheckTypeOf(static_cast<TypeOf*>(Node));
         break;
+    case AstKind::MOVEOBJ:
+        CheckMoveObj(static_cast<MoveObj*>(Node));
+        break;
     case AstKind::NUMBER_LITERAL:
     case AstKind::STRING_LITERAL:
     case AstKind::NULLPTR:
@@ -711,77 +715,80 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
     InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
     Struct->Interfaces.push_back(Interface);
     // Finding the matching functions for the interface.
-    for (auto& [InterfaceFuncName, FuncList] : Interface->Funcs) {
-        for (FuncDecl* InterfaceFunc : FuncList) {
-            CheckFuncParams(InterfaceFunc);
-            if (InterfaceFunc->ParsingError) continue;
+    for (FuncDecl* InterfaceFunc : Interface->Funcs) {
+        if (!InterfaceFunc->ParamTypesChecked) {
+            SemAnalyzer A(Context, InterfaceFunc);
+            A.CheckFuncParams(InterfaceFunc);
+        }
+        if (InterfaceFunc->ParsingError) continue;
 
-            auto Itr = std::find_if(Struct->Funcs.begin(), Struct->Funcs.end(),
-                [&InterfaceFuncName](const auto& KeyValue) {
-                    return KeyValue.first == InterfaceFuncName;
-                });
-            if (Itr != Struct->Funcs.end()) {
-                // Validating that the functions are a perfect match.
-                // Unlike when checking for duplicate functions this must check
-                // to make sure that everything is identical.
-                FuncsList& FuncList = Itr->second;
-                FuncDecl* FoundFunc = nullptr;
-                bool FuncsHaveErrors = false;
-                for (FuncDecl* Func : FuncList) {
-                    CheckFuncParams(Func);
-                    if (Func->ParsingError) {
-                        FuncsHaveErrors = true;
+        auto Itr = std::find_if(Struct->Funcs.begin(), Struct->Funcs.end(),
+            [InterfaceFunc](const auto& KeyValue) {
+                return KeyValue.first == InterfaceFunc->Name;
+            });
+        if (Itr != Struct->Funcs.end()) {
+            // Validating that the functions are a perfect match.
+            // Unlike when checking for duplicate functions this must check
+            // to make sure that everything is identical.
+            FuncsList& FuncList = Itr->second;
+            FuncDecl* FoundFunc = nullptr;
+            bool FuncsHaveErrors = false;
+            for (FuncDecl* Func : FuncList) {
+                if (!Func->ParamTypesChecked) {
+                    SemAnalyzer A(Context, Func);
+                    A.CheckFuncParams(Func);
+                }
+                if (Func->ParsingError) {
+                    FuncsHaveErrors = true;
+                    break;
+                }
+
+                if (InterfaceFunc->Params.size() != Func->Params.size()) continue;
+                if (!InterfaceFunc->RetTy->Equals(Func->RetTy)) continue;
+                bool ParamsMatch = true;
+                for (ulen i = 0; i < Func->Params.size(); i++) {
+                    VarDecl* FuncParam = Func->Params[i];
+                    VarDecl* InterfaceParam = InterfaceFunc->Params[i];
+                    if (!FuncParam->Ty->Equals(InterfaceParam->Ty)) {
+                        ParamsMatch = false;
                         break;
                     }
-
-                    if (InterfaceFunc->Params.size() != Func->Params.size()) continue;
-                    if (!InterfaceFunc->RetTy->Equals(Func->RetTy)) continue;
-                    bool ParamsMatch = true;
-                    for (ulen i = 0; i < Func->Params.size(); i++) {
-                        VarDecl* FuncParam = Func->Params[i];
-                        VarDecl* InterfaceParam = InterfaceFunc->Params[i];
-                        if (!FuncParam->Ty->Equals(InterfaceParam->Ty)) {
-                            ParamsMatch = false;
-                            break;
-                        }
-                        if (FuncParam->HasConstAddress != InterfaceParam->HasConstAddress) {
-                            ParamsMatch = false;
-                            break;
-                        }
+                    if (FuncParam->HasConstAddress != InterfaceParam->HasConstAddress) {
+                        ParamsMatch = false;
+                        break;
                     }
-                    if (!ParamsMatch) continue;
-                    if (InterfaceFunc->IsVariadic != Func->IsVariadic) continue;
-                    FoundFunc = Func;
-                    break;
                 }
-                if (FuncsHaveErrors) {
-                    // Do not report when there are functions with errors.
-                    break;
-                }
-
-                if (!FoundFunc) {
-                    ReportAboutNoOverloadedInterfaceFunc(InterfaceHook.ErrorLoc, Interface, InterfaceFunc, &FuncList);
-                    break;
-                }
-                if (FoundFunc->MappedInterfaceFunc) {
-                    // There is a conflict with the interfaces. Two interfaces must be requiring the
-                    // implementation of the same function definition.
-                    Error(InterfaceHook.ErrorLoc,
-                          "Function conflict with interfaces '%s' and '%s'. Function '%s' is defined in both interfaces",
-                          Interface->Name,
-                          FoundFunc->MappedInterfaceFunc->Interface->Name,
-                          GetFuncDefForError(ParamsToTypeInfo(FoundFunc), FoundFunc));
-                }
-
-                FoundFunc->MappedInterfaceFunc = InterfaceFunc;
-
-                // It will be needed if the struct is casted to the interface.
-                Context.RequestGen(FoundFunc);
+                if (!ParamsMatch) continue;
+                if (InterfaceFunc->IsVariadic != Func->IsVariadic) continue;
+                FoundFunc = Func;
                 break;
-            } else {
-                Error(InterfaceHook.ErrorLoc, "Struct must implement function '%s' of interface '%s'",
-                    GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc), Interface->Name);
             }
+            if (FuncsHaveErrors) {
+                // Do not report when there are functions with errors.
+                continue;
+            }
+
+            if (!FoundFunc) {
+                ReportAboutNoOverloadedInterfaceFunc(InterfaceHook.ErrorLoc, Interface, InterfaceFunc, &FuncList);
+                continue;
+            }
+            if (FoundFunc->MappedInterfaceFunc) {
+                // There is a conflict with the interfaces. Two interfaces must be requiring the
+                // implementation of the same function definition.
+                Error(InterfaceHook.ErrorLoc,
+                        "Function conflict with interfaces '%s' and '%s'. Function '%s' is defined in both interfaces",
+                        Interface->Name,
+                        FoundFunc->MappedInterfaceFunc->Interface->Name,
+                        GetFuncDefForError(ParamsToTypeInfo(FoundFunc), FoundFunc));
+            }
+
+            FoundFunc->MappedInterfaceFunc = InterfaceFunc;
+
+            // It will be needed if the struct is casted to the interface.
+            Context.RequestGen(FoundFunc);
+        } else {
+            Error(InterfaceHook.ErrorLoc, "Struct must implement function '%s' of interface '%s'",
+                GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc), Interface->Name);
         }
     }
 }
@@ -1319,11 +1326,16 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
     if (CFunc->RetTy == Context.ErrorType) {
         return;
     }
-
+    
     bool ReturnMatched = true;
     if (Return->Value) {
         if (IsAssignableTo(CFunc->RetTy, Return->Value)) {
             CreateCast(Return->Value, CFunc->RetTy);
+            if (CFunc->RetTy == Context.VoidType) {
+                // returning a void value could happen if the user calls another
+                // function that returns void. You cannot return void values.
+                Error(Return, "functions that have a return type of void cannot return a value");
+            }
         } else {
             ReturnMatched = false;
         }
@@ -1841,7 +1853,23 @@ YIELD_ERROR(BinOp)
         if (LTy->IsPointer()) {
 
             if (!RTy->IsPointer()) {
-                Error(BinOp->RHS, "Expected to be a pointer");
+                if (RTy->GetKind() == TypeKind::StructRef &&
+                    (BinOp->Op == TokenKind::EQ_EQ || BinOp->Op == TokenKind::EXL_EQ)
+                    ) {
+                    Type* ElmType = LTy->GetPointerElementType(Context);
+                    if (ElmType->GetKind() == TypeKind::Interface) {
+                        // Checking if an interface is of a specific struct type is valid.
+                        // Still need that the struct actually implements the interface though.
+                        StructDecl* Struct = static_cast<IdentRef*>(BinOp->RHS)->Struct;
+                        if (!Struct->ImplementsInterface(ElmType->AsStructType()->GetInterface())) {
+                            Error(BinOp, "Cannot compare the interface to struct '%s' because it does not implement it",
+                                Struct->Name);
+                            YIELD_ERROR(BinOp);
+                        }
+                    }
+                } else {
+                    Error(BinOp->RHS, "Expected to be a pointer");
+                }
             }
 
             if (RTy->GetKind() == TypeKind::Null) {
@@ -1858,7 +1886,22 @@ YIELD_ERROR(BinOp)
         } else if (RTy->IsPointer()) {
             
             if (!LTy->IsPointer()) {
-                Error(BinOp->LHS, "Expected to be a pointer");
+                if (LTy->GetKind() == TypeKind::StructRef &&
+                    (BinOp->Op == TokenKind::EQ_EQ || BinOp->Op == TokenKind::EXL_EQ)) {
+                    Type* ElmType = LTy->GetPointerElementType(Context);
+                    if (ElmType->GetKind() == TypeKind::Interface) {
+                        // Checking if an interface is of a specific struct type is valid.
+                        // Still need that the struct actually implements the interface though.
+                        StructDecl* Struct = static_cast<IdentRef*>(BinOp->LHS)->Struct;
+                        if (!Struct->ImplementsInterface(ElmType->AsStructType()->GetInterface())) {
+                            Error(BinOp, "Cannot compare the interface to struct '%s' because it does not implement it",
+                                Struct->Name);
+                            YIELD_ERROR(BinOp);
+                        }
+                    }
+                } else {
+                    Error(BinOp->LHS, "Expected to be a pointer");
+                }
             }
 
             if (RTy->GetKind() == TypeKind::Null) {
@@ -2318,11 +2361,14 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 
     if (InterfacePtrRef) {
         InterfaceDecl* Interface = Site->Ty->AsPointerTy()->GetElementType()->AsStructType()->GetInterface();
-        auto Itr = Interface->Funcs.find(FieldAcc->Ident);
+        auto Itr = std::find_if(Interface->Funcs.begin(), Interface->Funcs.end(),
+            [FieldAcc](FuncDecl* Func) {
+                return Func->Name == FieldAcc->Ident; });
+
         if (Itr != Interface->Funcs.end()) {
             FieldAcc->Ty = Context.FuncRefType;
             FieldAcc->RefKind = IdentRef::RK::Funcs;
-            FieldAcc->Funcs = &Itr->second;
+            FieldAcc->Funcs = &Interface->Funcs;
             FieldAcc->IsFoldable = false;
             return;
         } else {
@@ -2374,6 +2420,7 @@ void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
         Error(This, "Cannot use 'this' outside a struct scope");
         YIELD_ERROR(This);
     }
+    CheckStructDecl(CStruct);
     This->IsFoldable = false;
     This->Ty = PointerType::Create(StructType::Create(CStruct, Context), Context);
 }
@@ -2474,10 +2521,11 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         YIELD_ERROR(Call);
     }
 
-    FuncsList* Canidates = static_cast<IdentRef*>(Call->Site)->Funcs;
+    IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
+    FuncsList* Canidates = IRef->Funcs;
 
     bool VarArgsPassAlong = false;
-    Call->CalledFunc = CheckCallToCanidates(Call->Loc, Canidates, Call->Args, Call->NamedArgs, VarArgsPassAlong);
+    Call->CalledFunc = CheckCallToCanidates(IRef->Ident, Call->Loc, Canidates, Call->Args, Call->NamedArgs, VarArgsPassAlong);
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
@@ -2495,12 +2543,13 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
 }
 
-arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
+arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
+                                                        SourceLoc ErrorLoc,
                                                         FuncsList* Canidates,
                                                         llvm::SmallVector<NonNamedValue>& Args,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong) {
-    FuncDecl* Selected = FindBestFuncCallCanidate(Canidates, Args, NamedArgs, VarArgsPassAlong);
+    FuncDecl* Selected = FindBestFuncCallCanidate(FuncName, Canidates, Args, NamedArgs, VarArgsPassAlong);
     if (!Selected) {
         DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
         return nullptr;
@@ -2583,7 +2632,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(SourceLoc ErrorLoc,
     return Selected;
 }
 
-arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates,
+arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
+                                                            FuncsList* Canidates,
                                                             llvm::SmallVector<NonNamedValue>& Args,
                                                             llvm::SmallVector<NamedValue>& NamedArgs,
                                                             bool& SelectedVarArgsPassAlong) {
@@ -2592,6 +2642,7 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
     FuncDecl* Selection = nullptr;
 
     // TODO: make calls to functions with Any absolute last to consider.
+    bool CheckName = !FuncName.IsNull();
 
     ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
          LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max(),
@@ -2601,6 +2652,11 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(FuncsList* Canidates
         if (!Canidate->ParamTypesChecked) {
             SemAnalyzer Analyzer(Context, Canidate);
             Analyzer.CheckFuncParams(Canidate);
+        }
+        if (CheckName) {
+            if (Canidate->Name != FuncName) {
+                continue;
+            }
         }
 
         ulen NumConflicts = 0, EnumImplicitConflicts = 0, NumSignConflicts = 0;
@@ -3215,8 +3271,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
             return nullptr;
         }
 
-        // TODO: don't ignore VarArgsPassAlong value
         return CheckCallToCanidates(
+                Identifier{},
                 ErrorLoc,
                 &Struct->Constructors,
                 Args,
@@ -3242,7 +3298,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
             StructDecl* StructForTy = Field->Ty->AsStructType()->GetStruct();
 
             if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor) {
-                Error(ErrorLoc, "No default constructor to initialize the '%s' field", Field->Name);
+                Error(ErrorLoc, "No default constructor to initialize the field '%s'", Field->Name);
             }
         }
         
@@ -3410,6 +3466,19 @@ void arco::SemAnalyzer::CheckRange(Range* Rg) {
     } else {
         CreateCast(Rg->LHS, Rg->RHS->Ty);
         Rg->Ty = Rg->RHS->Ty;
+    }
+}
+
+void arco::SemAnalyzer::CheckMoveObj(MoveObj* Move) {
+    CheckNode(Move->Value);
+    YIELD_ERROR_WHEN(Move, Move->Value);
+
+    Move->IsFoldable = false;
+    Move->Ty = Move->Value->Ty;
+    if (!IsLValue(Move->Value)) {
+        Error(Move, "Expected to be a modifiable value for move");
+    } else if (Move->HasConstAddress) {
+        Error(Move, "Cannot move constant memory");
     }
 }
 
@@ -4079,6 +4148,7 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
     for (const FuncDecl* Func1 : FuncList) {
         for (const FuncDecl* Func2 : FuncList) {
             if (Func1 == Func2) continue;
+            if (Func1->Name != Func2->Name) continue;
             if (Func1->Params.size() != Func2->Params.size()) continue;
             if (std::equal(Func1->Params.begin(),
                             Func1->Params.end(),
