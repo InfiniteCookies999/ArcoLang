@@ -31,9 +31,6 @@ namespace arco {
         }
         return nullptr;
     }
-
-    // Satisfying linkage.
-    VarDeclList* SingleVarDeclList = NewNode<VarDeclList>(SourceLoc{});
 }
 
 
@@ -205,10 +202,10 @@ void arco::Parser::Parse() {
             VarDecl* Global = static_cast<VarDecl*>(Stmt);
             ProcessGlobal(Global);
         } else if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
-            for (VarDecl* Global : SingleVarDeclList->List) {
+            VarDeclList* List = static_cast<VarDeclList*>(Stmt);
+            for (VarDecl* Global : List->Decls) {
                 ProcessGlobal(Global);
             }
-            SingleVarDeclList->List.clear();
         } else {
             FScope->InvalidStmts.push_back({
                 FileScope::InvalidScopeKind::GLOBAL,
@@ -306,6 +303,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_CONTINUE:
     case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
     case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
+    case TokenKind::KW_RAISE:  Stmt = ParseRaise(); Match(';');       break;
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:
     case TokenKind::KW_READONLY:
@@ -471,7 +469,13 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
     POP_SCOPE();
     
     if (Func->RetTy == Context.VoidType) {
-        if (Func->Scope.Stmts.empty() || Func->Scope.Stmts.back()->IsNot(AstKind::RETURN)) {
+        bool NoReturn = Func->Scope.Stmts.empty();
+        if (!NoReturn) {
+            AstNode* LastStmt = Func->Scope.Stmts.back();
+            NoReturn |= LastStmt->IsNot(AstKind::RETURN) && LastStmt->IsNot(AstKind::RAISE);
+        }
+
+        if (NoReturn) {
             // Implicit return.
             ++Func->NumReturns;
         }
@@ -523,6 +527,7 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
     Match(')');
 
     if (CTok.IsNot('{') && CTok.IsNot(':') &&
+        CTok.IsNot(TokenKind::KW_RAISES) &&
         !((Func->Mods & ModKinds::NATIVE) && CTok.Is(';'))) {
         if (CTok.Is(TokenKind::KW_CONST)) {
             NextToken(); // Consuming 'const' token.
@@ -551,6 +556,23 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
             } while (MoreInitializers);
         }
         Func->RetTy = Context.VoidType;
+    }
+    if (CTok.Is(TokenKind::KW_RAISES)) {
+        NextToken(); // Consuming 'raises' keyword.
+        bool MoreErrors = false;
+        do {
+            Token NameTok = CTok;
+            Identifier Name = ParseIdentifier("Expected identifier for raised error");
+            Func->RaisedErrors.push_back(
+                FuncDecl::RaisedError{
+                    Name,
+                    NameTok.Loc
+                });
+            MoreErrors = CTok.Is(',');
+            if (MoreErrors) {
+                NextToken();
+            }
+        } while (MoreErrors);
     }
 }
 
@@ -601,7 +623,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
 }
 
 arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
-    assert(SingleVarDeclList->List.empty() && "Forgot to extract variable declaration list.");
+    VarDeclList* List = NewNode<VarDeclList>(CTok);
 
     if (CTok.Is(TokenKind::IDENT) && PeekToken(1).Is(',')) {
     
@@ -609,11 +631,12 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 
         bool MoreDecls = false;
         do {
-
-            VarDecl* Var = CreateVarDecl(CTok, ParseIdentifier("Expected identifier for variable declaration"), Mods);
+            Token NameTok = CTok;
+            Identifier Name = ParseIdentifier("Expected identifier for variable declaration");
+            VarDecl* Var = CreateVarDecl(NameTok, Name, Mods);
             Var->Ty = Context.ErrorType;
 
-            SingleVarDeclList->List.push_back(Var);
+            List->Decls.push_back(Var);
 
             MoreDecls = CTok.Is(',');
             if (MoreDecls) {
@@ -638,14 +661,14 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
         }
         
         if (NumErrs != TotalAccumulatedErrors) {
-            for (VarDecl* Var : SingleVarDeclList->List) {
+            for (VarDecl* Var : List->Decls) {
                 FinishVarDecl(Var);
                 Var->ParsingError = true;
             }
-            return SingleVarDeclList;
+            return List;
         }
 
-        for (VarDecl* Var : SingleVarDeclList->List) {
+        for (VarDecl* Var : List->Decls) {
             Var->Ty = Ty;
             Var->TyIsInfered = IsInfered;
             Var->HasConstAddress = HasConstAddress;
@@ -662,19 +685,19 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
 
                 if (CTok.Is(TokenKind::MINUS_MINUS_MINUS)) {
                     NextToken(); // Consuming '---' token.
-                    SingleVarDeclList->List[Count]->LeaveUninitialized = true;
+                    List->Decls[Count]->LeaveUninitialized = true;
                 } else {
-                    SingleVarDeclList->List[Count]->Assignment = ParseExpr();
+                    List->Decls[Count]->Assignment = ParseExpr();
                 }
                 
                 if (NumErrs != TotalAccumulatedErrors) {
-                    SingleVarDeclList->List[Count]->ParsingError = true;
+                    List->Decls[Count]->ParsingError = true;
                     // TODO: error the remaining declarations?
                     break;
                 }
 
                 if (CTok.Is(',')) {
-                    if (Count + 1 >= SingleVarDeclList->List.size()) {
+                    if (Count + 1 >= List->Decls.size()) {
                         Error(CTok, "Too many initializers for variable list");
                         NextToken();
                         SkipRecovery();
@@ -687,16 +710,16 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
             }
         }
 
-        for (VarDecl* Var : SingleVarDeclList->List) {
+        for (VarDecl* Var : List->Decls) {
             FinishVarDecl(Var);
         }
 
     } else {
         // Assume its a single declaration.
-        SingleVarDeclList->List.push_back(ParseVarDecl(0));
+        List->Decls.push_back(ParseVarDecl(0));
     }
 
-    return SingleVarDeclList;
+    return List;
 }
 
 arco::VarDecl* arco::Parser::CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods) {
@@ -779,10 +802,10 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
             VarDecl* Field = static_cast<VarDecl*>(Stmt);
             ProcessField(Field);
         } else if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
-            for (VarDecl* Field : SingleVarDeclList->List) {
+            VarDeclList* List = static_cast<VarDeclList*>(Stmt);
+            for (VarDecl* Field : List->Decls) {
                 ProcessField(Field);
             }
-            SingleVarDeclList->List.clear();
         } else if (Stmt->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
             if (!Func->Name.IsNull()) {
@@ -970,14 +993,7 @@ void arco::Parser::ParseScopeStmts(LexScope& Scope) {
         ParseOptStmt(Stmt, '}');
         if (!Stmt) continue;
         
-        if (Stmt->Is(AstKind::VAR_DECL_LIST)) {
-            for (VarDecl* Var : SingleVarDeclList->List) {
-                Scope.Stmts.push_back(Var);
-            }
-            SingleVarDeclList->List.clear();
-        } else {
-            Scope.Stmts.push_back(Stmt);
-        }
+        Scope.Stmts.push_back(Stmt);
     }
     Scope.EndLoc = CTok.Loc;
     Match('}');
@@ -1033,7 +1049,7 @@ arco::AstNode* arco::Parser::ParseLoop() {
 
     PUSH_SCOPE();
     if (CTok.Is(';')) { // loop ;
-        return ParseRangeLoop(LoopTok);
+        return ParseRangeLoop(LoopTok, nullptr);
     } else if (CTok.Is(TokenKind::IDENT)) { // loop ident
         switch (PeekToken(1).Kind) {
         case TokenKind::IDENT: {
@@ -1044,25 +1060,24 @@ arco::AstNode* arco::Parser::ParseLoop() {
             if (Tok2.Is('*') || Tok2.Is('[')) {
                 // loop ident ident*
                 // loop ident ident[4]
-                ParseVarDeclList(0);
+                VarDeclList* List = ParseVarDeclList(0);
 
                 if (CTok.Is(':')) { // TODO: This should probably make sure there is not an assignment!
                 // loop ident type :
-                    return ParseIteratorLoop(LoopTok);
+                    return ParseIteratorLoop(LoopTok, List);
                 } else if (CTok.Is(';')) {
                     // loop ident type = expr;
                     // loop ident type;
-                    return ParseRangeLoop(LoopTok);
+                    return ParseRangeLoop(LoopTok, List);
                 } else {
                     return ParsePredicateLoop(LoopTok);
                 }
             } else if (Tok2.Is(':')) {
                 // loop ident ident :
-                ParseVarDeclList(0);
-                return ParseIteratorLoop(LoopTok);
+                return ParseIteratorLoop(LoopTok, ParseVarDeclList(0));
             } else if (Tok2.Is(';')) {
                 // loop ident ident ;
-                return ParseRangeLoop(LoopTok);
+                return ParseRangeLoop(LoopTok, nullptr);
             }
             else {
                 // This very well might be a parsing error but it
@@ -1075,37 +1090,36 @@ arco::AstNode* arco::Parser::ParseLoop() {
         case ',': {
             // TODO: May want to allow predicate assignment here later.
 
-            ParseVarDeclList(0);
+            VarDeclList* List = ParseVarDeclList(0);
             if (CTok.Is(':')) { // TODO: This should probably make sure there is not an assignment!
                 // loop ident type :
-                return ParseIteratorLoop(LoopTok);
+                return ParseIteratorLoop(LoopTok, List);
             } else {
                 // loop ident type = expr;
                 // loop ident type;
-                return ParseRangeLoop(LoopTok);
+                return ParseRangeLoop(LoopTok, List);
             }
         }
         case TokenKind::COL_EQ:
         case TokenKind::COL_COL: {
-            ParseVarDeclList(0);
             // loop ident := expr
             // loop ident :: expr
 
             // TODO: May want to allow predicate assignment here later.
-            return ParseRangeLoop(LoopTok);
+            return ParseRangeLoop(LoopTok, ParseVarDeclList(0));
         }
         case ':': {
             // loop ident :
             
             // Do not call ParseVarDeclList here because the declaration
             // part is infered.
-            return ParseIteratorLoop(LoopTok);
+            return ParseIteratorLoop(LoopTok, nullptr);
         }
         case '=': {
             // loop ident = 
 
             // TODO: May want to allow predicate assignment here later.
-            return ParseRangeLoop(LoopTok);
+            return ParseRangeLoop(LoopTok, nullptr);
         }
         default:
             // loop ident
@@ -1157,18 +1171,16 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
     return Loop;
 }
 
-arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
+arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok, VarDeclList* List) {
     RangeLoopStmt* Loop = NewNode<RangeLoopStmt>(LoopTok);
     
     // PUSH_SCOPE(); -- Called in ParseLoop
-    if (!SingleVarDeclList->List.empty()) {
-        for (VarDecl* Var : SingleVarDeclList->List) {
-            Loop->InitNodes.push_back(Var);
-        }
-        SingleVarDeclList->List.clear();
+    if (List) {
+        Loop->InitNodes.push_back(List);
     } else if (CTok.IsNot(';')) {
         Loop->InitNodes.push_back(ParseAssignmentAndExprs());
     }
+    
     Match(';');
 
     if (CTok.IsNot(';')) {
@@ -1208,14 +1220,13 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok) {
     }
 }
 
-arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok) {
+arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok, VarDeclList* List) {
     IteratorLoopStmt* Loop = NewNode<IteratorLoopStmt>(LoopTok);
 
     
     // TODO: Deal with multiple declarations.
-    if (!SingleVarDeclList->List.empty()) {
-        Loop->VarVal = SingleVarDeclList->List[0];
-        SingleVarDeclList->List.clear();
+    if (List) {
+        Loop->VarVal = List->Decls[0];
     } else if (CTok.Is(TokenKind::IDENT)) {
         // Infered type.
         Loop->VarVal = CreateVarDecl(CTok, Identifier(CTok.GetText()), 0);
@@ -1257,6 +1268,13 @@ arco::DeleteStmt* arco::Parser::ParseDelete() {
     NextToken(); // Consuming 'delete' token.
     Delete->Value = ParseExpr();
     return Delete;
+}
+
+arco::RaiseStmt* arco::Parser::ParseRaise() {
+    RaiseStmt* Raise = NewNode<RaiseStmt>(CTok);
+    NextToken(); // Consuming 'raise' token.
+    Raise->StructInit = ParseStructInitializer();
+    return Raise;
 }
 
 arco::Modifiers arco::Parser::ParseModifiers() {
@@ -1677,22 +1695,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
     case TokenKind::IDENT: {
 
         if (AllowStructInitializer && PeekToken(1).Is('{')) {
-            StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
-
-            Identifier StructName = Identifier(CTok.GetText());
-            StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
-            NextToken();
-
-            NextToken(); // Consuming '{' token.
-            StructInit->Ty = Ty;
-            
-            if (CTok.IsNot('}')) {
-                ParseAggregatedValues(StructInit->Args, StructInit->NamedArgs, '}', true);
-            }
-
-            Match('}', "for struct initializer");
-
-            return ParseIdentPostfix(StructInit);
+            return ParseIdentPostfix(ParseStructInitializer());
         } else {
 
             IdentRef* IRef = NewNode<IdentRef>(CTok);
@@ -2272,6 +2275,26 @@ arco::FuncCall* arco::Parser::ParseFuncCall(Expr* Site) {
 
     Match(')', "for function call");
     return Call;
+}
+
+arco::StructInitializer* arco::Parser::ParseStructInitializer() {
+
+    StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
+
+    Identifier StructName = Identifier(CTok.GetText());
+    StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
+    NextToken();
+
+    NextToken(); // Consuming '{' token.
+    StructInit->Ty = Ty;
+
+    if (CTok.IsNot('}')) {
+        ParseAggregatedValues(StructInit->Args, StructInit->NamedArgs, '}', true);
+    }
+
+    Match('}', "for struct initializer");
+    
+    return StructInit;
 }
 
 arco::Array* arco::Parser::ParseArray() {

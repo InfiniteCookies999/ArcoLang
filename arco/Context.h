@@ -72,6 +72,7 @@ namespace arco {
         void RequestGen(Decl* D);
 
         bool EmitDebugInfo;
+        bool StandAlone;
 
         llvm::StringMap<Module*> ModNamesToMods;
 
@@ -98,6 +99,7 @@ namespace arco {
         Identifier StructTypeIdentifier;
         Identifier FieldTypeIdentifier;
         Identifier EnumTypeIdentifier;
+        Identifier ErrorInterfaceIdentifier;
         StructDecl* StdStringStruct      = nullptr;
         StructDecl* StdAnyStruct         = nullptr;
         StructDecl* StdTypeStruct        = nullptr;
@@ -105,6 +107,7 @@ namespace arco {
         StructDecl* StdStructTypeStruct  = nullptr;
         StructDecl* StdFieldTypeStruct   = nullptr;
         StructDecl* StdEnumTypeStruct    = nullptr;
+        InterfaceDecl* StdErrorInterface = nullptr;
 
         Type* IntType;
         Type* PtrsizeType;
@@ -134,6 +137,7 @@ namespace arco {
         Type* EnumRefType;
         Type* InterfaceRefType;
         Type* AnyType;
+        Type* ErrorInterfacePtrType;
 
         // Maps a binary operator to its precedence.
         llvm::DenseMap<u16, u32> BinaryOpsPrecedence;

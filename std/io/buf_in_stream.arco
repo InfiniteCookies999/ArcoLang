@@ -45,9 +45,6 @@ BufferedInStream struct : Readable{
      * redirection.
      */
     fn reapply_handle(handle Readable*) {
-        /*if handle == FlushHandler {
-            (cast(FlushHandler*) handle).set_flushable(handle);
-        }*/
         this.handle = handle;
     }
 
@@ -55,8 +52,7 @@ BufferedInStream struct : Readable{
      * When at the end of the current buffer_length read the next bytes
      * into the buffer. Will try and read buffer_size but may read less.
      */
-    private fn fill() {
-        // TODO: should make sure the stream is still open.
+    private fn fill() raises IOError {
         if pos >= buffer_length {
             buffer_length = handle.read_buffer(buffer, buffer_size);
         }
@@ -66,7 +62,7 @@ BufferedInStream struct : Readable{
      * Reads a single character from the stream. If the end
      * of stream is reached this function returns -1 instead.
      */
-    fn read() int {
+    fn read() int raises IOError {
         fill();
         if pos >= buffer_length {
             return -1; // End of stream.

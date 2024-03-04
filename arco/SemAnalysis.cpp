@@ -265,6 +265,12 @@ Log.BeginError(ErrorLoc, Fmt, __VA_ARGS__);
             Import.Decl = Context.StdStringStruct;
             FScope->Imports.insert({ Context.StringIdentifier, Import });
         }
+        Itr = FScope->Imports.find(Context.ErrorInterfaceIdentifier);
+        if (Itr == FScope->Imports.end()) {
+            FileScope::StructOrNamespaceImport Import;
+            Import.Decl = Context.StdErrorInterface;
+            FScope->Imports.insert({ Context.ErrorInterfaceIdentifier, Import });
+        }
     }
 #undef ERROR
 }
@@ -308,25 +314,32 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 
     // -- DEBUG
     // llvm::outs() << "Checking function: " << Func->Name << "\n";
-
-    if (!Func->IsConstructor && !Func->InitializerValues.empty()) {
-        Error(Func, "Only constructors can have initializer values");
-    }
-    if (!Func->IsConstructor && Func->IsCopyConstructor) {
-        Error(Func, "Only constructors can use keyword copyobj to indicate it is a copy constructor");
-    }
-    if (!Func->IsConstructor && Func->IsMoveConstructor) {
-        Error(Func, "Only constructors can use keyword moveobj to indicate it is a move constructor");
-    }
-
-    if (!Func->IsConstructor && Func->Struct && Func->Name == Func->Struct->Name) {
-        Error(Func, "Cannot name member functions the same name as a constructor");
+    if (Func->IsConstructor) {
+        if (Func->RetTy->GetKind() != TypeKind::Void) {
+            Error(Func, "Constructors cannot return values");
+        }
+    } else {
+        if (!Func->InitializerValues.empty()) {
+            Error(Func, "Only constructors can have initializer values");
+        }
+        if (Func->IsCopyConstructor) {
+            Error(Func, "Only constructors can use keyword copyobj to indicate it is a copy constructor");
+        }
+        if (Func->IsMoveConstructor) {
+            Error(Func, "Only constructors can use keyword moveobj to indicate it is a move constructor");
+        }
+        if (Func->Struct && Func->Name == Func->Struct->Name) {
+            Error(Func, "Cannot name member functions the same name as a constructor");
+        }
     }
 
     if (Func->RetTy->GetKind() == TypeKind::Array) {
         Error(Func, "Functions cannot return arrays");
     }
-    
+    if (Func->IsDestructor && !Func->RaisedErrors.empty()) {
+        Error(Func, "Destructors cannot raise errors");
+    }
+
     auto CheckMoveOrCopyConstructor = [=](const char* ConstructorType) {
         if (Func->IsVariadic) {
             Error(Func->Loc, "%s constructors cannot be variadic", ConstructorType);
@@ -599,6 +612,56 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
         Error(Func, "Parameter default arguments must come last in the parameter list");
         Func->ParsingError = true; // Hacky but reduces error messages later on.
     }
+
+    if (!Func->RaisedErrors.empty()) {
+        if (Context.StandAlone) {
+            Error(Func, "Cannot raise errors when the -stand-alone flag is set");
+        } else {
+            for (auto& RaisedError : Func->RaisedErrors) {
+                Decl* Decl = FindStructLikeTypeByName(RaisedError.Name);
+                if (!Decl) {
+                    Error(RaisedError.ErrorLoc, "Failed to find error struct for name '%s'",
+                        RaisedError.Name);
+                    Func->ParsingError = true;
+                    continue;
+                }
+                if (!Decl->Is(AstKind::STRUCT_DECL)) {
+                    Error(RaisedError.ErrorLoc, "Expected error type to be a struct");
+                    Func->ParsingError = true;
+                    continue;
+                }
+                StructDecl* ErrorStruct = static_cast<StructDecl*>(Decl);
+                if (!ErrorStruct->HasBeenChecked) {
+                    SemAnalyzer A(Context, ErrorStruct);
+                    A.CheckStructDecl(ErrorStruct);
+                }
+
+                if (ErrorStruct->ParsingError) {
+                    continue;
+                }
+
+                if (!ErrorStruct->Constructors.empty() && !ErrorStruct->DefaultConstructor) {
+                    Error(RaisedError.ErrorLoc, "There is no default constructor to initialize the raised error");
+                } else if (ErrorStruct->DefaultConstructor) {
+                    Context.RequestGen(ErrorStruct->DefaultConstructor);
+                }
+
+                bool ImplementsErrorInterface = false;
+                for (InterfaceDecl* Interface : ErrorStruct->Interfaces) {
+                    if (Interface == Context.StdErrorInterface) {
+                        ImplementsErrorInterface = true;
+                        break;
+                    }
+                }
+                if (!ImplementsErrorInterface) {
+                    Error(RaisedError.ErrorLoc, "Raised error must implement error interface");
+                    Func->ParsingError = true;
+                    continue;
+                }
+                RaisedError.ErrorStruct = ErrorStruct;
+            }
+        }
+    }
 }
 
 void arco::SemAnalyzer::CheckNode(AstNode* Node) {
@@ -624,6 +687,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         break;
     case AstKind::DELETE:
         CheckDeleteStmt(static_cast<DeleteStmt*>(Node));
+        break;
+    case AstKind::RAISE:
+        CheckRaiseStmt(static_cast<RaiseStmt*>(Node));
         break;
     case AstKind::IF:
         CheckIf(static_cast<IfStmt*>(Node));
@@ -678,6 +744,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         break;
     case AstKind::TERNARY:
         CheckTernary(static_cast<Ternary*>(Node));
+        break;
+    case AstKind::VAR_DECL_LIST:
+        CheckVarDeclList(static_cast<VarDeclList*>(Node));
         break;
     case AstKind::NUMBER_LITERAL:
     case AstKind::STRING_LITERAL:
@@ -764,6 +833,17 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
                 }
                 if (!ParamsMatch) continue;
                 if (InterfaceFunc->IsVariadic != Func->IsVariadic) continue;
+                if (InterfaceFunc->RaisedErrors.size() != Func->RaisedErrors.size()) continue;
+                bool RaisedErrorsMatch = true;
+                for (ulen i = 0; i < Func->RaisedErrors.size(); i++) {
+                    const auto& FuncRaisedError      = Func->RaisedErrors[i];
+                    const auto& InterfaceRaisedError = InterfaceFunc->RaisedErrors[i];
+                    if (FuncRaisedError.ErrorStruct != InterfaceRaisedError.ErrorStruct) {
+                        RaisedErrorsMatch = false;
+                        break;
+                    }
+                }
+                if (!RaisedErrorsMatch) continue;
                 FoundFunc = Func;
                 break;
             }
@@ -909,6 +989,48 @@ std::string arco::SemAnalyzer::GetMismatchInfoForInterfaceFunc(FuncDecl* Interfa
             MismatchInfo += "- Does not take variadic parameters.";
         }
         EncounteredError = true;
+    }
+    bool MissingRaisedError = false;
+    for (const auto& InterfaceRaisedError : InterfaceFunc->RaisedErrors) {
+        auto Itr = std::find_if(Canidate->RaisedErrors.begin(),
+                                Canidate->RaisedErrors.end(),
+            [&InterfaceRaisedError](const auto& CanidateRaisedError) {
+                return InterfaceRaisedError.ErrorStruct == CanidateRaisedError.ErrorStruct;
+            });
+        if (Itr == Canidate->RaisedErrors.end()) {
+            MismatchInfo += "- Raises error '" + InterfaceRaisedError.Name.Text.str() + "' not raised by function.";
+            MissingRaisedError = true;
+        }
+    }
+    if (!MissingRaisedError) {
+        if (InterfaceFunc->RaisedErrors.size() < Canidate->RaisedErrors.size()) {
+            // May have raised an error that the interface does not raise.
+            for (const auto& CanidateRaisedError : Canidate->RaisedErrors) {
+                auto Itr = std::find_if(InterfaceFunc->RaisedErrors.begin(),
+                                        InterfaceFunc->RaisedErrors.end(),
+                    [&CanidateRaisedError](const auto& InterfaceRaisedError) {
+                        return InterfaceRaisedError.ErrorStruct == CanidateRaisedError.ErrorStruct;
+                    });
+                if (Itr == InterfaceFunc->RaisedErrors.end()) {
+                    MismatchInfo += "- Raises error '" + CanidateRaisedError.Name.Text.str() + "' which the interface does not raise.";
+                    MissingRaisedError = true;
+                }
+            }
+        } else if (InterfaceFunc->RaisedErrors.size() == Canidate->RaisedErrors.size()) {
+            // Might have raised errors out of order.
+            bool RaisedOutOfError = false;
+            for (ulen i = 0; i < Canidate->RaisedErrors.size(); i++) {
+                const auto& CanidateRaisedError = Canidate->RaisedErrors[i];
+                const auto& InterfaceRaisedError = InterfaceFunc->RaisedErrors[i];
+                if (CanidateRaisedError.ErrorStruct != InterfaceRaisedError.ErrorStruct) {
+                    RaisedOutOfError = true;
+                    break;
+                }
+            }
+            if (RaisedOutOfError) {
+                MismatchInfo += "- Must raise all errors in the same order as the interface.";
+            }
+        }
     }
 
     return MismatchInfo;
@@ -1061,6 +1183,8 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
         case AstKind::CONTINUE:
         case AstKind::NESTED_SCOPE:
         case AstKind::DELETE:
+        case AstKind::VAR_DECL_LIST:
+        case AstKind::RAISE:
             break;
         case AstKind::BINARY_OP:
             switch (static_cast<BinaryOp*>(Stmt)->Op) {
@@ -1113,7 +1237,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
     LocScope = LocScope->Parent;
 }
 
-void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
+void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var, bool PartOfErrorDecomposition) {
     if (Var->HasBeenChecked) return;
     Var->HasBeenChecked = true;
     if (Var->IsGlobal) {
@@ -1149,7 +1273,43 @@ return;
     }
 
     if (Var->Assignment) {
-        CheckNode(Var->Assignment);
+        if (!PartOfErrorDecomposition) {
+            if (Var->Assignment->Is(AstKind::FUNC_CALL)) {
+                FuncCall* Call = static_cast<FuncCall*>(Var->Assignment);
+                CheckFuncCall(Call, true);
+                if (Var->Assignment->Ty == Context.ErrorType) {
+                    VAR_YIELD(, true);
+                }
+
+                if (Call->CalledFunc && !Call->CalledFunc->RaisedErrors.empty()) {
+                    if (Call->Ty->GetKind() == TypeKind::Void) {
+                        // The variable is actually an error.
+
+                        StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
+                        PointerType* ErrorInterfacePtrTy = PointerType::Create(ErrorInterfaceTy, Context);
+
+                        if (!Var->TyIsInfered) {
+                            if (!Var->Ty->Equals(ErrorInterfacePtrTy)) {
+                                Error(Var, "Expected variable to be of type '%s' to capture the raised error",
+                                    ErrorInterfacePtrTy->ToString());
+                            }
+                        }
+
+                        if (Var->IsGlobal) {
+                            Error(Var, "Cannot declare errors as being global variables");
+                        }
+
+                        Var->IsErrorDecl = true;
+                        Var->Ty = ErrorInterfacePtrTy;
+                        VAR_YIELD(, false);
+                    } else {
+                        CheckIfErrorsAreCaptures(Call->Loc, Call->CalledFunc);
+                    }
+                }
+            } else {
+                CheckNode(Var->Assignment);
+            }
+        }
         if (Var->Assignment->Ty == Context.ErrorType) {
             VAR_YIELD(, true);
         }
@@ -1246,6 +1406,11 @@ return;
     } else {
         // No assignment.
 
+        if (Var->TyIsInfered) {
+            VAR_YIELD(Error(Var, "Cannot infer type because there is no assignment"),
+                true);
+        }
+
         StructDecl* StructForTy = nullptr;
         if (Var->Ty->GetKind() == TypeKind::Struct) {
             StructForTy = Var->Ty->AsStructType()->GetStruct();
@@ -1311,6 +1476,13 @@ return;
     // on dependency order.
     if (Var->IsGlobal) {
         Context.RequestGen(Var);
+    }
+
+    // TODO: Would really like to get rid of this requirement but as it currently
+    // stands fields being comptime adds another difficult layer of complexity due
+    // to checking struct fields mapping to named/non-named args.
+    if (Var->IsField() && Var->IsComptime()) {
+        Error(Var, "Compile time variables cannot be fields");
     }
 
     VAR_YIELD(, false);
@@ -1506,6 +1678,62 @@ bool arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope) {
     Scope NewScope;
     CheckScopeStmts(NestedScope->Scope, NewScope);
     return NewScope.AllPathsReturn;
+}
+
+void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
+    LocScope->FoundTerminal = true;
+    LocScope->AllPathsReturn = true;
+
+    CheckNode(Raise->StructInit);
+    YIELD_IF_ERROR(Raise->StructInit);
+
+    if (Context.StandAlone) {
+        Error(Raise, "Cannot raise errors when -stand-alone is enabled");
+        return;
+    }
+
+    StructDecl* Struct = Raise->StructInit->Ty->AsStructType()->GetStruct();
+    bool ImplementsErrorInterface = false;
+    for (InterfaceDecl* Interface : Struct->Interfaces) {
+        if (Interface == Context.StdErrorInterface) {
+            ImplementsErrorInterface = true;
+            break;
+        }
+    }
+    if (Struct->ParsingError) {
+        return;
+    }
+
+    if (!ImplementsErrorInterface) {
+        Error(Raise, "Struct type '%s' being raised does not implement Error interface",
+            Struct->Name);
+        return;
+    }
+
+    bool FuncRaisesError = false;
+    for (const auto& RaisedError : CFunc->RaisedErrors) {
+        if (RaisedError.ErrorStruct == Struct) {
+            FuncRaisesError = true;
+            break;
+        }
+        ++Raise->RaisedIdx;
+    }
+
+    if (!FuncRaisesError) {
+        Log.BeginError(Raise->Loc, "Cannot raise error '%s' because the function signature does not raise that error",
+            Struct->Name);
+        Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+            OS << "Your function needs to be declared as:  "
+                << GetFuncDefForError(ParamsToTypeInfo(CFunc), CFunc)
+                << " raises ";
+                for (ulen i = 0; i < CFunc->RaisedErrors.size(); i++) {
+                    const auto& RaisedError = CFunc->RaisedErrors[i];
+                    OS << RaisedError.Name << ", ";
+                }
+                OS << Struct->Name;
+            });
+        Log.EndError();
+    }
 }
 
 //===-------------------------------===//
@@ -2045,6 +2273,10 @@ YIELD_ERROR(UniOp);
         if (ValTy->Equals(Context.VoidPtrType)) {
             Error(UniOp, "Cannot dereference void*");
         }
+        if (ValTy->Equals(Context.NullType)) {
+            Error(UniOp, "Cannot dereference null");
+            YIELD_ERROR(UniOp);
+        }
 
         UniOp->HasConstAddress = UniOp->Value->HasConstAddress;
         UniOp->Ty = ValTy->GetPointerElementType(Context);
@@ -2429,7 +2661,7 @@ void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
     This->Ty = PointerType::Create(StructType::Create(CStruct, Context), Context);
 }
 
-void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
+void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
     
     bool ArgHasError = false;
     for (auto& Arg : Call->Args) {
@@ -2529,13 +2761,20 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     FuncsList* Canidates = IRef->Funcs;
 
     bool VarArgsPassAlong = false;
-    Call->CalledFunc = CheckCallToCanidates(IRef->Ident, Call->Loc, Canidates, Call->Args, Call->NamedArgs, VarArgsPassAlong);
+    Call->CalledFunc = CheckCallToCanidates(IRef->Ident,
+                                            Call->Loc,
+                                            Canidates,
+                                            Call->Args,
+                                            Call->NamedArgs,
+                                            VarArgsPassAlong,
+                                            CapturesErrors);
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
     if (Call->CalledFunc->Mods & ModKinds::PRIVATE) {
         if (Call->CalledFunc->FScope != FScope) {
-            Error(Call, "Function not visible, it is private");
+            Error(Call, "%s not visible, it is private",
+                Call->CalledFunc->IsConstructor ? "Constructor" : "Function");
         }
     }
 
@@ -2552,7 +2791,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                                                         FuncsList* Canidates,
                                                         llvm::SmallVector<NonNamedValue>& Args,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
-                                                        bool& VarArgsPassAlong) {
+                                                        bool& VarArgsPassAlong,
+                                                        bool CapturesErrors) {
     FuncDecl* Selected = FindBestFuncCallCanidate(FuncName, Canidates, Args, NamedArgs, VarArgsPassAlong);
     if (!Selected) {
         DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
@@ -2624,6 +2864,10 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                 CreateCast(Arg, VarArgTy);
             }
         }
+    }
+
+    if (!CapturesErrors && !Selected->RaisedErrors.empty()) {
+        CheckIfErrorsAreCaptures(ErrorLoc, Selected);
     }
     
     if (!Selected->Interface) {
@@ -2956,7 +3200,15 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
 
 std::string arco::SemAnalyzer::GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc) {
     bool IsVariadic = CalledFunc && CalledFunc->IsVariadic;
-    std::string FuncDef = CalledFunc ? ("fn " + CalledFunc->Name.Text.str()) : "fn";
+    std::string FuncDef;
+    if (CalledFunc) {
+        if (!CalledFunc->IsConstructor) {
+            FuncDef += "fn ";
+        }
+        FuncDef += CalledFunc->Name.Text.str();
+    } else {
+        FuncDef += "fn";
+    }
     FuncDef += "(";
     for (ulen i = 0; i < ParamTypes.size(); i++) {
         FuncDef += (ParamTypes[i].ConstMemory && ParamTypes[i].Ty->GetKind() != TypeKind::CStr) ? "const " : "";
@@ -3088,6 +3340,30 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     }
     
     return MismatchInfo;
+}
+
+void arco::SemAnalyzer::CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* CalledFunc) {
+    bool HasRaises = true;
+    if (CFunc) {
+        for (const auto& RaisedError : CalledFunc->RaisedErrors) {
+            auto Itr = std::find_if(CFunc->RaisedErrors.begin(),
+                CFunc->RaisedErrors.end(),
+                [&RaisedError](const auto& OurRaisedError) {
+                    return RaisedError.ErrorStruct == OurRaisedError.ErrorStruct;
+                });
+            if (Itr == CFunc->RaisedErrors.end()) {
+                HasRaises = false;
+                break;
+            }
+        }
+    } else {
+        HasRaises = false;
+    }
+
+    if (!HasRaises) {
+        Error(ErrorLoc, "Cannot ignore raised errors from %s call",
+            CalledFunc->IsConstructor ? "constructor" : "function");
+    }
 }
 
 void arco::SemAnalyzer::CheckArray(Array* Arr) {
@@ -3233,17 +3509,25 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
     }
 }
 
-void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
+void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit, bool CapturesErrors) {
     StructType* StructTy = StructInit->Ty->AsStructType();
     if (!FixupStructType(StructTy)) {
         YIELD_ERROR(StructInit);
+    }
+    if (StructTy->GetStruct()->ParsingError) {
+        return;
     }
 
     StructDecl* Struct = StructTy->GetStruct();
 
     // TODO: May want to allow if the fields are foldable!
     StructInit->IsFoldable = false;
-    StructInit->CalledConstructor = CheckStructInitArgs(Struct, StructInit->Loc, StructInit->Args, StructInit->NamedArgs, StructInit->VarArgsPassAlong);
+    StructInit->CalledConstructor = CheckStructInitArgs(Struct,
+                                                        StructInit->Loc,
+                                                        StructInit->Args,
+                                                        StructInit->NamedArgs,
+                                                        StructInit->VarArgsPassAlong,
+                                                        CapturesErrors);
 
 }
 
@@ -3251,7 +3535,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                                                        SourceLoc ErrorLoc,
                                                        llvm::SmallVector<NonNamedValue>& Args,
                                                        llvm::SmallVector<NamedValue>& NamedArgs,
-                                                       bool& VarArgPassAlong) {
+                                                       bool& VarArgPassAlong,
+                                                       bool CapturesErrors) {
 
     bool ArgsHaveErrors = false;
     for (ulen i = 0; i < Args.size(); i++) {
@@ -3281,7 +3566,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 &Struct->Constructors,
                 Args,
                 NamedArgs,
-                VarArgPassAlong);
+                VarArgPassAlong,
+                CapturesErrors);
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
@@ -3358,7 +3644,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
     return nullptr;
 }
 
-void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
+void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
     Alloc->IsFoldable = false;
 
     Type* TypeToAlloc = Alloc->TypeToAlloc;
@@ -3370,7 +3656,12 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc) {
 
     if (TypeToAlloc->GetKind() == TypeKind::Struct) {
         StructType* StructTy = TypeToAlloc->AsStructType();
-        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(), Alloc->Loc, Alloc->Values, Alloc->NamedValues, Alloc->VarArgsPassAlong);
+        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(),
+                                                       Alloc->Loc,
+                                                       Alloc->Values,
+                                                       Alloc->NamedValues,
+                                                       Alloc->VarArgsPassAlong,
+                                                       CapturesErrors);
     } else if (!Alloc->Values.empty()) {
         if (Alloc->Values.size() > 1) {
             Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc->ToString());
@@ -3508,6 +3799,76 @@ void arco::SemAnalyzer::CheckTernary(Ternary* Tern) {
         CreateCast(Tern->LHS, Tern->Ty);
     } else {
         Error(Tern, "Incompatible values for ternary expression");
+    }
+}
+
+void arco::SemAnalyzer::CheckVarDeclList(VarDeclList* List) {
+    
+    Expr* CallNode = List->Decls[0]->Assignment;
+    if (List->Decls.size() > 1 && CallNode &&
+        (CallNode->Is(AstKind::FUNC_CALL)          ||
+         CallNode->Is(AstKind::STRUCT_INITIALIZER) ||
+         CallNode->Is(AstKind::HEAP_ALLOC)
+            )
+        ) {
+        
+        // Checking for decomposition of errors.
+        
+        FuncDecl* CalledFunc;
+        if (CallNode->Is(AstKind::FUNC_CALL)) {
+            FuncCall* Call = static_cast<FuncCall*>(CallNode);
+            CheckFuncCall(Call, true);
+            CalledFunc = Call->CalledFunc;
+        } else if (CallNode->Is(AstKind::STRUCT_INITIALIZER)) {
+            StructInitializer* StructInit = static_cast<StructInitializer*>(CallNode);
+            CheckStructInitializer(StructInit, true);
+            CalledFunc = StructInit->CalledConstructor;
+        } else {
+            HeapAlloc* Alloc = static_cast<HeapAlloc*>(CallNode);
+            CheckHeapAlloc(Alloc, true);
+            CalledFunc = Alloc->CalledConstructor;
+        }
+
+        if (CallNode->Ty == Context.ErrorType) {
+            return;
+        }
+        // TODO: Deal with calling variables.
+        if (CalledFunc) {
+            if (!CalledFunc->RaisedErrors.empty()) {
+                if (List->Decls.size() != 2) {
+                    // TODO: Better error? Explain?
+                    Error(List->Decls[2],
+                        "Cannot decompose from a function call that raises an error with more than 2 variable declarations");
+                    return;
+                } else {
+                    CheckVarDecl(List->Decls[0], true);
+                    StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
+                    PointerType* ErrorInterfacePtrTy = PointerType::Create(ErrorInterfaceTy, Context);
+                    VarDecl* ErrorDecl = List->Decls[1];
+                    if (ErrorDecl->IsGlobal) {
+                        Error(ErrorDecl, "Cannot declare errors as being global variables");
+                    }
+                    List->DecomposesError = true;
+                    ErrorDecl->Ty = ErrorInterfacePtrTy;
+                    return;
+                }
+            }
+        }
+    }
+
+    CheckVarDeclListNonComposition(List);
+}
+
+void arco::SemAnalyzer::CheckVarDeclListNonComposition(VarDeclList* List) {
+    bool HasErrors = false;
+    for (VarDecl* Var : List->Decls) {
+        CheckVarDecl(Var);
+        if (Var->Ty == Context.ErrorType) {
+            HasErrors = true;
+        }
+    }
+    if (HasErrors) {
+        //YIELD_ERROR(List);
     }
 }
 

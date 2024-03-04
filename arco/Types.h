@@ -225,6 +225,7 @@ namespace arco {
         static StructType* Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context);
         static StructType* Create(StructDecl* Struct, ArcoContext& Context);
         static StructType* Create(EnumDecl* Enum, ArcoContext& Context);
+        static StructType* Create(InterfaceDecl* Interface, ArcoContext& Context);
 
         StructDecl*    GetStruct() const { return Struct; }
         EnumDecl*      GetEnum() const { return Enum; }

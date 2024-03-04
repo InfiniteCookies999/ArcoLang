@@ -192,18 +192,18 @@ fn read_string() String {
     return in.read_string();
 }
 
-fn read_int() int {
+fn read_int() int raises ValueParseError {
     return in.read_int();
 }
 
-fn read_int(base int) int {
+fn read_int(base int) int raises ValueParseError {
     return in.read_int32(base);
 }
 
-fn read_bool() bool {
+fn read_bool() bool raises ValueParseError {
     return in.read_bool();
 }
 
-fn read_char() char {
+fn read_char() char raises ValueParseError {
     return in.read_char();
 }

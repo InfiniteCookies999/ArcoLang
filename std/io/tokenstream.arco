@@ -1,12 +1,12 @@
 
+private BUFFER_SIZE :: 1024;
+
 /*
  * A token stream which seperates by whitespace.
  */
 TokenStream struct {
     
     private handle Readable*;
-    
-    private BUFFER_SIZE :: 1024;
     private buffer char[BUFFER_SIZE];
     
     private buffer_length := 0;
@@ -128,19 +128,19 @@ TokenStream struct {
         return next_token();
     }
 
-    fn read_int() int {
+    fn read_int() int raises ValueParseError {
         return next_token().parse_int();
     }
 
-    fn read_int32(base int) int32 {
+    fn read_int32(base int) int32 raises ValueParseError {
         return next_token().parse_int32(base);
     }
 
-    fn read_bool() bool {
+    fn read_bool() bool raises ValueParseError {
         return next_token().parse_bool();
     }
 
-    fn read_char() char {
+    fn read_char() char raises ValueParseError {
         return next_token().parse_char();
     }
 }

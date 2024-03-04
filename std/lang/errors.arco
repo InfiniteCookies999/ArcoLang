@@ -1,0 +1,72 @@
+import reflect.Any;
+
+/*
+ * This interface is required to be implemented for all
+ * errors.
+ */
+Error interface {
+
+    fn get_message() cstr;
+
+}
+
+IOError struct : Error {
+
+    message String;
+
+    IOError() {}
+
+    IOError(message String)
+        : message(*message.append_front("IOError: ")) {
+    }
+
+    IOError(fmt cstr, args Any...)
+        : message(*format(fmt, args).append_front("IOError: ")) {
+    }
+
+    fn get_message() cstr {
+        return message.buffer;
+    }
+}
+
+ValueParseError struct : Error {
+    
+    message String;
+
+    ValueParseError() {}
+
+    ValueParseError(message String)
+        : message(*message.append_front("ValueParseError: ")) {
+    }
+
+    ValueParseError(fmt cstr, args Any...)
+        : message(*format(fmt, args).append_front("ValueParseError: ")) {
+    }
+    
+    fn get_message() cstr {
+        return message.buffer;
+    }
+}
+
+/*
+ * Prints an error message to the standard error
+ * stream and terminates the application.
+ */
+fn panic(msg cstr) {
+    eprintln(msg);
+    exit(1);
+}
+
+/*
+ * Prints a formatted error message to the standard
+ * error stream and terminates the application.
+ */
+fn panic(msg cstr, args Any...) {
+    eprintln(msg, args);
+    exit(1);
+}
+
+fn panic(err Error^) {
+    eprintln(err.get_message());
+    exit(1);
+}

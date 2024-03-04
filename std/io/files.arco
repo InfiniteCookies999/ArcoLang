@@ -58,7 +58,7 @@ FileHandle struct : Writeable, Readable {
     // buffers this should be set so that the bytes
     // may be flushed prior to closing the file handle.
     private flushable Flushable*;
-    
+
     FileHandle(handle void*, auto_close := true) {
         this.handle     = handle;
         this.auto_close = auto_close;
@@ -80,21 +80,19 @@ FileHandle struct : Writeable, Readable {
     }
     
     fn read_buffer(buffer char*, length int) int {
-        // TODO: proper error handling.
         
         number_of_bytes_read uint32;
         if win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null) == 0 {
-            panic("Failed to read from FileHandle");
+            panic("failed to read from file handle");
         }
         return cast(int) number_of_bytes_read;
     }
     
     fn write_buffer(buffer cstr, length int) int {
-        // TODO: proper error handling.
-    
+        
         number_of_bytes_written uint32;
         if win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null) == 0 {
-            panic("Failed to write to FileHandle");
+            panic("failed to write to file handle");
         }
         return cast(int) number_of_bytes_written;
     }
@@ -116,16 +114,15 @@ FileHandle struct : Writeable, Readable {
 /*
  * Reads an entire file into a string.
  */
-fn read(path cstr) String {
+fn read(path cstr) String raises IOError {
     
-    stream := open(path, IOFlag.IN);
-    size   := stream.get_size();
+    handle := open(path, IOFlag.IN);
+    size   := handle.get_size();
     buffer := new char[size + 1];
     
-    read_bytes := stream.read_buffer(buffer, size);
+    read_bytes := handle.read_buffer(buffer, size);
     if read_bytes != size {
-        // TODO: proper error handling
-        panic("Failed to read file");
+        raise IOError{ "failed to read file \"%s\"", path };
     }
 
     // Null terminating
@@ -136,7 +133,7 @@ fn read(path cstr) String {
 /*
  * Reads an entire file into a string.
  */
-fn read(path String^) String {
+fn read(path String^) String raises IOError {
     return read(path.buffer);
 }
 
@@ -250,7 +247,7 @@ fn remove(path String^) bool {
  * unsigned integer representing the amount of 100-nanosecond
  * intervals since January 1, 1601 (UTC).
  */
-fn last_modified(path cstr) uint64 {
+fn last_modified(path cstr) uint64 raises IOError {
     // TODO: Proper error handling.
 
     handle := win32.CreateFileA(path,
@@ -262,12 +259,13 @@ fn last_modified(path cstr) uint64 {
                                 null);
 
     if handle == win32.INVALID_HANDLE_VALUE {
-        panic("Could not get last modified time for path");
+        // TODO: Determine if the path does not exist?
+        raise IOError{ "could not get last modified time for path: \"%s\"", path };
     }
 
     create_time, access_time, write_time uint64;
     if win32.GetFileTime(handle, &create_time, &access_time, &write_time) == 0 {
-        panic("Could not get last modified time for path");
+        raise IOError{ "could not get last modified time for path: \"%s\"", path };
     }
 
     return write_time;
@@ -280,29 +278,29 @@ fn last_modified(path cstr) uint64 {
  * process was spawned from another process it may take on the
  * parent's directory or a different directory entirely.
  */
-fn current_dir() String {
+fn current_dir() String raises IOError {
     // TODO: proper error handling.
 
     path_length := win32.GetCurrentDirectoryA(0, null);
     if path_length == 0 {
-        panic("Failed to get the length of the current directory path");
+        raise IOError{ "failed to get the length of the current directory path" };
     }
     buffer := new char[path_length];
 
     // TODO: recheck if the length is not long enough?
     if win32.GetCurrentDirectoryA(path_length, buffer) == 0 {
-        panic("Failed to read the current directory path");
+        raise IOError{ "failed to get the current directory path" };
     }
     
     // -1 because path_length contains the null terminating character.
     return String{ buffer, path_length - 1, false };
 }
 
-fn open(path String^, flags IOFlag) FileHandle {
+fn open(path String^, flags IOFlag) FileHandle raises IOError {
     return open(path.buffer, flags);
 }
 
-fn open(path cstr, flags IOFlag) FileHandle {
+fn open(path cstr, flags IOFlag) FileHandle raises IOError {
     access_flags uint32 = 0;
     share_flags  uint32 = 0;
     create_flags uint32 = 0;
@@ -348,8 +346,7 @@ fn open(path cstr, flags IOFlag) FileHandle {
                                      null);
 
     if handle == win32.INVALID_HANDLE_VALUE {
-        // TODO: properly handle the error once supported.
-        panic("Failed to open filestream!");
+        raise IOError{ "failed to open file: \"%s\"", path };
     }
     
     return FileHandle{ handle };

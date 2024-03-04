@@ -312,7 +312,7 @@ String struct {
      *
      * @return a parsed signed integer.
      */
-    fn parse_int() int {
+    fn parse_int() int raises ValueParseError {
         return parse_int32();
     }
 
@@ -324,7 +324,7 @@ String struct {
      *
      * @return a parsed signed integer.
      */
-    fn parse_int32() int32 {
+    fn parse_int32() int32 raises ValueParseError {
         return parse_int32(10);
     }
 
@@ -337,19 +337,19 @@ String struct {
      * @param  base to be used during parsing.
      * @return a parsed signed integer.
      */
-    fn parse_int32(base int) uint32 {
+    fn parse_int32(base int) uint32 raises ValueParseError {
         // TODO: Provide proper error handling once supported!
 
         if empty() {
-            panic("Parse errror: empty string");
+            raise ValueParseError{ "empty string" };
         }
 
         if base < MIN_PARSE_BASE {
-            panic("Parse error: base < PARSE_MIN_BASE");
+            raise ValueParseError{ "base < %s", MIN_PARSE_BASE };
         }
 
         if base > MAX_PARSE_BASE {
-            panic("Parse error: base > PARSE_MAX_BASE");
+            raise ValueParseError{ "base > %s", MAX_PARSE_BASE };
         }
 
         is_neg := false;
@@ -365,11 +365,11 @@ String struct {
             if first == '-' {
                 is_neg = true;
             } else if first != '+' {
-                panic("Parse error: Invalid start to characters");
+                raise ValueParseError{ "invalid start to characters" };
             }
 
             if length == 1 {
-                panic("Parse error: + or - by itself");
+                raise ValueParseError{ "+ or - by itself" };
             }
 
             ++i; // Move over the + or - character.
@@ -389,14 +389,18 @@ String struct {
 
             digit int32 = cast(int32) to_digit_for_base(ch, base);
             if digit < 0 {
-                panic("Parse error: character was not a digit");
+                if is_printable_ascii(ch) {
+                    raise ValueParseError{ "%s character was not a digit", ch };
+                } else {
+                    raise ValueParseError{ "character was not a digit" };
+                }
             }
 
             prev_value = result;
             result     = result * b + digit;
 
             if result / b < prev_value {
-                panic("Parse error: Numeric overflow");
+                raise ValueParseError{ "numeric overflow" };
             }
         }
         
@@ -408,10 +412,9 @@ String struct {
      *
      * Must either be "true" or "false".
      */
-    fn parse_bool() bool {
-        // TODO: Provide proper error handling once supported!
+    fn parse_bool() bool raises ValueParseError {
         if empty() {
-            panic("Parse error: empty string");
+            raise ValueParseError{ "empty string" };
         }
 
         if equals("true", 4) {
@@ -419,22 +422,21 @@ String struct {
         } else if equals("false", 5) {
             return false;
         } else {
-            panic("Parse error: expected true or false");
-            return false;
+            raise ValueParseError{ "expected true or false" };
         }
     }
 
     /*
      * Parses the string into a character.
      */
-    fn parse_char() char {
+    fn parse_char() char raises ValueParseError {
         // TODO: Provide proper error handling once supported!
 
         if empty() {
-            panic("Parse error: empty string");
+            raise ValueParseError{ "empty string" };
         }
         if length != 1 {
-            panic("Parse error: length > 1");
+            raise ValueParseError{ "length > 1" };
         }
 
         return buffer[0];

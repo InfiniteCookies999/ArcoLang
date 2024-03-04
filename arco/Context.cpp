@@ -20,6 +20,7 @@ arco::ArcoContext::ArcoContext()
     StructTypeIdentifier(Identifier("Struct")),
     FieldTypeIdentifier(Identifier("Field")),
     EnumTypeIdentifier(Identifier("Enum")),
+    ErrorInterfaceIdentifier(Identifier("Error")),
 
     CallConventions({
         { StdcallIdentifier,  llvm::CallingConv::X86_StdCall  },
@@ -161,10 +162,13 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "copyobj"  , TokenKind::KW_COPYOBJ   });
     TokenKeywordMap.insert({ "moveobj"  , TokenKind::KW_MOVEOBJ   });
     TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });
+    TokenKeywordMap.insert({ "try"      , TokenKind::KW_TRY       });
     TokenKeywordMap.insert({ "fn"       , TokenKind::KW_FN        });
     TokenKeywordMap.insert({ "struct"   , TokenKind::KW_STRUCT    });
     TokenKeywordMap.insert({ "enum"     , TokenKind::KW_ENUM      });
     TokenKeywordMap.insert({ "interface", TokenKind::KW_INTERFACE });
+    TokenKeywordMap.insert({ "raise"    , TokenKind::KW_RAISE     });
+    TokenKeywordMap.insert({ "raises"   , TokenKind::KW_RAISES    });
     TokenKeywordMap.insert({ "cast"     , TokenKind::KW_CAST      });
     TokenKeywordMap.insert({ "bitcast"  , TokenKind::KW_BITCAST   });
     TokenKeywordMap.insert({ "loop"     , TokenKind::KW_LOOP      });

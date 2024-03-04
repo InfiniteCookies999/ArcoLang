@@ -26,7 +26,7 @@ namespace arco {
         void CheckEnumDecl(EnumDecl* Enum);
         void CheckInterfaceDecl(InterfaceDecl* Interface);
 
-        void CheckVarDecl(VarDecl* Var);
+        void CheckVarDecl(VarDecl* Var, bool PartOfErrorDecomposition = false);
 
     private:
         ArcoContext& Context;
@@ -82,6 +82,7 @@ namespace arco {
         void CheckDeleteStmt(DeleteStmt* Delete);
         bool CheckIf(IfStmt* If);
         bool CheckNestedScope(NestedScopeStmt* NestedScope);
+        void CheckRaiseStmt(RaiseStmt* Raise);
 
         //===-------------------------------===//
         // Expressions
@@ -95,13 +96,14 @@ namespace arco {
                            StructDecl* StructToLookup = nullptr);
         void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
         void CheckThisRef(ThisRef* This);
-        void CheckFuncCall(FuncCall* Call);
+        void CheckFuncCall(FuncCall* Call, bool CapturesErrors = false);
         FuncDecl* CheckCallToCanidates(Identifier FuncName,
                                        SourceLoc ErrorLoc,
                                        FuncsList* Canidates,
                                        llvm::SmallVector<NonNamedValue>& Args,
                                        llvm::SmallVector<NamedValue>& NamedArgs,
-                                       bool& VarArgsPassAlong);
+                                       bool& VarArgsPassAlong,
+                                       bool CapturesErrors);
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
                                            llvm::SmallVector<NonNamedValue>& Args,
@@ -139,23 +141,27 @@ namespace arco {
                                         const llvm::SmallVector<NamedValue>& NamedArgs,
                                         ulen NumDefaultArgs,
                                         bool IsVariadic);
+        void CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
         
         void CheckArray(Array* Arr);
         void CheckArrayAccess(ArrayAccess* Access);
         void CheckTypeCast(TypeCast* Cast);
         void CheckTypeBitCast(TypeBitCast* Cast);
-        void CheckStructInitializer(StructInitializer* StructInit);
+        void CheckStructInitializer(StructInitializer* StructInit, bool CapturesErrors = false);
         FuncDecl* CheckStructInitArgs(StructDecl* Struct,
                                       SourceLoc ErrorLoc,
                                       llvm::SmallVector<NonNamedValue>& Args,
                                       llvm::SmallVector<NamedValue>& NamedArgs,
-                                      bool& VarArgPassAlong);
-        void CheckHeapAlloc(HeapAlloc* Alloc);
+                                      bool& VarArgPassAlong,
+                                      bool CapturesErrors);
+        void CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors = false);
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);
         void CheckRange(Range* Rg);
         void CheckMoveObj(MoveObj* Move);
         void CheckTernary(Ternary* Tern);
+        void CheckVarDeclList(VarDeclList* List);
+        void CheckVarDeclListNonComposition(VarDeclList* List);
 
         void CheckCondition(Expr* Cond, const char* PreErrorText);
 

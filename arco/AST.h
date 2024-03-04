@@ -29,6 +29,7 @@ namespace arco {
     using ScopeStmts = llvm::SmallVector<AstNode*>;
     using FuncsList  = llvm::SmallVector<FuncDecl*>;
     class DebugInfoEmitter;
+    struct StructInitializer;
 
     enum class AstKind {
         
@@ -50,7 +51,7 @@ namespace arco {
         ITERATOR_LOOP,
         NESTED_SCOPE,
         DELETE,
-        RANGE,
+        RAISE,
 
         NUMBER_LITERAL,
         STRING_LITERAL,
@@ -71,7 +72,8 @@ namespace arco {
         SIZEOF,
         TYPEOF,
         MOVEOBJ,
-        TERNARY
+        RANGE,
+        TERNARY,
 
     };
 
@@ -304,6 +306,8 @@ namespace arco {
         bool IsMoveConstructor     = false;
         bool IsVariadic            = false;
 
+        bool Generated = false;
+
         // When this is not -1 it indicates the index number of
         // the function in an interface.
         u16 InterfaceIdx = -1;
@@ -320,6 +324,12 @@ namespace arco {
 
         Type*                          RetTy;
         llvm::SmallVector<VarDecl*, 2> Params;
+        struct RaisedError {
+            Identifier  Name;
+            SourceLoc   ErrorLoc;
+            StructDecl* ErrorStruct;
+        };
+        llvm::SmallVector<RaisedError> RaisedErrors;
 
         // Storing the variables that appear in the
         // function so they can be allocated at the
@@ -369,6 +379,9 @@ namespace arco {
         // If this is set to try then the memory will not be initialized
         // to a default value.
         bool LeaveUninitialized = false;
+        // If true the variable is a declaration of an error captured from the
+        // raised error of a function.
+        bool IsErrorDecl        = false;
 
         // One variable may depend on another variable in its
         // declaration.
@@ -407,7 +420,8 @@ namespace arco {
     struct VarDeclList : AstNode {
         VarDeclList() : AstNode(AstKind::VAR_DECL_LIST) {}
         
-        llvm::SmallVector<VarDecl*> List;
+        bool DecomposesError = false;
+        llvm::SmallVector<VarDecl*> Decls;
     };
 
     // Ex.   'if cond {}'
@@ -479,6 +493,23 @@ namespace arco {
         DeleteStmt() : AstNode(AstKind::DELETE) {}
         
         Expr* Value;
+
+    };
+
+    // Ex.  'raise IOError{ "My message" }'
+    struct RaiseStmt : AstNode {
+        RaiseStmt() : AstNode(AstKind::RAISE) {}
+
+        // The index within the function signature for the raised
+        // error type.
+        //
+        // Ex.
+        //    fn foo() raises IOError, ParseError 
+        //                       ^      ^ this is index 1
+        //                       |
+        //                       \-this is index 0
+        ulen RaisedIdx = 0;
+        StructInitializer* StructInit;
 
     };
 

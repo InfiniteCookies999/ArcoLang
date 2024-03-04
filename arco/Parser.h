@@ -15,11 +15,6 @@ namespace arco {
     // [ [ 124, 12 ], [ 44 ] ]
     constexpr ulen MAX_ARRAY_DEPTH = 8;
 
-    // Only need a single one since the declarations get extracted.
-    // TODO: If this is ever multithreaded then there will be a need
-    // for one of these per thread.
-    extern VarDeclList* SingleVarDeclList;
-
     class Parser {
     public:
 
@@ -108,10 +103,11 @@ namespace arco {
         AstNode* ParseLoop();
         LoopControlStmt* ParseLoopControl();
         PredicateLoopStmt* ParsePredicateLoop(Token LoopTok);
-        RangeLoopStmt* ParseRangeLoop(Token LoopTok);
-        IteratorLoopStmt* ParseIteratorLoop(Token LoopTok);
+        RangeLoopStmt* ParseRangeLoop(Token LoopTok, VarDeclList* List);
+        IteratorLoopStmt* ParseIteratorLoop(Token LoopTok, VarDeclList* List);
         NestedScopeStmt* ParseNestedScope();
         DeleteStmt* ParseDelete();
+        RaiseStmt* ParseRaise();
 
         Modifiers ParseModifiers();
         Type* ParseType(bool AllowImplicitArrayType);
@@ -137,6 +133,7 @@ namespace arco {
         NumberLiteral* ParseFloatLiteral(NumberLiteral* Number);
         StringLiteral* ParseStringLiteral();
         FuncCall* ParseFuncCall(Expr* Site);
+        StructInitializer* ParseStructInitializer();
         Array* ParseArray();
         // Updates the largest array length at the depth
         // of the current array.

@@ -20,6 +20,7 @@ namespace arco {
     struct Namespace;
     struct FileScope;
     struct StructDecl;
+    struct InterfaceDecl;
 
     struct Source {
         bool            PartOfMainProject;
@@ -97,6 +98,7 @@ namespace arco {
 
         bool FindStdLibStructs();
         StructDecl* FindStdLibStruct(Namespace* Namespace, Identifier Name);
+        InterfaceDecl* FindStdLibInterface(Namespace* Namespace, Identifier Name);
 
         const char* GetStdLibPath();
 

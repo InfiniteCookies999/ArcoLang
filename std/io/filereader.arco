@@ -8,16 +8,14 @@ FileReader struct : Readable {
     handle FileHandle;
     stream BufferedInStream;
     
-    // TODO: Should we have the default flag behavior also create the file
-    // if it does not exist?
     FileReader(path cstr, flags := IOFlag.IN)
         : handle(open(path, flags | IOFlag.IN)),
-          stream(BufferedInStream{ &handle }) {
+          stream(BufferedInStream{ &handle }) raises IOError {
     }
 
     FileReader(path String^, flags := IOFlag.IN)
         : handle(open(path, flags | IOFlag.IN)),
-          stream(BufferedInStream{ &handle }) {
+          stream(BufferedInStream{ &handle }) raises IOError {
     }
 
     FileReader moveobj(o FileReader*)

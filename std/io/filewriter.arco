@@ -1,5 +1,7 @@
 namespace files;
 
+private DEFAULT_FLAGS :: IOFlag.OUT | IOFlag.CREATE;
+
 /*
  * A wrapper around a BufferedOutStream for writing
  * to files.
@@ -14,17 +16,15 @@ namespace files;
 FileWriter struct : Writeable {
     handle FileHandle;
     stream BufferedOutStream;
-    
-    DEFAULT_FLAGS :: IOFlag.OUT | IOFlag.CREATE;
 
     FileWriter(path cstr, flags IOFlag = DEFAULT_FLAGS)
         : handle(open(path, flags | IOFlag.OUT)),
-          stream(BufferedOutStream{ &handle }) {
+          stream(BufferedOutStream{ &handle }) raises IOError {
     }
 
     FileWriter(path String^, flags IOFlag = DEFAULT_FLAGS)
         : handle(open(path, flags | IOFlag.OUT)),
-          stream(BufferedOutStream{ &handle }) {
+          stream(BufferedOutStream{ &handle }) raises IOError {
     }
 
     FileWriter moveobj(o FileWriter*)

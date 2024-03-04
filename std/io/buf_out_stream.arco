@@ -13,11 +13,9 @@ BufferedOutStream struct : Writeable, Flushable {
     
     BufferedOutStream(handle Writeable*, buffer_size := 8192)
         : handle(handle) {
-        //println("what tf is happening?");
         if buffer_size < 0 {
             panic("buffer_size < 0");
         }
-        //println("Ok...");
         handle.set_flushable(this);
         this.buffer_size = buffer_size;
         buffer = new char[buffer_size];
@@ -29,7 +27,6 @@ BufferedOutStream struct : Writeable, Flushable {
      * redirection.
      */
     fn reapply_handle(handle Writeable*) {
-        // wow this causes the compiler to only sometimes warn!
         handle.set_flushable(this);
         this.handle = handle;
     }

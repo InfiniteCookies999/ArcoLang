@@ -77,6 +77,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     FD::InitializeCache();
 
     Context.EmitDebugInfo = EmitDebugInfo;
+    Context.StandAlone    = StandAlone;
 
     if (!StandAlone) {
         if (auto StdLibPath = GetStdLibPath()) {
@@ -468,6 +469,7 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdStructTypeStruct  = FindStdLibStruct(ReflectNamespace, Context.StructTypeIdentifier);
     Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);
     Context.StdEnumTypeStruct    = FindStdLibStruct(ReflectNamespace, Context.EnumTypeIdentifier);
+    Context.StdErrorInterface    = FindStdLibInterface(StdModule->DefaultNamespace, Context.ErrorInterfaceIdentifier);
     Context.AnyType              = StructType::Create(Context.StdAnyStruct, Context);
 
     return NumErrs == TotalAccumulatedErrors;
@@ -480,6 +482,15 @@ arco::StructDecl* arco::Compiler::FindStdLibStruct(Namespace* Namespace, Identif
         return nullptr;
     }
     return static_cast<StructDecl*>(Itr->second);
+}
+
+arco::InterfaceDecl* arco::Compiler::FindStdLibInterface(Namespace* Namespace, Identifier Name) {
+    auto Itr = Namespace->Decls.find(Name);
+    if (Itr == Namespace->Decls.end() || Itr->second->IsNot(AstKind::INTERFACE_DECL)) {
+        Logger::GlobalError(llvm::errs(), "Standard library is missing '%s' interface", Name);
+        return nullptr;
+    }
+    return static_cast<InterfaceDecl*>(Itr->second);
 }
 
 const char* arco::Compiler::GetStdLibPath() {

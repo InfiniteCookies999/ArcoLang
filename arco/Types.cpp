@@ -457,6 +457,15 @@ arco::StructType* arco::StructType::Create(EnumDecl* Enum, ArcoContext& Context)
     return Ty;
 }
 
+arco::StructType* arco::StructType::Create(InterfaceDecl* Interface, ArcoContext& Context) {
+    // TODO: Caching
+    StructType* Ty = new StructType(TypeKind::Interface);
+    Ty->UniqueId   = Interface->UniqueTypeId;
+    Ty->StructName = Interface->Name;
+    Ty->Interface  = Interface;
+    return Ty;
+}
+
 arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Context) {
     // TODO: Caching?
     StructType* Ty = new StructType(TypeKind::Struct);

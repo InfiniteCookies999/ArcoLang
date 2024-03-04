@@ -8,24 +8,6 @@ fn exit(exit_code int) {
     win32.ExitProcess(cast(uint32) exit_code);
 }
 
-/*
- * Prints an error message to the standard error
- * stream and terminates the application.
- */
-fn panic(msg cstr) {
-    eprintln(msg);
-    exit(1);
-}
-
-/*
- * Prints a formatted error message to the standard
- * error stream and terminates the application.
- */
-fn panic(msg cstr, args Any...) {
-    eprintln(msg, args);
-    exit(1);
-}
-
 // Used to keep track of time.
 private performance_freq int64;
 
