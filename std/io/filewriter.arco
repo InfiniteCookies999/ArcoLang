@@ -34,7 +34,7 @@ FileWriter struct : Writeable {
         this.stream.reapply_handle(&this.handle);
     }
 
-    fn write_buffer(buffer cstr, length int) int {
+    fn write_buffer(buffer cstr, length int) int raises IOError {
         return stream.write_buffer(buffer, length);
     }
 
@@ -43,6 +43,6 @@ FileWriter struct : Writeable {
     }
 
     fn flush() {
-        stream.flush();
+        err := stream.flush();
     }
 }

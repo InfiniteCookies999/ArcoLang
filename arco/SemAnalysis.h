@@ -142,7 +142,8 @@ namespace arco {
                                         ulen NumDefaultArgs,
                                         bool IsVariadic);
         void CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
-        
+        void CheckTryError(TryError* Try);
+
         void CheckArray(Array* Arr);
         void CheckArrayAccess(ArrayAccess* Access);
         void CheckTypeCast(TypeCast* Cast);

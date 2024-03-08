@@ -18,7 +18,7 @@ OutStream struct : Writeable {
         : handle(handle) {
     }
 
-    fn write_buffer(msg cstr, length int) int {
+    fn write_buffer(msg cstr, length int) int raises IOError {
         return handle.write_buffer(msg, length);
     }
 
@@ -26,15 +26,15 @@ OutStream struct : Writeable {
         this.flushable = flushable;
     }
 
-    fn write(msg cstr) {
+    fn write(msg cstr) raises IOError {
         write_buffer(msg, strlen(msg));
     }
 
-    fn write(msg String^) {
+    fn write(msg String^) raises IOError {
         write_buffer(msg.buffer, msg.length);
     }
 
-    fn write(b bool) {
+    fn write(b bool) raises IOError {
         if b {
             write("true");
         } else {
@@ -42,11 +42,11 @@ OutStream struct : Writeable {
         }
     }
 
-    fn write(c char) {
+    fn write(c char) raises IOError {
         write_buffer(&c, 1);
     }
 
-    fn write(i int64, base := 10) {
+    fn write(i int64, base := 10) raises IOError {
         if i < 0 {
             i = -i;
             write("-");
@@ -55,7 +55,7 @@ OutStream struct : Writeable {
         write(cast(uint64) i, base);
     }
 
-    fn write(i uint64, base := 10) {
+    fn write(i uint64, base := 10) raises IOError {
         // TODO: validate the base.
 
         BUFFER_SIZE :: 21;
@@ -67,29 +67,29 @@ OutStream struct : Writeable {
         write_buffer(ptr, length);
     }
 
-    fn write(i int, base := 10) {
+    fn write(i int, base := 10) raises IOError {
         write(cast(int64) i, base);
     }
 
-    fn write(f float64) {
+    fn write(f float64) raises IOError {
         buffer char[30] = ---;
         length int;
         chars_of_float64(f, buffer, &length);
         write_buffer(buffer, length);
     }
 
-    fn write(f float32) {
+    fn write(f float32) raises IOError {
         buffer char[30] = ---;
         length int;
         chars_of_float32(f, buffer, &length);
         write_buffer(buffer, length);
     }
 
-    fn write(any Any) {
+    fn write(any Any) raises IOError {
         write_any(any.value, any.type);
     }
 
-    private fn write_any(value void*, type const Type*) {
+    private fn write_any(value void*, type const Type*) raises IOError {
         // TODO: replace with a switch statement once supported.
         if type.id == TypeId.CSTR {
             write(cast(cstr) value);
@@ -211,7 +211,7 @@ OutStream struct : Writeable {
         }
     }
     
-    private fn write_array_like_type(array void*, elm_type Type*, length int) {
+    private fn write_array_like_type(array void*, elm_type Type*, length int) raises IOError {
         write("[ ");
             
         elm_byte_size := elm_type.size_in_bytes;
@@ -240,7 +240,7 @@ OutStream struct : Writeable {
         write(" ]");
     }
 
-    fn write(fmt cstr, args Any...) {
+    fn write(fmt cstr, args Any...) raises IOError {
         length  := strlen(fmt);
         arg_idx := 0;
         loop i := 0; i < length; i++ {
@@ -260,68 +260,68 @@ OutStream struct : Writeable {
     // ----------------------------------------
     // writeln functions
 
-    fn writeln(msg cstr) {
+    fn writeln(msg cstr) raises IOError {
         write_buffer(msg, strlen(msg));
         write_buffer("\n", 1);
     }
 
-    fn writeln(msg String^) {
+    fn writeln(msg String^) raises IOError {
         write(msg);
         write_buffer("\n", 1);
     }
 
-    fn writeln(i int, base := 10) {
+    fn writeln(i int, base := 10) raises IOError {
         write(cast(int64) i, base);
         write_buffer("\n", 1);
     }
 
-    fn writeln(i int64, base := 10) {
+    fn writeln(i int64, base := 10) raises IOError {
         write(i);
         write_buffer("\n", 1);
     }
 
-    fn writeln(i uint64, base := 10) {
+    fn writeln(i uint64, base := 10) raises IOError {
         write(i, base);
         write_buffer("\n", 1);
     }
 
-    fn writeln(b bool) {
+    fn writeln(b bool) raises IOError {
         write(b);
         write_buffer("\n", 1);
     }
 
-    fn writeln(c char) {
+    fn writeln(c char) raises IOError {
         write(c);
         write_buffer("\n", 1);
     }
 
-    fn writeln(any Any) {
+    fn writeln(any Any) raises IOError {
         write(any);
         write_buffer("\n", 1);
     }
 
-    fn writeln(f float64) {
+    fn writeln(f float64) raises IOError {
         write(f);
         write_buffer("\n", 1);
     }
 
-    fn writeln(f float32) {
+    fn writeln(f float32) raises IOError {
         write(f);
         write_buffer("\n", 1);
     }
 
-    fn writeln(fmt cstr, args Any...) {
+    fn writeln(fmt cstr, args Any...) raises IOError {
         write(fmt, args);
         write_buffer("\n", 1);
     }
 
-    fn writeln() {
+    fn writeln() raises IOError {
         write_buffer("\n", 1);
     }
 
     ~OutStream() {
         if flushable {
-            flushable.flush();
+            err := flushable.flush();
         }
     }
 }

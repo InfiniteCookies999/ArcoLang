@@ -150,6 +150,9 @@ void arco::Parser::Parse() {
                      (NumParams == 2 && Params[0]->Ty->Equals(Context.IntType) && Params[1]->Ty->Equals(Context.CharPtrPtrType))
                     )) {
                     if (!Context.MainEntryFunc) {
+                        if (!Func->RaisedErrors.empty()) {
+                            Error(Func->Loc, "main function cannot raise errors");
+                        }
                         Context.MainEntryFunc = Func;
                     } else {
                         // Duplicate entry function.
@@ -1878,6 +1881,12 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         Move->Value = ParseExpr();
         Match(')');
         return Move;
+    }
+    case TokenKind::KW_TRY: {
+        TryError* Try = NewNode<TryError>(CTok);
+        NextToken();
+        Try->Value = ParseExpr();
+        return Try;
     }
     default:
         Error(CTok.Loc, "Expected an expression");

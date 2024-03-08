@@ -117,6 +117,9 @@ struct ImportErrorSpellChecker {
 }
 
 void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) {
+    if (FScope->ImportsResolved) return;
+    FScope->ImportsResolved = true;
+
 #define BERROR(Fmt, ...)                          \
 Logger Log(FScope, FScope->Buffer); \
 Log.BeginError(ErrorLoc, Fmt, __VA_ARGS__);
@@ -306,14 +309,15 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
     Context.UncheckedDecls.erase(Func);
     if (Func->ParsingError) return;
     
+    // -- DEBUG
+    // llvm::outs() << "Checking function: " << Func->Name << "\n";
+
     CheckFuncParams(Func);
 
     CFunc   = Func;
     CStruct = Func->Struct;
     FScope  = Func->FScope;
-
-    // -- DEBUG
-    // llvm::outs() << "Checking function: " << Func->Name << "\n";
+    
     if (Func->IsConstructor) {
         if (Func->RetTy->GetKind() != TypeKind::Void) {
             Error(Func, "Constructors cannot return values");
@@ -487,21 +491,17 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         Struct->NeedsDestruction = true;
     }
 
-    FixupInterfaces(Struct);
-
     // Skip over pointers to vtable.
-    ulen LLFieldIdx = Struct->Interfaces.size();
+    ulen LLFieldIdx = Struct->InterfaceHooks.size();  //   Struct->Interfaces.size();  -- this struct is not filled out yet!
     for (VarDecl* Field : Struct->Fields) {
         CheckVarDecl(Field);
         if (Field->Assignment) {
             Struct->FieldsHaveAssignment = true;
         }
 
-        if (!Field->IsComptime()) {
-            Field->LLFieldIdx = LLFieldIdx;
-            ++LLFieldIdx;
-        }
-
+        Field->LLFieldIdx = LLFieldIdx;
+        ++LLFieldIdx;
+        
         // TODO: Does the field need to be checked for a complete type here?
         if (Field->Ty->GetKind() == TypeKind::Struct) {
             StructType* StructTy = Field->Ty->AsStructType();
@@ -525,6 +525,10 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         }
     }
 
+    // Keep this below checking fields because the the function may end up
+    // being part of the function signature.
+    FixupInterfaces(Struct);
+
     // Want to set this to false before checking member functions or it will
     // complain about the type not being complete but all the relavent
     // type information has been determined already.
@@ -546,6 +550,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         Context.RequestGen(Struct->MoveConstructor);
     }
 
+
     /*if (Context.EmitDebugInfo) {
         // Terrible but when emitting debug information the type information for the member functions needs to be known
         // in order to be able to generate proper information for member variables so every single function has to
@@ -559,11 +564,24 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
+
+    // This must go before checking everything else because the
+    // struct may require that is function has complete type information
+    // and by placing it here the struct may then recall this function,
+    // this function can completely finished, and then the struct will have
+    // complete information about the function.
+    if (Func->Struct) {
+        CheckStructDecl(Func->Struct);
+    }
+
     if (Func->ParamTypesChecked) return;
     Func->ParamTypesChecked = true;
     if (Func->ParsingError) return;
 
     assert(!CFunc && "Must create a new semantic analyzer when checking function parameters");
+    
+    // -- DEBUG
+    // llvm::outs() << "Checking function params of: " << (Func->Struct ? (Func->Struct->Name.Text.str()+".") : "") << Func->Name << "\n";
 
     CFunc   = Func;
     CStruct = Func->Struct;
@@ -662,6 +680,7 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
             }
         }
     }
+    
 }
 
 void arco::SemAnalyzer::CheckNode(AstNode* Node) {
@@ -748,6 +767,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::VAR_DECL_LIST:
         CheckVarDeclList(static_cast<VarDeclList*>(Node));
         break;
+    case AstKind::TRY_ERROR:
+        CheckTryError(static_cast<TryError*>(Node));
+        break;
     case AstKind::NUMBER_LITERAL:
     case AstKind::STRING_LITERAL:
     case AstKind::NULLPTR:
@@ -785,14 +807,15 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
         return;
     }
 
+
     InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
+    SemAnalyzer A(Context, Interface);
+    A.CheckInterfaceDecl(Interface);
+
     Struct->Interfaces.push_back(Interface);
     // Finding the matching functions for the interface.
     for (FuncDecl* InterfaceFunc : Interface->Funcs) {
-        if (!InterfaceFunc->ParamTypesChecked) {
-            SemAnalyzer A(Context, InterfaceFunc);
-            A.CheckFuncParams(InterfaceFunc);
-        }
+        
         if (InterfaceFunc->ParsingError) continue;
 
         auto Itr = std::find_if(Struct->Funcs.begin(), Struct->Funcs.end(),
@@ -998,6 +1021,7 @@ std::string arco::SemAnalyzer::GetMismatchInfoForInterfaceFunc(FuncDecl* Interfa
                 return InterfaceRaisedError.ErrorStruct == CanidateRaisedError.ErrorStruct;
             });
         if (Itr == Canidate->RaisedErrors.end()) {
+            if (EncounteredError)  MismatchInfo += "\n";
             MismatchInfo += "- Raises error '" + InterfaceRaisedError.Name.Text.str() + "' not raised by function.";
             MissingRaisedError = true;
         }
@@ -1012,6 +1036,7 @@ std::string arco::SemAnalyzer::GetMismatchInfoForInterfaceFunc(FuncDecl* Interfa
                         return InterfaceRaisedError.ErrorStruct == CanidateRaisedError.ErrorStruct;
                     });
                 if (Itr == InterfaceFunc->RaisedErrors.end()) {
+                    if (EncounteredError)  MismatchInfo += "\n";
                     MismatchInfo += "- Raises error '" + CanidateRaisedError.Name.Text.str() + "' which the interface does not raise.";
                     MissingRaisedError = true;
                 }
@@ -1028,6 +1053,7 @@ std::string arco::SemAnalyzer::GetMismatchInfoForInterfaceFunc(FuncDecl* Interfa
                 }
             }
             if (RaisedOutOfError) {
+                if (EncounteredError)  MismatchInfo += "\n";
                 MismatchInfo += "- Must raise all errors in the same order as the interface.";
             }
         }
@@ -1154,6 +1180,11 @@ void arco::SemAnalyzer::CheckInterfaceDecl(InterfaceDecl* Interface) {
     if (Interface->Funcs.empty()) {
         Error(Interface, "Interfaces must have at least one function declaration");
     }
+
+    for (FuncDecl* Func : Interface->Funcs) {
+        SemAnalyzer A(Context, Func);
+        A.CheckFuncParams(Func);
+    }
 }
 
 //===-------------------------------===//
@@ -1185,6 +1216,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
         case AstKind::DELETE:
         case AstKind::VAR_DECL_LIST:
         case AstKind::RAISE:
+        case AstKind::TRY_ERROR:
             break;
         case AstKind::BINARY_OP:
             switch (static_cast<BinaryOp*>(Stmt)->Op) {
@@ -1285,13 +1317,10 @@ return;
                     if (Call->Ty->GetKind() == TypeKind::Void) {
                         // The variable is actually an error.
 
-                        StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
-                        PointerType* ErrorInterfacePtrTy = PointerType::Create(ErrorInterfaceTy, Context);
-
                         if (!Var->TyIsInfered) {
-                            if (!Var->Ty->Equals(ErrorInterfacePtrTy)) {
+                            if (!Var->Ty->Equals(Context.ErrorInterfacePtrType)) {
                                 Error(Var, "Expected variable to be of type '%s' to capture the raised error",
-                                    ErrorInterfacePtrTy->ToString());
+                                    Context.ErrorInterfacePtrType->ToString());
                             }
                         }
 
@@ -1300,7 +1329,7 @@ return;
                         }
 
                         Var->IsErrorDecl = true;
-                        Var->Ty = ErrorInterfacePtrTy;
+                        Var->Ty = Context.ErrorInterfacePtrType;
                         VAR_YIELD(, false);
                     } else {
                         CheckIfErrorsAreCaptures(Call->Loc, Call->CalledFunc);
@@ -2098,6 +2127,7 @@ YIELD_ERROR(BinOp)
                                 Struct->Name);
                             YIELD_ERROR(BinOp);
                         }
+                        BinOp->IsFoldable = false; // Requires branching to check for null.
                     }
                 } else {
                     Error(BinOp->RHS, "Expected to be a pointer");
@@ -2232,6 +2262,11 @@ YIELD_ERROR(UniOp);
                 Error(UniOp, "Not supporting taking address of member functions yet!");
             }
             
+            // TODO: We should allow taking addresses of functions which raise errors
+            if (!Func->RaisedErrors.empty()) {
+                Error(UniOp, "Not supporting taking address of function which raises errors yet!");
+            }
+
             SemAnalyzer A(Context, Func);
             A.CheckFuncParams(Func);
 
@@ -3366,6 +3401,63 @@ void arco::SemAnalyzer::CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* C
     }
 }
 
+void arco::SemAnalyzer::CheckTryError(TryError* Try) {
+
+    if (Context.StandAlone) {
+        Error(Try, "Cannot use try expression when -stand-alone flag is set");
+        return;
+    }
+
+    if (!Context.StdErrorPanicFunc) {
+        Module* StdModule = Context.ModNamesToMods.find("std")->second;
+        auto Itr = StdModule->DefaultNamespace->Funcs.find(Identifier("panic"));
+        if (Itr == StdModule->DefaultNamespace->Funcs.end()) {
+            Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
+        } else {
+            FuncsList& List = Itr->second;
+            bool Found = false;
+
+            for (FuncDecl* Func : List) {
+
+                SemAnalyzer A(Context, Func);
+                A.CheckFuncDecl(Func);
+                if (Func->Params.size() != 1) {
+                    continue;
+                }
+
+                if (!Func->Params[0]->Ty->Equals(Context.ErrorInterfacePtrType)) {
+                    continue;
+                }
+                Context.StdErrorPanicFunc = Func;
+                Found = true;
+                break;
+            }
+            if (!Found) {
+                Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
+                return;
+            }
+        }
+        Context.RequestGen(Context.StdErrorPanicFunc);
+    }
+
+    if (Try->Value->Is(AstKind::FUNC_CALL)) {
+    
+        FuncCall* Call = static_cast<FuncCall*>(Try->Value);
+        CheckFuncCall(Call, true);
+        YIELD_ERROR_WHEN(Try, Try->Value);
+
+        Try->Ty = Try->Value->Ty;
+        Try->IsFoldable = false;
+
+        if (!Call->CalledFunc || Call->CalledFunc->RaisedErrors.empty()) {
+            Error(Try, "Expected called function to raise errors");
+        }
+
+    } else {
+        Error(Try, "Expected try to handle errors from function call");
+    }
+}
+
 void arco::SemAnalyzer::CheckArray(Array* Arr) {
 
     Type* ElmTypes = Arr->ReqBaseType;
@@ -3842,14 +3934,13 @@ void arco::SemAnalyzer::CheckVarDeclList(VarDeclList* List) {
                     return;
                 } else {
                     CheckVarDecl(List->Decls[0], true);
-                    StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
-                    PointerType* ErrorInterfacePtrTy = PointerType::Create(ErrorInterfaceTy, Context);
+                    
                     VarDecl* ErrorDecl = List->Decls[1];
                     if (ErrorDecl->IsGlobal) {
                         Error(ErrorDecl, "Cannot declare errors as being global variables");
                     }
                     List->DecomposesError = true;
-                    ErrorDecl->Ty = ErrorInterfacePtrTy;
+                    ErrorDecl->Ty = Context.ErrorInterfacePtrType;
                     return;
                 }
             }
@@ -4228,7 +4319,7 @@ bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddr
 bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
     if (Ty->GetKind() == TypeKind::Array) {
         return FixupArrayType(Ty->AsArrayTy(), AllowDynamicArrays);
-    } else if (Ty->GetKind() == TypeKind::Struct) {
+    } else if (Ty->GetKind() == TypeKind::Struct || Ty->GetKind() == TypeKind::Interface) {
         return FixupStructType(Ty->AsStructType());
     } else if (Ty->GetKind() == TypeKind::Pointer) {
         PointerType* PointerTy = Ty->AsPointerTy();

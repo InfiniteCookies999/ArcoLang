@@ -256,7 +256,14 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
             return;
         }
     }
+    
+    // Mapping the imports to the structs within different files.
+    for (FileScope* FScope : FileScopes) {
+        SemAnalyzer::ResolveImports(FScope, Context);
+    }
+
     SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
+
 
     IRGenBegin = GetTimeInMilliseconds();
     // Must do this early so that LLVM can correctly determine information for types
@@ -274,11 +281,6 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
     SemCheckBegin = GetTimeInMilliseconds();
-    // Mapping the imports to the structs within different files.
-    for (FileScope* FScope : FileScopes) {
-        SemAnalyzer::ResolveImports(FScope, Context);
-    }
-
     if (Context.MainEntryFunc) {
         Context.RequestGen(Context.MainEntryFunc);
     } else {
@@ -471,6 +473,11 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdEnumTypeStruct    = FindStdLibStruct(ReflectNamespace, Context.EnumTypeIdentifier);
     Context.StdErrorInterface    = FindStdLibInterface(StdModule->DefaultNamespace, Context.ErrorInterfaceIdentifier);
     Context.AnyType              = StructType::Create(Context.StdAnyStruct, Context);
+    
+    if (Context.StdErrorInterface) {
+        StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
+        Context.ErrorInterfacePtrType = PointerType::Create(ErrorInterfaceTy, Context);
+    }
 
     return NumErrs == TotalAccumulatedErrors;
 }

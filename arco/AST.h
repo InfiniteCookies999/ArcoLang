@@ -74,6 +74,7 @@ namespace arco {
         MOVEOBJ,
         RANGE,
         TERNARY,
+        TRY_ERROR
 
     };
 
@@ -130,6 +131,7 @@ namespace arco {
         Namespace* UniqueNSpace = nullptr;
 
         bool ParsingErrors = false;
+        bool ImportsResolved = false;
 
         enum class InvalidScopeKind {
             GLOBAL,
@@ -234,7 +236,7 @@ namespace arco {
         // destructor or if the structure contains another
         // structure which needs destruction.
         bool NeedsDestruction = false;
-
+        
         bool ImplementsInterface(InterfaceDecl* Interface);
 
         VarDecl* FindField(Identifier Name);
@@ -305,8 +307,6 @@ namespace arco {
         bool IsCopyConstructor     = false;
         bool IsMoveConstructor     = false;
         bool IsVariadic            = false;
-
-        bool Generated = false;
 
         // When this is not -1 it indicates the index number of
         // the function in an interface.
@@ -828,6 +828,13 @@ namespace arco {
         Expr* Cond;
         Expr* LHS;
         Expr* RHS;
+
+    };
+
+    struct TryError : Expr {
+        TryError() : Expr(AstKind::TRY_ERROR) {}
+
+        Expr* Value;
 
     };
 }

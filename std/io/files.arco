@@ -79,7 +79,7 @@ FileHandle struct : Writeable, Readable {
         }
     }
     
-    fn read_buffer(buffer char*, length int) int {
+    fn read_buffer(buffer char*, length int) int raises IOError {
         
         number_of_bytes_read uint32;
         if win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null) == 0 {
@@ -88,7 +88,7 @@ FileHandle struct : Writeable, Readable {
         return cast(int) number_of_bytes_read;
     }
     
-    fn write_buffer(buffer cstr, length int) int {
+    fn write_buffer(buffer cstr, length int) int raises IOError {
         
         number_of_bytes_written uint32;
         if win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null) == 0 {
@@ -104,7 +104,7 @@ FileHandle struct : Writeable, Readable {
     
     fn close() {
         if flushable {
-            flushable.flush();
+            err := flushable.flush();
         }
         win32.CloseHandle(handle);
         handle = null;

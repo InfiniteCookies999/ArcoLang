@@ -62,6 +62,12 @@ namespace arco {
         // The restart points of the next loop iteration
         llvm::SmallVector<llvm::BasicBlock*, 4> LoopContinueStack;
 
+        struct DestroyObject {
+            Type* Ty;
+            llvm::Value* LLAddr;
+            llvm::Value* LLCondAddr = nullptr;
+        };
+
         // Objects which have destructors and need to be destroyed
         // and are encountered before any returns or branching is
         // encountered.
@@ -76,15 +82,7 @@ namespace arco {
         // function return.
         // This common return can then manage the cleanup of all of these
         // objects.
-        llvm::SmallVector<std::pair<Type*, llvm::Value*>> AlwaysInitializedDestroyedObjects;
-
-        struct ErrorCleanupControl {
-            Type*        Ty;
-            llvm::Value* LLAddr;
-            // TODO: This probably needs an address?
-            llvm::Value* LLCond;
-        };
-        llvm::SmallVector<ErrorCleanupControl> ErrorInitializedObjects;
+        llvm::SmallVector<DestroyObject> AlwaysInitializedDestroyedObjects;
 
         // If the function returns a locally defined variable it's set here once
         // it has been initialized.
@@ -97,9 +95,11 @@ namespace arco {
 
             bool IsLoopScope = false;
 
-            // When the scope is poped, but not returned (TODO: Or control flow changed?)
-            // then the objects in this list are destroyed.
-            llvm::SmallVector<std::pair<Type*, llvm::Value*>> ObjectsNeedingDestroyed;
+            // All objects currently initialized within the scope unless the scope is
+            // the primary scope of a function and no returns have been encountered
+            // in which case they are placed in the AlwaysInitializedDestroyedObjects list.
+            //
+            llvm::SmallVector<DestroyObject> ObjectsNeedingDestroyed;
 
         }* LocScope = nullptr;
 
@@ -184,6 +184,7 @@ namespace arco {
         llvm::Value* GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded);
         llvm::Value* GenVarDeclList(VarDeclList* List);
         ErrorAddrList GenErrorAddrs(FuncDecl* CalledFunc, llvm::Value* LLErrorInterfaceAddr);
+        llvm::Value* GenTryError(TryError* Try, llvm::Value* LLAddr);
 
         llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
         llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
@@ -254,17 +255,16 @@ namespace arco {
 
         std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 
-        void AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr);
-        void AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr);
+        void AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCondAddr = nullptr);
+        void AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCondAddr);
 
-        void CallDestructors(llvm::SmallVector<std::pair<Type*, llvm::Value*>>& Objects);
-        void CallDestructors(Type* Ty, llvm::Value* LLAddr);
+        void CallDestructors(llvm::SmallVector<DestroyObject>& Objects);
+        void CallDestructors(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCond);
         void GenCompilerDestructorAndCall(StructDecl* Struct, llvm::Value* LLAddr);
 
         void DestroyLocScopeInitializedObjects();
         void DestroyCurrentlyInitializedObjects();
-        void DestroyErrorControledObjects();
-
+        
         llvm::Value* GetOneValue(Type* Ty);
 
         /// This will only unconditionally branch to the given
@@ -307,7 +307,7 @@ namespace arco {
         void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);
         llvm::Function* GenDefaultConstructorDecl(StructDecl* Struct);
 
-        llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name);
+        llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name, bool IsErrCond = false);
 
         llvm::Value* GetElisionRetSlotAddr(FuncDecl* Func);
         llvm::Value* GetErrorRetAddr(ulen Idx);

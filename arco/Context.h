@@ -108,6 +108,7 @@ namespace arco {
         StructDecl* StdFieldTypeStruct   = nullptr;
         StructDecl* StdEnumTypeStruct    = nullptr;
         InterfaceDecl* StdErrorInterface = nullptr;
+        FuncDecl* StdErrorPanicFunc = nullptr;
 
         Type* IntType;
         Type* PtrsizeType;
@@ -137,7 +138,7 @@ namespace arco {
         Type* EnumRefType;
         Type* InterfaceRefType;
         Type* AnyType;
-        Type* ErrorInterfacePtrType;
+        PointerType* ErrorInterfacePtrType;
 
         // Maps a binary operator to its precedence.
         llvm::DenseMap<u16, u32> BinaryOpsPrecedence;

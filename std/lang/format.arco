@@ -33,7 +33,7 @@ private StringFormatBuffer struct : Writeable {
         // isn't a need to set anything.
     }
 
-    fn write_buffer(buffer cstr, length int) int {
+    fn write_buffer(buffer cstr, length int) int raises IOError {
         if this.length + length > capacity {
             // +1 for null termination.
             grow(this.length + length + 1);
@@ -58,6 +58,6 @@ private StringFormatBuffer struct : Writeable {
 fn format(fmt cstr, args Any...) String {
     fmt_buffer StringFormatBuffer;
     stream := OutStream{ &fmt_buffer };
-    stream.write(fmt, args);
+    _ := stream.write(fmt, args);
     return fmt_buffer.to_string();
 }

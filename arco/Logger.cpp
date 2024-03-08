@@ -302,4 +302,6 @@ void arco::Logger::GlobalError(llvm::raw_ostream& OS, const std::function<void()
     OS << ".\n";
 
     FoundCompileError = true;
+
+    ++TotalAccumulatedErrors;
 }

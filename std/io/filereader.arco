@@ -25,7 +25,7 @@ FileReader struct : Readable {
         this.stream.reapply_handle(&this.handle);
     }
 
-    fn read_buffer(buffer char*, length int) int {
+    fn read_buffer(buffer char*, length int) int raises IOError {
         return stream.read_buffer(buffer, length);
     }
 }

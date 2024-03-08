@@ -19,191 +19,209 @@ in  := TokenStream{ &in_file_handle };
 //----------------------------------------------
 
 fn print(i int64, base := 10) {
-    out.write(i, base);
+    try out.write(i, base);
 }
 
 fn print(i uint64, base := 10) {
-    out.write(i, base);
+    try out.write(i, base);
 }
 
 fn print(msg cstr) {
-    out.write(msg);
+    try out.write(msg);
 }
 
 fn print(i int, base := 10) {
-    out.write(i, base);
+    try out.write(i, base);
 }
 
 fn print(b bool) {
-    out.write(b);
+    try out.write(b);
 }
 
 fn print(c char) {
-    out.write(c);
+    try out.write(c);
 }
 
 fn print(f float64) {
-    out.write(f);
+    try out.write(f);
 }
 
 fn print(f float32) {
-    out.write(f);
+    try out.write(f);
 }
 
 fn print(any Any) {
-    out.write(any);
+    try out.write(any);
 }
 
 fn print(fmt cstr, args Any...) {
-    out.write(fmt, args);
+    try out.write(fmt, args);
 }
 
 fn println(msg cstr) {
-    out.writeln(msg);
+    try out.writeln(msg);
 }
 
 fn println(i int64, base := 10) {
-    out.writeln(i, base);
+    try out.writeln(i, base);
 }
 
 fn println(i uint64, base := 10) {
-    out.writeln(i, base);
+    try out.writeln(i, base);
 }
 
 fn println(i int, base := 10) {
-    out.writeln(i);
+    try out.writeln(i);
 }
 
 fn println(b bool) {
-    out.writeln(b);
+    try out.writeln(b);
 }
 
 fn println(c char) {
-    out.writeln(c);
+    try out.writeln(c);
 }
 
 fn println(f float64) {
-    out.writeln(f);
+    try out.writeln(f);
 }
 
 fn println(f float32) {
-    out.writeln(f);
+    try out.writeln(f);
 }
 
 fn println() {
-    out.writeln();
+    try out.writeln();
 }
 
 fn println(any Any) {
-    out.writeln(any);
+    try out.writeln(any);
 }
 
 fn println(fmt cstr, args Any...) {
-    out.writeln(fmt, args);
+    try out.writeln(fmt, args);
 }
 
 // Functions for writing to std err.
 //----------------------------------------------
 
 fn eprint(i int64) {
-    err.write(i);
+    e := err.write(i);
 }
 
 fn eprint(i uint64) {
-    err.write(i);
+    e := err.write(i);
 }
 
 fn eprint(i int) {
-    err.write(i);
+    e := err.write(i);
 }
 
 fn eprint(msg cstr) {
-    err.write(msg);
+    e := err.write(msg);
 }
 
 fn eprint(b bool) {
-    err.write(b);
+    e := err.write(b);
 }
 
 fn eprint(c char) {
-    err.write(c);
+    e := err.write(c);
 }
 
 fn eprint(f float64) {
-    err.writeln(f);
+    e := err.writeln(f);
 }
 
 fn eprint(f float32) {
-    err.writeln(f);
+    e := err.writeln(f);
 }
 
 fn eprint(fmt cstr, args Any...) {
-    err.write(fmt, args);
+    e := err.write(fmt, args);
 }
 
 fn eprintln(msg cstr) {
-    err.writeln(msg);
+    e := err.writeln(msg);
 }
 
 fn eprintln(i int) {
-    err.writeln(i);
+    e := err.writeln(i);
 }
 
 fn eprintln(i int64) {
-    err.writeln(i);
+    e := err.writeln(i);
 }
 
 fn eprintln(i uint64) {
-    err.writeln(i);
+    e := err.writeln(i);
 }
 
 fn eprintln(b bool) {
-    err.writeln(b);
+    e := err.writeln(b);
 }
 
 fn eprintln(c char) {
-    err.writeln(c);
+    e := err.writeln(c);
 }
 
 fn eprintln(f float64) {
-    err.writeln(f);
+    e := err.writeln(f);
 }
 
 fn eprintln(f float32) {
-    err.writeln(f);
+    e := err.writeln(f);
 }
 
 fn eprintln(fmt cstr, args Any...) {
-    err.writeln(fmt, args);
+    e := err.writeln(fmt, args);
 }
 
 fn eprintln() {
-    err.writeln();
+    e := err.writeln();
 }
 
 // Reading from terminal
 //----------------------------------------------
 
 fn read_line() String {
-    return in.read_line();
+    line, e := in.read_line();
+    return line;
 }
 
 fn read_string() String {
-    return in.read_string();
+    s, e := in.read_string();
+    return s;
 }
 
 fn read_int() int raises ValueParseError {
-    return in.read_int();
+    v, e := in.read_int();
+    if e == ValueParseError {
+        raise ValueParseError{ cast(ValueParseError*) e };
+    }
+    return v;
 }
 
 fn read_int(base int) int raises ValueParseError {
-    return in.read_int32(base);
+    v, e := in.read_int32(base);
+    if e == ValueParseError {
+        raise ValueParseError{ cast(ValueParseError*) e };
+    }
+    return v;
 }
 
 fn read_bool() bool raises ValueParseError {
-    return in.read_bool();
+    v, e := in.read_bool();
+    if e == ValueParseError {
+        raise ValueParseError{ cast(ValueParseError*) e };
+    }
+    return v;
 }
 
 fn read_char() char raises ValueParseError {
-    return in.read_char();
+    v, e := in.read_char();
+    if e == ValueParseError {
+        raise ValueParseError{ cast(ValueParseError*) e };
+    }
+    return v;
 }

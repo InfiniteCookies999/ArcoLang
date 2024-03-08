@@ -390,7 +390,7 @@ String struct {
             digit int32 = cast(int32) to_digit_for_base(ch, base);
             if digit < 0 {
                 if is_printable_ascii(ch) {
-                    raise ValueParseError{ "%s character was not a digit", ch };
+                    raise ValueParseError{ "character '%s' was not a digit", ch };
                 } else {
                     raise ValueParseError{ "character was not a digit" };
                 }

@@ -24,6 +24,10 @@ IOError struct : Error {
         : message(*format(fmt, args).append_front("IOError: ")) {
     }
 
+    IOError(e IOError^)
+        : message(e.message) {
+    }
+
     fn get_message() cstr {
         return message.buffer;
     }
@@ -42,9 +46,19 @@ ValueParseError struct : Error {
     ValueParseError(fmt cstr, args Any...)
         : message(*format(fmt, args).append_front("ValueParseError: ")) {
     }
-    
+
+    ValueParseError(e ValueParseError^)
+        : message(e.message) {
+    }
+
     fn get_message() cstr {
         return message.buffer;
+    }
+}
+
+UnreachableError struct : Error {
+    fn get_message() cstr {
+        return "UnreachableError: unreachable code";
     }
 }
 

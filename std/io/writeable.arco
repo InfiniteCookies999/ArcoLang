@@ -11,7 +11,7 @@ Writeable interface {
      *
      * @return how many bytes were actually written.
      */
-    fn write_buffer(buffer cstr, length int) int;
+    fn write_buffer(buffer cstr, length int) int raises IOError;
 
     /*
      * If a stream flushes bytes it may provide the Writable

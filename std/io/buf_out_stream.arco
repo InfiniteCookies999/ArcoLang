@@ -31,7 +31,7 @@ BufferedOutStream struct : Writeable, Flushable {
         this.handle = handle;
     }
 
-    fn write_buffer(buffer cstr, length int) int {
+    fn write_buffer(buffer cstr, length int) int raises IOError {
         loop {
             if length == 0 {
                 // Nothing left to write.
@@ -57,7 +57,7 @@ BufferedOutStream struct : Writeable, Flushable {
         this.flushable = flushable;
     }
 
-    fn flush() {
+    fn flush() raises IOError {
         if pos != 0 {
             handle.write_buffer(buffer, pos);
         }
@@ -66,9 +66,9 @@ BufferedOutStream struct : Writeable, Flushable {
 
     ~BufferedOutStream() {
         if flushable {
-            flushable.flush();
+            _ := flushable.flush();
         }
-        flush();
+        _ := flush();
         delete buffer;
     }    
 }

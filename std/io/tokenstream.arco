@@ -32,7 +32,7 @@ TokenStream struct {
      * When at the end of the current buffer_length read the next bytes
      * into the buffer. Will try and read buffer_size but may read less.
      */
-    private fn fill() {
+    private fn fill() raises IOError {
         // TODO: should make sure the stream is still open.
         if pos >= buffer_length {
             buffer_length = handle.read_buffer(buffer, BUFFER_SIZE);
@@ -45,17 +45,18 @@ TokenStream struct {
                c == '\n' || c == '\r';
     }
 
-    private fn skip_delimiters() {
+    private fn skip_delimiters() raises IOError {
         loop {
             fill();
             if pos == buffer_length  break;  // Nothing more to read.
-            if !is_delim(buffer[pos++]) {
+            if !is_delim(buffer[pos]) {
                 break;
             }
+            ++pos;
         }
     }
 
-    fn next_token() String {
+    fn next_token() String raises IOError {
         
         skip_delimiters();
 
@@ -66,9 +67,10 @@ TokenStream struct {
         loop {
             fill();
             if pos == buffer_length  break;  // Nothing more to read.
-            if is_delim(buffer[pos++]) {
+            if is_delim(buffer[pos]) {
                 break;
             }
+            ++pos;
             if pos >= buffer_length {
                 // Copy over what we have read so far because the buffer is
                 // about to be overwritten.
@@ -84,7 +86,7 @@ TokenStream struct {
         return token;
     }
 
-    fn read_line() String {
+    fn read_line() String raises IOError {
         
         line := String{};
         offset := pos;
@@ -124,23 +126,23 @@ TokenStream struct {
         return line;
     }
 
-    fn read_string() String {
+    fn read_string() String raises IOError {
         return next_token();
     }
 
-    fn read_int() int raises ValueParseError {
+    fn read_int() int raises ValueParseError, IOError {
         return next_token().parse_int();
     }
 
-    fn read_int32(base int) int32 raises ValueParseError {
+    fn read_int32(base int) int32 raises ValueParseError, IOError {
         return next_token().parse_int32(base);
     }
 
-    fn read_bool() bool raises ValueParseError {
+    fn read_bool() bool raises ValueParseError, IOError {
         return next_token().parse_bool();
     }
 
-    fn read_char() char raises ValueParseError {
+    fn read_char() char raises ValueParseError, IOError {
         return next_token().parse_char();
     }
 }

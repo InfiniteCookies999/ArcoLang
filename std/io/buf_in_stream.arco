@@ -75,7 +75,7 @@ BufferedInStream struct : Readable{
      * Tries to read length bytes into a the pre-allocated buffer
      * and returns the amount of bytes read.
      */
-    fn read_buffer(buffer char*, length int) int {
+    fn read_buffer(buffer char*, length int) int raises IOError {
         available := buffer_length - pos;
         if available >= length {
             // TODO: ensure stream is still open?
