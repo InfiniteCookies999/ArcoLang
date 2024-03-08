@@ -2,12 +2,34 @@ import reflect.Any;
 import reflect.Type;
 import reflect.TypeId;
 
+private FmtOptions enum {
+    
+    NONE      :: 0x0000;
+    
+    HEX       :: 0x0001;
+    SHOW_SIGN :: 0x0002;
+    DECIMAL   :: 0x0004;
+
+}
+
 /**
  * An output stream for writing to files, sockets, or
  * any streamable handle that is writeable.
  *
  * This stream is useful in that it can write out any value
  * of any type within the language.
+ *
+ * Format options:
+ *
+ *   %s              -- simply print the argument normally.
+ *   %d or %D        -- prints a value as decimal if it can.
+ *   %x or %X        -- prints numeric values as hexidecimal.
+ *   %<pad count>s   -- prints the pad count of spaces before
+ *                      the value.
+ *   %-<pad count>s  -- prints the pad count of spaces after
+ *                      the value.
+ *   %+s             -- prints the positive sign of a value if
+ *                      the value is positive numeric.
  */
 OutStream struct : Writeable {
     
@@ -46,17 +68,22 @@ OutStream struct : Writeable {
         write_buffer(&c, 1);
     }
 
-    fn write(i int64, base := 10) raises IOError {
+    fn write(i int64, base := 10, show_sign := false) raises IOError {
         if i < 0 {
             i = -i;
-            write("-");
+            write('-');
+        } else if show_sign {
+            write('+');
         }
 
         write(cast(uint64) i, base);
     }
 
-    fn write(i uint64, base := 10) raises IOError {
+    fn write(i uint64, base := 10, show_sign := false) raises IOError {
         // TODO: validate the base.
+        if show_sign {
+            write('+');
+        }
 
         BUFFER_SIZE :: 21;
         buffer char[BUFFER_SIZE] = ---;
@@ -67,8 +94,8 @@ OutStream struct : Writeable {
         write_buffer(ptr, length);
     }
 
-    fn write(i int, base := 10) raises IOError {
-        write(cast(int64) i, base);
+    fn write(i int, base := 10, show_sign := false) raises IOError {
+        write(cast(int64) i, base, show_sign);
     }
 
     fn write(f float64) raises IOError {
@@ -86,10 +113,13 @@ OutStream struct : Writeable {
     }
 
     fn write(any Any) raises IOError {
-        write_any(any.value, any.type);
+        write_any(any.value, any.type, FmtOptions.NONE);
     }
 
-    private fn write_any(value void*, type const Type*) raises IOError {
+    private fn write_any(value void*, type const Type*, options FmtOptions) raises IOError {
+        base      := (options & FmtOptions.HEX)       != 0 ? 16 : 10;
+        show_sign := (options & FmtOptions.SHOW_SIGN) != 0;
+
         // TODO: replace with a switch statement once supported.
         if type.id == TypeId.CSTR {
             write(cast(cstr) value);
@@ -97,35 +127,47 @@ OutStream struct : Writeable {
         // Annoying but have to cast specitly to the right integer
         // size otherwise it won't be able to interpret the size right.
         else if type.id == TypeId.INT {
-            write(*cast(int*) value);
+            write(*cast(int*) value, base, show_sign);
         } else if type.id == TypeId.PTRSIZE {
-            write(*cast(ptrsize*) value);
+            write(*cast(ptrsize*) value, base, show_sign);
         } else if type.id == TypeId.UINT8 {
-            write(*cast(uint8*) value);
+            write(*cast(uint8*) value, base, show_sign);
         } else if type.id == TypeId.UINT16 {
-            write(*cast(uint16*) value);
+            write(*cast(uint16*) value, base, show_sign);
         } else if type.id == TypeId.UINT32 {
-            write(*cast(uint32*) value);
+            write(*cast(uint32*) value, base, show_sign);
         } else if type.id == TypeId.UINT64 {
-            write(*cast(uint64*) value);
+            write(*cast(uint64*) value, base, show_sign);
         } else if type.id == TypeId.INT8 {
-            write(*cast(int8*) value);
+            write(*cast(int8*) value, base, show_sign);
         } else if type.id == TypeId.INT16 {
-            write(*cast(int16*) value);
+            write(*cast(int16*) value, base, show_sign);
         } else if type.id == TypeId.INT32 {
-            write(*cast(int32*) value);
+            write(*cast(int32*) value, base, show_sign);
         } else if type.id == TypeId.INT64 {
-            write(*cast(int64*) value);
+            write(*cast(int64*) value, base, show_sign);
         } else if type.id == TypeId.CHAR {
-            write(*cast(char*) value);
+            c := *cast(char*) value;
+            if (options & FmtOptions.HEX)     != 0 ||
+               (options & FmtOptions.DECIMAL) != 0 {
+                write(cast(int64) c, base, show_sign);
+            } else {
+                write(c);
+            }
         } else if type.is_pointer() {
             // Using the to_string function because we have to buffer out of order.
             write(to_string(value));
         } else if type.id == TypeId.ARRAY {
             array_info := type.array_info;
-            write_array_like_type(value, array_info.element_type, array_info.length);
+            write_array_like_type(value, array_info.element_type, array_info.length, options);
         } else if type.id == TypeId.BOOL {
-            write(*cast(bool*) value);
+            b := *cast(bool*) value;
+            if (options & FmtOptions.HEX)     != 0 ||
+               (options & FmtOptions.DECIMAL) != 0 {
+                write(cast(uint64) b, base, show_sign);
+            } else {
+                write(b);
+            }
         } else if type.id == TypeId.EMPTY_ARRAY_ELM {
             write("[ ]");
         } else if type.id == TypeId.FLOAT32 {
@@ -138,7 +180,7 @@ OutStream struct : Writeable {
             // We have the address of the pointer need the pointer itself.
             array void* = *cast(void**) slice_arr_ptr;
             
-            write_array_like_type(array, type.element_type, slice_length);
+            write_array_like_type(array, type.element_type, slice_length, options);
         } else if type.id == TypeId.STRUCT {
             //if type.struct_info == typeof(String).struct_info {
             if type == typeof(String) {
@@ -166,7 +208,7 @@ OutStream struct : Writeable {
                     ptr_addr := cast(void**) field_value;
                     field_value = *ptr_addr;
                 }
-                write_any(field_value, field.type);
+                write_any(field_value, field.type, FmtOptions.NONE);
                 
                 if field.type.is_string() {
                     write("\"");
@@ -211,7 +253,8 @@ OutStream struct : Writeable {
         }
     }
     
-    private fn write_array_like_type(array void*, elm_type Type*, length int) raises IOError {
+    private fn write_array_like_type(array void*, elm_type Type*, length int, options FmtOptions)
+        raises IOError {
         write("[ ");
             
         elm_byte_size := elm_type.size_in_bytes;
@@ -227,7 +270,7 @@ OutStream struct : Writeable {
                 ptr_addr := cast(void**) offset_into_array;
                 offset_into_array = *ptr_addr;
             }
-            write_any(offset_into_array, elm_type);
+            write_any(offset_into_array, elm_type, options);
             if elm_type.is_string() {
                 write("\"");
             }
@@ -243,14 +286,80 @@ OutStream struct : Writeable {
     fn write(fmt cstr, args Any...) raises IOError {
         length  := strlen(fmt);
         arg_idx := 0;
-        loop i := 0; i < length; i++ {
+        loop i : 0 ..< length {
             c := fmt[i];
-            if c == '%' && arg_idx < args.length {
-                if i+1 < length && fmt[i+1] == 's' {
-                    any Any = args[arg_idx];
-                    write(args[arg_idx++]);
+            if c == '%' {
+                if i+1 == length  break;
+                ++i;
+                next := fmt[i];
+                if next == '%' {
+                    write('%');
                     ++i;
+                    continue;
                 }
+
+                if arg_idx == args.length {
+                    // Nothing more to print out of arguments.
+                    continue;
+                }
+                
+                options FmtOptions = FmtOptions.NONE;
+                neg_pad := false;
+
+                if next == '+' && i+1 < length && isdigit(fmt[i+1]) {
+                    // Just ignore the positive sign it is part of the
+                    // positive padding.
+                    next = fmt[++i];
+                } else if next == '-' && i+1 < length && isdigit(fmt[i+1]) {
+                    neg_pad = true;
+                    next = fmt[++i];
+                }
+
+                // padding.
+                pad := 0;
+                loop isdigit(next) {
+                    if i+1 == length {
+                        // TODO: print the garbage?
+                        break;
+                    }
+                    pad = pad * 10 + cast(int) (next - '0');
+                    next = fmt[++i];
+                }
+                if neg_pad  pad = -pad;
+
+                if next == '+' {
+                    options |= FmtOptions.SHOW_SIGN;
+                    ++i;
+                    if i == length {
+                        write('+');
+                        break;
+                    }
+                    next = fmt[i];
+                }
+
+                if pad > 0 {
+                    loop pad != 0 {
+                        write(' ');
+                        --pad;
+                    }
+                }
+
+                any Any = args[arg_idx++];
+                if next == 's' {
+                    write_any(any.value, any.type, options);
+                } else if next == 'x' || next == 'X' {
+                    write_any(any.value, any.type, options | FmtOptions.HEX);
+                } else if next == 'd' || next == 'D' {
+                    write_any(any.value, any.type, options | FmtOptions.DECIMAL);
+                }
+
+                if pad < 0 {
+                    loop pad != 0 {
+                        write(' ');
+                        ++pad;
+                    }
+                }
+                
             } else {
                 write(c);
             }

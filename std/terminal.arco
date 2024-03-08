@@ -54,6 +54,10 @@ fn print(any Any) {
     try out.write(any);
 }
 
+/*
+ * See OutStream for list of formatting
+ * options supported when printing. 
+ */
 fn print(fmt cstr, args Any...) {
     try out.write(fmt, args);
 }
@@ -98,6 +102,10 @@ fn println(any Any) {
     try out.writeln(any);
 }
 
+/*
+ * See OutStream for list of formatting
+ * options supported when printing. 
+ */
 fn println(fmt cstr, args Any...) {
     try out.writeln(fmt, args);
 }
@@ -137,6 +145,10 @@ fn eprint(f float32) {
     e := err.writeln(f);
 }
 
+/*
+ * See OutStream for list of formatting
+ * options supported when printing. 
+ */
 fn eprint(fmt cstr, args Any...) {
     e := err.write(fmt, args);
 }
@@ -173,6 +185,10 @@ fn eprintln(f float32) {
     e := err.writeln(f);
 }
 
+/*
+ * See OutStream for list of formatting
+ * options supported when printing. 
+ */
 fn eprintln(fmt cstr, args Any...) {
     e := err.writeln(fmt, args);
 }
