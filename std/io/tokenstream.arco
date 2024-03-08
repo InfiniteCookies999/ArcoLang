@@ -36,6 +36,7 @@ TokenStream struct {
         // TODO: should make sure the stream is still open.
         if pos >= buffer_length {
             buffer_length = handle.read_buffer(buffer, BUFFER_SIZE);
+            pos = 0;
         }
     }
 
