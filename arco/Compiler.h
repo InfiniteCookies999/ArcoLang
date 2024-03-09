@@ -57,11 +57,15 @@ namespace arco {
         // Turns off showing message "Wrote program to: <path>"
         bool NoWroteToDispaly        = false;
 
+        ArcoContext& Context;
+
         Compiler();
 
         ~Compiler();
 
         int Compile(llvm::SmallVector<Source>& Sources);
+
+        void PreInitContext();
     
         void AddLibrary(const char* LibName) { Libraries.push_back(LibName); }
         void AddLibraryPath(const char* LibPath) { LibrarySearchPaths.push_back(LibPath); }
@@ -75,7 +79,7 @@ namespace arco {
         }
 
     private:
-        ArcoContext& Context;
+        bool ContextInitialized = false;
         ulen TotalLinesParsed = 0;
 
         llvm::SmallVector<FileScope*> FileScopes;

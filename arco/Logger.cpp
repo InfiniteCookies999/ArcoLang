@@ -32,9 +32,25 @@ static std::string ReplaceTabsWithSpaces(const std::string& Tabs) {
 
 void arco::Logger::EndError() {
 
+    if (PrimaryErrLoc.Text.data() == FScope->Buffer.Memory + FScope->Buffer.length) {
+        PrimaryErrLoc.Text = llvm::StringRef(PrimaryErrLoc.Text.data() - 1, 1);
+    }
+    const char* LocData = PrimaryErrLoc.Text.data();
+    if (*LocData == '\n' || *LocData == '\r') {
+        ulen NewLineNumber = PrimaryErrLoc.LineNumber;
+        while (*LocData == '\n' || *LocData == '\r') {
+            // Yikes the location is a new line and the GenerateBetweenLines will just
+            // discard the line information entirely because of this.
+            --LocData;
+            --NewLineNumber;
+        }
+        PrimaryErrLoc.Text = llvm::StringRef(LocData, 1);
+        PrimaryErrLoc.LineNumber = NewLineNumber;
+    }
+    
     if (TotalAccumulatedErrors == TOTAL_ALLOWED_ERRORS) {
         SetTerminalColor(TerminalColorBrightBlue);
-        OS << ">>";
+        OS << "\n>>";
         SetTerminalColor(TerminalColorDefault);
         OS << " Exceeded the maximum allowed error messages. Exiting.\n";
         exit(1);
@@ -219,24 +235,32 @@ void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>
 
         OS << '\n';
 
-        // Displaying squiggly red underline 
-        //      | ~~~
-        auto FirstNonSpaceIt = Line.find_first_not_of(' ');
-        std::string NonTrailingWhitespaceStr = Line.substr(FirstNonSpaceIt);
-
+        
         OS << LNPad << "  | ";
         SetTerminalColor(TerminalColorRed);
         if (i == 0) {
             OS << Spaces;
         }
-        OS << std::string(Line.size() - NonTrailingWhitespaceStr.size(), ' ')
-           << std::string(NonTrailingWhitespaceStr.size(), '~');
-
+        
+        // Displaying squiggly red underline 
+        //      | ~~~
+        
+        auto FirstNonSpaceIt = Line.find_first_not_of(' ');
+        if (FirstNonSpaceIt != std::string::npos) {
+            std::string NonTrailingWhitespaceStr = Line.substr(FirstNonSpaceIt);
+            OS << std::string(Line.size() - NonTrailingWhitespaceStr.size(), ' ')
+                << std::string(NonTrailingWhitespaceStr.size(), '~');
+        } else {
+            // Well all we have to work with must be a space.
+            OS << std::string(Line.size() - 1, ' ') << "~";
+        }
+        
         if (i + 1 != Lines.size()) {
             OS << '\n';
         }
         SetTerminalColor(ColorCode);
     }
+
     SetTerminalColor(TerminalColorDefault);
 }
 

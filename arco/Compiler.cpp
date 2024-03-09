@@ -52,6 +52,12 @@ arco::Compiler::~Compiler() {
     delete &Context;
 }
 
+void arco::Compiler::PreInitContext() {
+    Context.Initialize();
+    FD::InitializeCache();
+    ContextInitialized = true;
+}
+
 int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     
     i64 ParseTimeBegin = GetTimeInMilliseconds();
@@ -73,8 +79,11 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
         }
     }
 
-    Context.Initialize();
-    FD::InitializeCache();
+    if (!ContextInitialized) {
+        Context.Initialize();
+        FD::InitializeCache();
+        ContextInitialized = true;
+    }
 
     Context.EmitDebugInfo = EmitDebugInfo;
     Context.StandAlone    = StandAlone;

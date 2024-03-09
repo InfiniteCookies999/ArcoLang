@@ -142,37 +142,39 @@ void arco::Parser::Parse() {
 
         if (Stmt->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(Stmt);
-            if (Func->Name == Context.MainIdentifier) {
-                llvm::SmallVector<VarDecl*, 2>& Params = Func->Params;
-                ulen NumParams = Func->Params.size();
-                if (!Func->IsVariadic &&
-                    (NumParams == 0 ||
-                     (NumParams == 2 && Params[0]->Ty->Equals(Context.IntType) && Params[1]->Ty->Equals(Context.CharPtrPtrType))
-                    )) {
-                    if (!Context.MainEntryFunc) {
-                        if (!Func->RaisedErrors.empty()) {
-                            Error(Func->Loc, "main function cannot raise errors");
+            if (!Func->Name.IsNull()) {
+                if (Func->Name == Context.MainIdentifier) {
+                    llvm::SmallVector<VarDecl*, 2>& Params = Func->Params;
+                    ulen NumParams = Func->Params.size();
+                    if (!Func->IsVariadic &&
+                        (NumParams == 0 ||
+                            (NumParams == 2 && Params[0]->Ty->Equals(Context.IntType) && Params[1]->Ty->Equals(Context.CharPtrPtrType))
+                            )) {
+                        if (!Context.MainEntryFunc) {
+                            if (!Func->RaisedErrors.empty()) {
+                                Error(Func->Loc, "main function cannot raise errors");
+                            }
+                            Context.MainEntryFunc = Func;
+                        } else {
+                            // Duplicate entry function.
+                            Error(Func->Loc,
+                                "Duplicate entry point found. First declared at: %s:%s",
+                                Context.MainEntryFunc->FScope->Path,
+                                Context.MainEntryFunc->Loc.LineNumber);
                         }
-                        Context.MainEntryFunc = Func;
-                    } else {
-                        // Duplicate entry function.
-                        Error(Func->Loc,
-                            "Duplicate entry point found. First declared at: %s:%s",
-                            Context.MainEntryFunc->FScope->Path,
-                            Context.MainEntryFunc->Loc.LineNumber);
                     }
                 }
-            }
 
-            if (Func->Mods & ModKinds::PRIVATE) {
-                FuncsList* List = FScope->FindFuncsList(Func->Name);
-                if (List) {
-                    List->push_back(Func);
+                if (Func->Mods & ModKinds::PRIVATE) {
+                    FuncsList* List = FScope->FindFuncsList(Func->Name);
+                    if (List) {
+                        List->push_back(Func);
+                    } else {
+                        FScope->PrivateFuncs.push_back({ Func });
+                    }
                 } else {
-                    FScope->PrivateFuncs.push_back({ Func });
+                    NSpace->Funcs[Func->Name].push_back(Func);
                 }
-            } else {
-                NSpace->Funcs[Func->Name].push_back(Func);
             }
         } else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL) || Stmt->Is(AstKind::INTERFACE_DECL)) {
             Decl* Dec = static_cast<Decl*>(Stmt);

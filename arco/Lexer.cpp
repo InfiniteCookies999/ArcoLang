@@ -133,14 +133,18 @@ restartLex:
         } else if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::GT_EQ, TokStart);
         else return CreateToken('>', TokStart);
 
-    case '\0':
+    case '\0': {
+        // Move the cursor back one in case NextToken() is called again so that
+        // the lexer can continue to return EOF as to the parser.
+        --CurPtr;
         return CreateToken(TokenKind::TK_EOF, TokStart);
+    }
     default: {
         unsigned char UnknownChar = *TokStart;
         if (UnknownChar >= 33 && UnknownChar <= 126) // Easily displayable ASCII character.
-            Error(TokStart, "Unknown character: '%s'", *TokStart);
+            Error(TokStart, "Invalid character: '%s'", *TokStart);
         else
-            Error(TokStart, "Unknown character: '%s'", static_cast<u32>(UnknownChar));
+            Error(TokStart, "Invalid character (as decimal): '%s'", static_cast<u32>(UnknownChar));
         goto restartLex;
     }
     }
