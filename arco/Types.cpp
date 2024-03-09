@@ -88,6 +88,12 @@ bool arco::Type::IsPointer() const {
            Kind == TypeKind::Null    || Kind == TypeKind::Function;
 }
 
+bool arco::Type::IsQualifiedPointer() const {
+    TypeKind Kind = GetKind();
+    return Kind == TypeKind::Pointer || Kind == TypeKind::CStr ||
+           Kind == TypeKind::Function;
+}
+
 arco::ContainerType* arco::Type::AsContainerType() {
     assert((GetKind() == TypeKind::Pointer || GetKind() == TypeKind::Array || GetKind() == TypeKind::Slice) && "Not a container type");
     return static_cast<ContainerType*>(Unbox());
@@ -231,6 +237,10 @@ ulen arco::Type::GetSizeInBytes(llvm::Module& LLModule) const {
         return 8;
     case TypeKind::Int:
     case TypeKind::Ptrsize:
+    case TypeKind::Pointer:
+    case TypeKind::Null:
+    case TypeKind::Function:
+    case TypeKind::CStr:
         return LLModule.getDataLayout().getPointerSize();
     default:
         assert(!"unreachable!");

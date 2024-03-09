@@ -110,11 +110,13 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     }
 
     ParseAllFiles(Sources);
+    if (Stage == PARSE_ONLY) {
+        return 1;
+    }
 
     i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
     i64 SemCheckIn = 0, IRGenIn = 0;
     CheckAndGenIR(SemCheckIn, IRGenIn);
-
 
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
@@ -153,6 +155,10 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     AbsoluteObjPath = AbsOutputDirectory + ObjFileName;
 
     GenCode(AbsoluteObjPath);
+
+    if (Stage == PARSE_SEMCHECK_COMPILE_ONLY) {
+        return 1;
+    }
 
     i64 EmiteMachineCodeIn = GetTimeInMilliseconds() - EmiteMachineCodeTimeBegin;
     i64 LinkTimeBegin = GetTimeInMilliseconds();
@@ -294,7 +300,6 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         Context.RequestGen(Context.MainEntryFunc);
     } else {
         Logger::GlobalError(llvm::errs(), "Could not find entry point function");
-        return;
     }
     SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
 
@@ -321,7 +326,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
     
         IRGenBegin = GetTimeInMilliseconds();
-        if (FoundCompileError) {
+        if (FoundCompileError || Stage == PARSE_SEMCHECK_ONLY) {
             continue;
         }
 
@@ -335,20 +340,20 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     }
 
     IRGenBegin = GetTimeInMilliseconds();
-    if (FoundCompileError) {
-        return;
+    
+    if (!FoundCompileError && Stage != PARSE_SEMCHECK_ONLY) {
+        IRGenerator IRGen(Context);
+        IRGen.GenGlobalInitFuncBody();
+
+        while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
+            StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
+            Context.DefaultConstrucorsNeedingCreated.pop();
+            IRGen.GenImplicitDefaultConstructorBody(Struct);
+        }
+
+        IRGen.GenGlobalDestroyFuncBody();
     }
-
-    IRGenerator IRGen(Context);
-    IRGen.GenGlobalInitFuncBody();
-
-    while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
-        StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
-        Context.DefaultConstrucorsNeedingCreated.pop();
-        IRGen.GenImplicitDefaultConstructorBody(Struct);
-    }
-
-    IRGen.GenGlobalDestroyFuncBody();
+    
     IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
     SemCheckBegin = GetTimeInMilliseconds();
@@ -374,8 +379,12 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     }
     SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
 
+    if (FoundCompileError) {
+        return;
+    }
+
     IRGenBegin = GetTimeInMilliseconds();
-    if (EmitDebugInfo) {
+    if (EmitDebugInfo && Stage != PARSE_SEMCHECK_ONLY) {
 #ifdef _WIN32
         Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 #endif

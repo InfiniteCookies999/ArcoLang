@@ -95,6 +95,7 @@ namespace arco {
         bool IsSigned() const;
         bool IsSystemInt() const;
         bool IsPointer() const;
+        bool IsQualifiedPointer() const;
 
         ContainerType* AsContainerType();
         PointerType* AsPointerTy();

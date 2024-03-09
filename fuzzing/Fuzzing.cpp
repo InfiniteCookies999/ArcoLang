@@ -6,6 +6,7 @@
 #include <fstream>
 
 #include "FuzzUtils.h"
+#include "Level3ParserFuzzing.h"
 
 void GenLevel0LexFuzz() {
 
@@ -69,9 +70,6 @@ void GenLevel1LexFuzz() {
 }
 
 void GenLevel2ParseFuzz(arco::ArcoContext& Context) {
-
-    int NumberOfTokens = 5000;
-    std::ofstream FileStream("fuzz_gen.arco");
 
     llvm::SmallVector<u16> ValidTokenKinds;
     ValidTokenKinds.push_back('!');
@@ -146,40 +144,15 @@ void GenLevel2ParseFuzz(arco::ArcoContext& Context) {
 
 #undef ADD_TOKEN
 
+    int NumberOfTokens = 5000;
+    std::ofstream FileStream("fuzz_gen.arco");
+
+    llvm::SmallVector<u16> TokenKinds;
     for (int i = 0; i < NumberOfTokens; i++) {
         u16 Kind = ValidTokenKinds[rand() % ValidTokenKinds.size()];
-        
-        std::string AsString;
-        if (Kind == arco::TokenKind::STRING_LITERAL) {
-            AsString = GenRandomIdentLiteral();
-        } else if (Kind == arco::TokenKind::INT_LITERAL) {
-            AsString = GenRandomIntLiteral(10);
-        } else if (Kind == arco::TokenKind::HEX_LITERAL) {
-            AsString = GenRandomIntLiteral(16);
-        } else if (Kind == arco::TokenKind::BIN_LITERAL) {
-            AsString = GenRandomIntLiteral(2);
-        } else if (Kind == arco::TokenKind::CHAR_LITERAL) {
-            AsString = GenRandomCharLiteral();
-        } else if (Kind == arco::TokenKind::STRING_LITERAL) {
-            AsString = GenRandomStringLiteral();
-        } else if (Kind == arco::TokenKind::FLOAT32_LITERAL ||
-                   Kind == arco::TokenKind::FLOAT64_LITERAL ||
-                   Kind == arco::TokenKind::ERROR_FLOAT_LITERAL
-            ) {
-            AsString = GenRandomFloatLiteral();
-        } else {
-            AsString = arco::Token::TokenKindToString(Kind, Context);   
-        }
-        for (char c : AsString) {
-            FileStream << c;
-        }
-
-        if (i % 10 == 0) {
-            FileStream << "\n";
-        } else {
-            FileStream << " ";
-        }
+        TokenKinds.push_back(Kind);
     }
+    WriteTokensToFile(TokenKinds, FileStream, Context);
 
 }
 
@@ -189,8 +162,9 @@ int main() {
    
     arco::Compiler Compiler;
     Compiler.PreInitContext();
+    Compiler.Stage = arco::Compiler::Stages::PARSE_SEMCHECK_COMPILE_ONLY;
     
-    GenLevel2ParseFuzz(Compiler.Context);
+    GenLevel3ParseFuzz(Compiler.Context);
 
     llvm::SmallVector<arco::Source> Sources;
     Sources.push_back(arco::Source{ true, "default.program.module", "fuzz_gen.arco" });

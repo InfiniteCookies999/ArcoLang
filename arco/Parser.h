@@ -153,7 +153,7 @@ namespace arco {
         T FoldInt(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
         template<typename T>
         T FoldFloat(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
-        Expr* FoldNumbers(Token OpTok, NumberLiteral* Number1, NumberLiteral* Number2);
+        Expr* FoldNumbers(Token OpTok, NumberLiteral* LHS, NumberLiteral* RHS, NumberLiteral* Result);
         Expr* NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS);
 
         //===-------------------------------===//

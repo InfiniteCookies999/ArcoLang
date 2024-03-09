@@ -303,7 +303,9 @@ arco::Token arco::Lexer::NextString() {
             // want to check for unicode so the parser can
             // preallocate the correct type of string and then
             // simply parse the characters of the given unicode.
-            if (*(++CurPtr) == '"')
+
+            ++CurPtr;
+            if (*CurPtr == '"' || *CurPtr == '\\')
                 ++CurPtr;
             break;
         default:
@@ -329,6 +331,7 @@ arco::Token arco::Lexer::NextChar() {
         // TODO: Add support for unicode characters
         ++CurPtr;
         switch (*CurPtr) {
+        // Invalid characters after backslash
         case '\t': case '\r':
         case '\n': case '\v':
         case '\f': case '\0':
@@ -339,6 +342,7 @@ arco::Token arco::Lexer::NextChar() {
         }
     } else {
         switch (*CurPtr) {
+        // Don't consume invalid characters.
         case '\t': case '\r':
         case '\n': case '\v':
         case '\f': case '\0':

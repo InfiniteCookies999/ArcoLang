@@ -4,8 +4,10 @@
 #include <assert.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <Tokens.h>
+
 std::string GenRandomIdentLiteral() {
-    int Length = rand() % 100;
+    int Length = (rand() % 30) + 1;
     std::string Ident;
     for (int i = 0; i < Length; i++) {
         int CharIdx = rand() % 27;
@@ -63,7 +65,7 @@ std::string GenRandomCharChar() {
     int Index = 32 + (rand() % (94 + 12));
     if (Index - 32 <= 11) {
         switch (Index - 32) {
-        case 0:  return "\\";
+        case 0:  return "\\\\";
         case 1:  return "\\n"; 
         case 2:  return "\\t"; 
         case 3:  return "\\0"; 
@@ -84,6 +86,8 @@ std::string GenRandomCharChar() {
             return "\\'";
         } else if (c == '\\') {
             return "\\\\";
+        } else if (c == '"') {
+            return "\\\"";
         }
         return std::string(1, c);
     }
@@ -127,4 +131,42 @@ std::string GenRandomFloatLiteral() {
     }
 
     return Result;
+}
+
+void WriteTokensToFile(const llvm::SmallVector<u16>& Tokens, std::ofstream& FileStream, arco::ArcoContext& Context) {
+    int Count = 0;
+    for (u16 Kind : Tokens) {
+        
+        std::string AsString;
+        if (Kind == arco::TokenKind::IDENT) {
+            AsString = GenRandomIdentLiteral();
+        } else if (Kind == arco::TokenKind::INT_LITERAL) {
+            AsString = GenRandomIntLiteral(10);
+        } else if (Kind == arco::TokenKind::HEX_LITERAL) {
+            AsString = GenRandomIntLiteral(16);
+        } else if (Kind == arco::TokenKind::BIN_LITERAL) {
+            AsString = GenRandomIntLiteral(2);
+        } else if (Kind == arco::TokenKind::CHAR_LITERAL) {
+            AsString = GenRandomCharLiteral();
+        } else if (Kind == arco::TokenKind::STRING_LITERAL) {
+            AsString = GenRandomStringLiteral();
+        } else if (Kind == arco::TokenKind::FLOAT32_LITERAL ||
+            Kind == arco::TokenKind::FLOAT64_LITERAL ||
+            Kind == arco::TokenKind::ERROR_FLOAT_LITERAL
+            ) {
+            AsString = GenRandomFloatLiteral();
+        } else {
+            AsString = arco::Token::TokenKindToString(Kind, Context);
+        }
+        for (char c : AsString) {
+            FileStream << c;
+        }
+
+        ++Count;
+        if (Count % 10 == 0) {
+            FileStream << "\n";
+        } else {
+            FileStream << " ";
+        }
+    }
 }

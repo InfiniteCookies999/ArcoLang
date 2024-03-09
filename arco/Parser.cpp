@@ -1570,7 +1570,7 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
         Expr* E;
     };
     std::stack<StackUnit> OpStack;
-    llvm::SmallVector<NumberLiteral, 32> FoldNumbers;
+    //llvm::SmallVector<NumberLiteral, 32> FoldNumbers;
 
     Token Op = CTok, NextOp;
     llvm::DenseMap<u16, u32>::iterator OpItr;
@@ -1579,37 +1579,46 @@ arco::Expr* arco::Parser::ParseBinaryExpr(Expr* LHS) {
 
         NextToken(); // Consuming the operator
 
-        Expr* RHS;
+        // If an attempt is made to avoid node allocation again more careful
+        // consideration of the lifetime of the nodes will need to be had.
+        // Although considering at some point a linear allocator will just be
+        // used for all the nodes it will likely be totally irrelevent to even
+        // attempt the optimization so this code can likely stay as is.
+        // 
+        //
+        /*Expr* RHS;
         if (LHS->Is(AstKind::NUMBER_LITERAL)) {
             // Checking to see if we can perform numeric folding.
+            // TODO: Performance with not having to copy memory.
             NumberLiteral FoldNumber;
             if (CTok.Is(TokenKind::INT_LITERAL)) {
                 ParseIntLiteral(&FoldNumber);
                 FoldNumber.TempFold = true;
                 FoldNumbers.push_back(FoldNumber);
-                RHS = &FoldNumber;
+                RHS = &FoldNumbers.back();
             } else if (CTok.Is(TokenKind::HEX_LITERAL)) {
                 ParseHexLiteral(&FoldNumber);
                 FoldNumber.TempFold = true;
                 FoldNumbers.push_back(FoldNumber);
-                RHS = &FoldNumber;
+                RHS = &FoldNumbers.back();
             } else if (CTok.Is(TokenKind::FLOAT32_LITERAL) ||
                        CTok.Is(TokenKind::FLOAT64_LITERAL)) {
                 ParseFloatLiteral(&FoldNumber);
                 FoldNumber.TempFold = true;
                 FoldNumbers.push_back(FoldNumber);
-                RHS = &FoldNumber;
+                RHS = &FoldNumbers.back();
             } else if (CTok.Is(TokenKind::BIN_LITERAL)) {
                 ParseBinLiteral(&FoldNumber);
                 FoldNumber.TempFold = true;
                 FoldNumbers.push_back(FoldNumber);
-                RHS = &FoldNumber;
+                RHS = &FoldNumbers.back();
             } else {
                 RHS = ParsePrimaryAndPostfixUnaryExpr();
             }
         } else {
             RHS = ParsePrimaryAndPostfixUnaryExpr();
-        }
+        }*/
+        Expr* RHS = ParsePrimaryAndPostfixUnaryExpr();
         NextOp = CTok;
 
 
@@ -1759,6 +1768,9 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
                     break;
                 case TypeKind::Float64:
                     Num->Float64Value = -Num->Float64Value;
+                    break;
+                case TypeKind::Char:
+                    Num->SignedIntValue = -Num->SignedIntValue;
                     break;
                 default:
                     assert(!"Failed to implement!");
@@ -2239,6 +2251,7 @@ arco::StringLiteral* arco::Parser::ParseStringLiteral() {
 
     StringLiteral* String = NewNode<StringLiteral>(CTok);
     String->Ty = Context.CStrType;
+    String->IsFoldable = false; // It has a memory address globally so it cannot be foldable.
     
     llvm::StringRef Text = CTok.GetText();
     ulen Index = 1;
@@ -2577,7 +2590,7 @@ T arco::Parser::FoldFloat(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies) {
     }
 }
 
-arco::Expr* arco::Parser::FoldNumbers(Token OpTok, NumberLiteral* Number1, NumberLiteral* Number2) {
+arco::Expr* arco::Parser::FoldNumbers(Token OpTok, NumberLiteral* LHS, NumberLiteral* RHS, NumberLiteral* Result) {
     // TODO: Could probably optimize this with adding bitsets to the kind information
     //       of the type kinds.
 
@@ -2585,22 +2598,22 @@ arco::Expr* arco::Parser::FoldNumbers(Token OpTok, NumberLiteral* Number1, Numbe
 
 #define APPLY_OP(V, FoldFunc) \
 bool OpApplies;               \
-Number1->V = FoldFunc(OpTok,  \
-    Number1->V,               \
-    Number2->V,               \
+Result->V = FoldFunc(OpTok,  \
+    LHS->V,                   \
+    RHS->V,                   \
     OpApplies);
     
 
 #define FOLD(V, FoldFunc) {  \
     APPLY_OP(V, FoldFunc)    \
 if (OpApplies)               \
-    return Number1; }
+    return Result; }
 
-    Type* Ty1 = Number1->Ty, * Ty2 = Number2->Ty;
-    switch (Ty1->GetKind()) {
+    Type* OrgLHSTy = LHS->Ty, * OrgRHSTy = RHS->Ty;
+    switch (OrgLHSTy->GetKind()) {
     case TypeKind::Float32:
-        if (Ty2->GetKind() == TypeKind::Float64) {
-            Number1->Ty = Context.Float64Type;
+        if (OrgRHSTy->GetKind() == TypeKind::Float64) {
+            LHS->Ty = Context.Float64Type;
             FOLD(Float64Value, FoldFloat);
         } else {
             // Promote everything else to float32
@@ -2621,49 +2634,50 @@ if (OpApplies)               \
     case TypeKind::Int64:
     case TypeKind::UInt64:
     case TypeKind::Char:
-        if (Ty2->GetKind() == TypeKind::Float64) {
-            Number1->Ty = Context.Float64Type;
+        if (OrgRHSTy->GetKind() == TypeKind::Float64) {
+            LHS->Ty = Context.Float64Type;
             FOLD(Float64Value, FoldFloat);
-        } else if (Ty2->GetKind() == TypeKind::Float32) {
-            Number1->Ty = Context.Float32Type;
+        } else if (OrgRHSTy->GetKind() == TypeKind::Float32) {
+            LHS->Ty = Context.Float32Type;
             FOLD(Float32Value, FoldFloat);
         } else {
             bool Error = false;
             Type* UseType;
-            if (Ty1->GetKind() == TypeKind::Int) {
-                UseType = Ty2;
-            } else if (Ty2->GetKind() == TypeKind::Int) {
-                UseType = Ty1;
+            if (OrgLHSTy->GetKind() == TypeKind::Int) {
+                UseType = OrgRHSTy;
+            } else if (OrgRHSTy->GetKind() == TypeKind::Int) {
+                UseType = OrgLHSTy;
             } else {
-                if (Ty1->IsSigned() != Ty2->IsSigned()) {
+                if (OrgLHSTy->IsSigned() != OrgRHSTy->IsSigned()) {
                     // Not allowing this. Signed unsigned mismatch will be considered
                     // an error unless they are using the system integer type.
                     Error = true;
-                } else if (Ty1->GetKind() == TypeKind::Ptrsize) {
-                    UseType = Ty2;
-                } else if (Ty2->GetKind() == TypeKind::Ptrsize) {
-                    UseType = Ty1;
+                } else if (OrgLHSTy->GetKind() == TypeKind::Ptrsize) {
+                    UseType = OrgRHSTy;
+                } else if (OrgRHSTy->GetKind() == TypeKind::Ptrsize) {
+                    UseType = OrgLHSTy;
                 } else {
-                    ulen Size1 = Ty1->GetTrivialTypeSizeInBytes();
-                    ulen Size2 = Ty2->GetTrivialTypeSizeInBytes();
+                    ulen Size1 = OrgLHSTy->GetTrivialTypeSizeInBytes();
+                    ulen Size2 = OrgRHSTy->GetTrivialTypeSizeInBytes();
                     ulen UseSize = Size1 > Size2 ? Size1 : Size2;
-                    UseType = Type::GetIntTypeBasedOnByteSize(UseSize, Ty1->IsSigned(), Context);
+                    UseType = Type::GetIntTypeBasedOnByteSize(UseSize, OrgLHSTy->IsSigned(), Context);
                 }
             }
             if (!Error) {
-                Number1->Ty = UseType;
+                LHS->Ty = UseType;
                 switch (UseType->GetKind()) {
                 case TypeKind::Int: {
                     APPLY_OP(SignedIntValue, FoldInt);
                     // Promote the type to a larger size if it did not fit into 32 bits.
-                    if (Number1->SignedIntValue > std::numeric_limits<i32>::max()) {
-                        Number1->Ty = Context.Int64Type;
+                    if (LHS->SignedIntValue > std::numeric_limits<i32>::max()) {
+                        LHS->Ty = Context.Int64Type;
                     }
                     if (OpApplies)
-                        return Number1;
+                        return LHS;
                     break;
                 }
                 case TypeKind::Int8:
+                case TypeKind::Char:
                     FOLD(SignedInt8Value, FoldInt);
                     break;
                 case TypeKind::UInt8:
@@ -2703,8 +2717,18 @@ if (OpApplies)               \
 
     BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
     BinOp->Op = OpTok.Kind;
-    BinOp->LHS = Number1;
-    BinOp->RHS = Number2;
+    if (LHS->TempFold) {
+        BinOp->LHS = NewNode<NumberLiteral>(LHS->Loc);
+    } else {
+        BinOp->LHS = LHS;
+    }
+    BinOp->LHS->Ty = OrgLHSTy; // Assign original type info so it reports correctly in semantic analysis.
+    if (RHS->TempFold) {
+        BinOp->RHS = NewNode<NumberLiteral>(RHS->Loc);
+    } else {
+        BinOp->RHS = RHS;
+    }
+    BinOp->RHS->Ty = OrgRHSTy; // Assign original type info so it reports correctly in semantic analysis.
     return BinOp;
 
 #undef FOLD
@@ -2718,9 +2742,9 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
         NumberLiteral* RHSNumber = static_cast<NumberLiteral*>(RHS);
 
         if (!LHSNumber->TempFold) {
-            return FoldNumbers(OpTok, LHSNumber, RHSNumber);
+            return FoldNumbers(OpTok, LHSNumber, RHSNumber, LHSNumber);
         } if (!RHSNumber->TempFold) {
-            return FoldNumbers(OpTok, RHSNumber, LHSNumber);
+            return FoldNumbers(OpTok, LHSNumber, RHSNumber, RHSNumber);
         } else {
             // Neither has memory that can be used, well going to create some then!
             // TODO: Is this actually needed? Can we not just rely on the stack based
@@ -2729,8 +2753,32 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
             // TODO: memcpying here seems really messy.
             memcpy(ResultNode, LHSNumber, sizeof(NumberLiteral));
             ResultNode->TempFold = false;
-            return FoldNumbers(OpTok, LHSNumber, RHSNumber);
+            return FoldNumbers(OpTok, LHSNumber, RHSNumber, ResultNode);
         }
+    } else if (LHS->Is(AstKind::NUMBER_LITERAL)) {
+        BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
+        BinOp->Op = OpTok.Kind;
+        NumberLiteral* LHSNumber = static_cast<NumberLiteral*>(LHS);
+        if (LHSNumber->TempFold) {
+            BinOp->LHS = NewNode<NumberLiteral>(LHS->Loc);
+            BinOp->LHS->Ty = LHS->Ty;
+        } else {
+            BinOp->LHS = LHS;
+        }
+        BinOp->RHS = RHS;
+        return BinOp;
+    } else if (RHS->Is(AstKind::NUMBER_LITERAL)) {
+        BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
+        BinOp->Op = OpTok.Kind;
+        BinOp->LHS = LHS;
+        NumberLiteral* RHSNumber = static_cast<NumberLiteral*>(LHS);
+        if (RHSNumber->TempFold) {
+            BinOp->RHS = NewNode<NumberLiteral>(RHS->Loc);
+            BinOp->RHS->Ty = RHS->Ty;
+        } else {
+            BinOp->RHS = RHS;
+        }
+        return BinOp;
     } else {
         BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
         BinOp->Op = OpTok.Kind;

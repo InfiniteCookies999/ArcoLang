@@ -69,6 +69,9 @@ bool arco::FuncUsesParamRetSlot(ArcoContext& Context, StructType* StructTy) {
 }
 
 ulen arco::SizeOfTypeInBytes(llvm::Module& LLModule, llvm::Type* LLType) {
+    if (!LLType->isSized()) {
+        return 0;
+    }
     const llvm::DataLayout& LLDataLayout = LLModule.getDataLayout();
     llvm::TypeSize LLTypeSize = LLDataLayout.getTypeAllocSize(LLType);
     return LLTypeSize.getFixedSize();

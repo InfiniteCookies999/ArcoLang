@@ -3573,6 +3573,7 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
     if (!IsCastableTo(Cast->Ty, Cast->Value->Ty)) {
         Error(Cast, "Cannot cast from type '%s' to type '%s'",
             Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+        YIELD_ERROR(Cast);
     }
 }
 
@@ -3584,19 +3585,22 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
 
     CheckNode(Cast->Value);
     YIELD_ERROR_WHEN(Cast, Cast->Value);
-    Cast->IsFoldable = Cast->Value->IsFoldable;
+    //Cast->IsFoldable = Cast->Value->IsFoldable;
+    Cast->IsFoldable = false;
     Cast->HasConstAddress = Cast->Value->HasConstAddress;
 
     Type* ValueTy = Cast->Value->Ty;
-    if (!( (Cast->Ty->IsNumber() || Cast->Ty->IsPointer()) &&
-           (ValueTy->IsNumber()  || ValueTy->IsPointer() )
+    if (!( (Cast->Ty->IsNumber() || Cast->Ty->IsQualifiedPointer()) &&
+           (ValueTy->IsNumber()  || ValueTy->IsQualifiedPointer() )
          )
         ) {
         Error(Cast, "Cannot bitcast from type '%s' to type '%s'",
             Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+        YIELD_ERROR(Cast);
     } else {
         if (Cast->Ty->GetSizeInBytes(Context.LLArcoModule) != ValueTy->GetSizeInBytes(Context.LLArcoModule)) {
             Error(Cast, "Cannot bitcast types of different sizes");
+            YIELD_ERROR(Cast);
         }
     }
 }
@@ -3793,7 +3797,12 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
 }
 
 void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
-    FixupType(SOf->TypeToGetSizeOf);
+    if (!FixupType(SOf->TypeToGetSizeOf)) {
+        YIELD_ERROR(SOf);
+    }
+    
+    // TODO: Does this need to check for incompleteness of enum and interface types as well?
+    // what about arrays?
     if (SOf->TypeToGetSizeOf->GetKind() == TypeKind::Struct) {
         StructType* StructTy = SOf->TypeToGetSizeOf->AsStructType();
         if (StructTy->GetStruct()->IsBeingChecked) {
@@ -4281,7 +4290,7 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
     case TypeKind::Int:
     case TypeKind::Ptrsize:
     case TypeKind::Char:
-        if (FromTy->IsNumber() || FromTy->IsPointer() || FromTy->GetKind() == TypeKind::Bool) {
+        if (FromTy->IsNumber() || FromTy->IsQualifiedPointer() || FromTy->GetKind() == TypeKind::Bool) {
             // Allow pointers/numbers/bools to cast to integers.
             return true;
         }
@@ -4291,13 +4300,14 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
         return FromTy->IsNumber();
     case TypeKind::Pointer:
     case TypeKind::CStr:
-        if (FromTy->IsNumber() || FromTy->IsPointer()) {
+        if (FromTy->IsNumber() || FromTy->IsQualifiedPointer()) {
             // Allow numbers/pointers to cast to pointers.
             return true;
         }
         return IsAssignableTo(ToTy, FromTy, nullptr);
     case TypeKind::Struct:
         // Prevent any craziness that might come with casting to Any
+        return false;
         return false;
     default:
         return IsAssignableTo(ToTy, FromTy, nullptr);

@@ -56,6 +56,14 @@ namespace arco {
         bool ShowLinkCommand         = false;
         // Turns off showing message "Wrote program to: <path>"
         bool NoWroteToDispaly        = false;
+        bool HasEntryPoint           = true;
+
+        enum Stages {
+            PARSE_SEMCHECK_COMPILE_AND_LINK,
+            PARSE_SEMCHECK_COMPILE_ONLY,
+            PARSE_SEMCHECK_ONLY,
+            PARSE_ONLY
+        } Stage = Stages::PARSE_SEMCHECK_COMPILE_AND_LINK;
 
         ArcoContext& Context;
 
