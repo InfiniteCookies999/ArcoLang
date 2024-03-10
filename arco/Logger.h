@@ -60,8 +60,8 @@ namespace arco {
             NoteLines.push_back(NoteLinePrinter);
         }
 
-        inline void AddMarkMessage(SourceLoc Loc, std::string OptMessage = "") {
-            MarkMessages.push_back(MarkMessage{ OptMessage, Loc });
+        inline void AddMarkMessage(FileScope* FScope, SourceLoc Loc, std::string OptMessage = "") {
+            MarkMessages.push_back(MarkMessage{ OptMessage, FScope, Loc });
         }
 
         void EndError();
@@ -80,6 +80,7 @@ namespace arco {
 
         struct MarkMessage {
             std::string              Message;
+            FileScope*               FScope;
             SourceLoc                Loc;
             std::vector<std::string> BetweenLines;
         };
@@ -90,9 +91,9 @@ namespace arco {
         void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod);
 
         std::vector<std::string> GenerateBetweenLines(llvm::StringRef Text);
-        void DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode);
+        void DisplayErrorLoc(FileScope* FScope, SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode);
 
-        std::string RangeFromWindow(const char* Loc, i64 Direction);
+        std::string RangeFromWindow(SourceBuf  Buffer, const char* Loc, i64 Direction);
 
         static void GlobalError(llvm::raw_ostream& OS, const std::function<void()>& Printer);
 

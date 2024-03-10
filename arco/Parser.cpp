@@ -100,7 +100,7 @@ void arco::Parser::Parse() {
                 NSpace = Itr->second;
             }
         }
-    
+
         FScope->UniqueNSpace = NSpace;
         Match(';');
     }
@@ -164,7 +164,7 @@ void arco::Parser::Parse() {
                         }
                     }
                 }
-
+                
                 if (Func->Mods & ModKinds::PRIVATE) {
                     FuncsList* List = FScope->FindFuncsList(Func->Name);
                     if (List) {
@@ -301,6 +301,7 @@ void arco::Parser::ParseOptStmt(AstNode*& Stmt, u16 TokenEndDelim) {
 
 arco::AstNode* arco::Parser::ParseStmt() {
     AstNode* Stmt;
+    llvm::SmallVector<GenericType*> GenTys;
     switch (CTok.Kind) {
     case TokenKind::KW_RETURN: Stmt = ParseReturn(); Match(';');      break;
     case TokenKind::KW_IF:     Stmt = ParseIf();                      break;
@@ -309,6 +310,11 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
     case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
     case TokenKind::KW_RAISE:  Stmt = ParseRaise(); Match(';');       break;
+    case TokenKind::KW_GENERICS: {
+        // TODO: likely copying?
+        GenTys = ParseGenerics();
+        [[fallthrough]];
+    }
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:
     case TokenKind::KW_READONLY:
@@ -317,7 +323,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
         // TODO: constructors!
         Modifiers Mods = ParseModifiers();
         if (CTok.Is(TokenKind::KW_FN)) {
-            return ParseFuncDecl(Mods);
+            return ParseFuncDecl(Mods, std::move(GenTys));
         } else if (CTok.Is(TokenKind::IDENT)) {
             Token PeekTok = PeekToken(1);
             if (PeekTok.Is(',')) {
@@ -341,10 +347,10 @@ arco::AstNode* arco::Parser::ParseStmt() {
         break;
     }
     case TokenKind::KW_FN:
-        return ParseFuncDecl(0);
+        return ParseFuncDecl(0, {});
     case TokenKind::IDENT: {
         if (CStruct && Identifier(CTok.GetText()) == CStruct->Name) {
-            Stmt = ParseFuncDecl(0);
+            Stmt = ParseFuncDecl(0, {});
             break;
         }
 
@@ -381,7 +387,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
         if (PeekTok.Is(TokenKind::IDENT)) {
             if (CStruct && Identifier(PeekTok.GetText()) == CStruct->Name) {
                 // Destructor.
-                Stmt = ParseFuncDecl(0);
+                Stmt = ParseFuncDecl(0, {});
                 break;
             }
         }
@@ -401,11 +407,17 @@ arco::AstNode* arco::Parser::ParseStmt() {
     return Stmt;
 }
 
-arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
+arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys) {
     
     ulen NumErrs = TotalAccumulatedErrors;
 
     FuncDecl* Func = NewNode<FuncDecl>(CTok);
+    if (!GenTys.empty()) {
+        // TODO: Use of call to new
+        Func->GenData = new GenericData;
+        Func->GenData->GenTys = GenTys;
+    }
+
     if (CTok.Is(TokenKind::KW_FN)) {
         NextToken(); // Consuming 'fn' keyword.
         Func->Loc = CTok.Loc;
@@ -465,6 +477,22 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods) {
 
     PUSH_SCOPE();
     ParseFuncSignature(Func);
+
+    // Making sure that all the generic types actually are being declared in parameters
+    // to prevent using a generic type without binding.
+    if (Func->IsGeneric()) {
+        for (GenericType* GenTy : Func->GenData->GenTys) {
+            auto Itr = std::find_if(Func->Params.begin(), Func->Params.end(),
+                [GenTy](VarDecl* Param) {
+                    return Param->Ty == GenTy;
+                });
+            if (Itr == Func->Params.end()) {
+                Error(Func->Loc,
+                      "Generic by name '%s' declared but never used to declared a parameter's type",
+                      GenTy->GetName());
+            }
+        }
+    }
 
     if (!(Func->Mods & ModKinds::NATIVE)) {
         ParseScopeStmts(Func->Scope);
@@ -1485,25 +1513,43 @@ arco::Type* arco::Parser::ParseFunctionType() {
 arco::Type* arco::Parser::ParseBasicType() {
     arco::Type* Ty = nullptr;
     switch (CTok.Kind) {
-    case TokenKind::KW_INT:    Ty = Context.IntType;     NextToken(); break;
-    case TokenKind::KW_PTRSIZE:   Ty = Context.PtrsizeType;    NextToken(); break;
-    case TokenKind::KW_INT8:   Ty = Context.Int8Type;    NextToken(); break;
-    case TokenKind::KW_INT16:  Ty = Context.Int16Type;   NextToken(); break;
-    case TokenKind::KW_INT32:  Ty = Context.Int32Type;   NextToken(); break;
-    case TokenKind::KW_INT64:  Ty = Context.Int64Type;   NextToken(); break;
-    case TokenKind::KW_UINT8:  Ty = Context.UInt8Type;   NextToken(); break;
-    case TokenKind::KW_UINT16: Ty = Context.UInt16Type;  NextToken(); break;
-    case TokenKind::KW_UINT32: Ty = Context.UInt32Type;  NextToken(); break;
-    case TokenKind::KW_UINT64: Ty = Context.UInt64Type;  NextToken(); break;
-    case TokenKind::KW_FLOAT32:    Ty = Context.Float32Type; NextToken(); break;
-    case TokenKind::KW_FLOAT64:    Ty = Context.Float64Type; NextToken(); break;
-    case TokenKind::KW_CHAR:   Ty = Context.CharType;    NextToken(); break;
-    case TokenKind::KW_VOID:   Ty = Context.VoidType;    NextToken(); break;
-    case TokenKind::KW_CSTR:   Ty = Context.CStrType;    NextToken(); break;
-    case TokenKind::KW_BOOL:   Ty = Context.BoolType;    NextToken(); break;
+    case TokenKind::KW_INT:      Ty = Context.IntType;     NextToken(); break;
+    case TokenKind::KW_PTRSIZE:  Ty = Context.PtrsizeType; NextToken(); break;
+    case TokenKind::KW_INT8:     Ty = Context.Int8Type;    NextToken(); break;
+    case TokenKind::KW_INT16:    Ty = Context.Int16Type;   NextToken(); break;
+    case TokenKind::KW_INT32:    Ty = Context.Int32Type;   NextToken(); break;
+    case TokenKind::KW_INT64:    Ty = Context.Int64Type;   NextToken(); break;
+    case TokenKind::KW_UINT8:    Ty = Context.UInt8Type;   NextToken(); break;
+    case TokenKind::KW_UINT16:   Ty = Context.UInt16Type;  NextToken(); break;
+    case TokenKind::KW_UINT32:   Ty = Context.UInt32Type;  NextToken(); break;
+    case TokenKind::KW_UINT64:   Ty = Context.UInt64Type;  NextToken(); break;
+    case TokenKind::KW_FLOAT32:  Ty = Context.Float32Type; NextToken(); break;
+    case TokenKind::KW_FLOAT64:  Ty = Context.Float64Type; NextToken(); break;
+    case TokenKind::KW_CHAR:     Ty = Context.CharType;    NextToken(); break;
+    case TokenKind::KW_VOID:     Ty = Context.VoidType;    NextToken(); break;
+    case TokenKind::KW_CSTR:     Ty = Context.CStrType;    NextToken(); break;
+    case TokenKind::KW_BOOL:     Ty = Context.BoolType;    NextToken(); break;
     case TokenKind::IDENT: {
         
-        Ty = StructType::Create(Identifier(CTok.GetText()), CTok.Loc, Context);
+        bool IsGeneric = false;
+        Identifier Name = Identifier(CTok.GetText());
+        if (CFunc && CFunc->IsGeneric()) {
+            // It possibly refers to a generic type.
+            auto* GenData = CFunc->GenData;
+            auto Itr = std::find_if(GenData->GenTys.begin(), GenData->GenTys.end(),
+                [&Name](const GenericType* GenTy) {
+                    return GenTy->GetName() == Name;
+                });
+            if (Itr != GenData->GenTys.end()) {
+                Ty = *Itr;
+                IsGeneric = true;
+            }
+        }
+
+        if (!IsGeneric) {
+            Ty = StructType::Create(Name, CTok.Loc, Context);
+        }
+        
         NextToken();
         break;
     }
@@ -1513,6 +1559,39 @@ arco::Type* arco::Parser::ParseBasicType() {
         break;
     }
     return Ty;
+}
+
+llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
+    NextToken(); // Consuming 'generics' token.
+
+    // TODO: Should probably pass the error information on over to the declaration
+    // that uses the generic types so that they may also be considered a parse error.
+
+    llvm::SmallVector<GenericType*> Generics;
+    Match('<');
+    bool MoreGenerics = false;
+    do {
+        Token NameTok = CTok;
+        Identifier Name = ParseIdentifier("Expected identifier for generic type");
+        auto Itr = std::find_if(Generics.begin(), Generics.end(),
+            [&Name](const GenericType* GenTy) {
+                return GenTy->GetName() == Name;
+            });
+        if (Itr != Generics.end()) {
+            Error(NameTok, "Duplicate generic by name '%s'", Name);
+        } else if (!Name.IsNull()) {
+            GenericType* GenTy = GenericType::Create(Name, Context);
+            Generics.push_back(GenTy);
+        }
+
+        MoreGenerics = CTok.Is(',');
+        if (MoreGenerics) {
+            NextToken();
+        }
+    } while (MoreGenerics);
+
+    Match('>');
+    return Generics;
 }
 
 //===-------------------------------===//
@@ -2251,7 +2330,6 @@ arco::StringLiteral* arco::Parser::ParseStringLiteral() {
 
     StringLiteral* String = NewNode<StringLiteral>(CTok);
     String->Ty = Context.CStrType;
-    String->IsFoldable = false; // It has a memory address globally so it cannot be foldable.
     
     llvm::StringRef Text = CTok.GetText();
     ulen Index = 1;
@@ -2755,7 +2833,7 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
             ResultNode->TempFold = false;
             return FoldNumbers(OpTok, LHSNumber, RHSNumber, ResultNode);
         }
-    } else if (LHS->Is(AstKind::NUMBER_LITERAL)) {
+    }/* else if (LHS->Is(AstKind::NUMBER_LITERAL)) {
         BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
         BinOp->Op = OpTok.Kind;
         NumberLiteral* LHSNumber = static_cast<NumberLiteral*>(LHS);
@@ -2779,7 +2857,7 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
             BinOp->RHS = RHS;
         }
         return BinOp;
-    } else {
+    }*/ else {
         BinaryOp* BinOp = NewNode<BinaryOp>(OpTok);
         BinOp->Op = OpTok.Kind;
         BinOp->LHS = LHS;

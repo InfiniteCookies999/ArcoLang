@@ -316,12 +316,12 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
 
     while (!Context.QueuedDeclsToGen.empty()) {
         SemCheckBegin = GetTimeInMilliseconds();
-        Decl* D = Context.QueuedDeclsToGen.front();
+        auto DToGen = Context.QueuedDeclsToGen.front();
         Context.QueuedDeclsToGen.pop();
 
-        SemAnalyzer Analyzer(Context, D);
-        if (D->Is(AstKind::FUNC_DECL)) {
-            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
+        SemAnalyzer Analyzer(Context, DToGen.D);
+        if (DToGen.D->Is(AstKind::FUNC_DECL)) {
+            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(DToGen.D), DToGen.Binding);
         }
         SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
     
@@ -331,10 +331,10 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         }
 
         IRGenerator IRGen(Context);	
-        if (D->Is(AstKind::FUNC_DECL)) {
-            IRGen.GenFunc(static_cast<FuncDecl*>(D));
-        } else if (D->Is(AstKind::VAR_DECL)) {
-            IRGen.GenGlobalVar(static_cast<VarDecl*>(D));
+        if (DToGen.D->Is(AstKind::FUNC_DECL)) {
+            IRGen.GenFunc(static_cast<FuncDecl*>(DToGen.D), DToGen.Binding);
+        } else if (DToGen.D->Is(AstKind::VAR_DECL)) {
+            IRGen.GenGlobalVar(static_cast<VarDecl*>(DToGen.D));
         }
         IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
     }
@@ -362,7 +362,12 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         Decl* D = *Context.UncheckedDecls.begin();
         SemAnalyzer Analyzer(Context, D);
         if (D->Is(AstKind::FUNC_DECL)) {
-            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(D));
+            FuncDecl* Func = static_cast<FuncDecl*>(D);
+            if (!Func->IsGeneric()) {
+                Analyzer.CheckFuncDecl(Func, nullptr);
+            } else {
+                Context.UncheckedDecls.erase(Func);
+            }
         } else if (D->Is(AstKind::VAR_DECL)) {
             Analyzer.CheckVarDecl(static_cast<VarDecl*>(D));
         } else if (D->Is(AstKind::STRUCT_DECL)) {

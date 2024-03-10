@@ -66,6 +66,7 @@ namespace arco {
         KW_RAISES,
         KW_CAST,
         KW_BITCAST,
+        KW_GENERICS,
         KW_LOOP,
         KW_BREAK,
         KW_CONTINUE,

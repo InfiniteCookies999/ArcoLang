@@ -78,6 +78,15 @@ void BuildType(TokList Tokens, bool AllowImplicitArrayType) {
         Tokens.push_back('*');
         Tokens.push_back(']');
     }
+
+    if (IsArray) {
+        int ArrayDepth = (rand() % 3) + 1;
+        for (int i = 0; i < ArrayDepth; i++) {
+            Tokens.push_back('[');
+            BuildExpr(Tokens);
+            Tokens.push_back(']');
+        }
+    }
 }
 
 void BuildVarDecl(TokList Tokens, bool AllowModifiers) {
@@ -325,6 +334,12 @@ void BuildStructDecl(TokList Tokens) {
     Tokens.push_back('}');
 }
 
+void BuildPredicateLoop(TokList Tokens) {
+    Tokens.push_back(TokenKind::KW_LOOP);
+    BuildExpr(Tokens);
+    BuildScopeStmtOrStmts(Tokens);
+}
+
 void BuildStmt(TokList Tokens) {
     using arco::AstKind;
     static llvm::SmallVector<AstKind> StartNodes = {
@@ -363,6 +378,9 @@ void BuildStmt(TokList Tokens) {
         BuildVarDecl(Tokens, true);
         Tokens.push_back(';');
         break;
+    case AstKind::PREDICATE_LOOP:
+        BuildPredicateLoop(Tokens);
+        break;
     }
 }
 
@@ -375,7 +393,7 @@ void BuildScopeStmts(TokList Tokens, int NumNodes) {
 }
 
 void BuildRootNodes(TokList Tokens) {
-    int NumRootNodes = 35;
+    int NumRootNodes = 100;
     int NumImports = 10;
 
     for (int i = 0; i < NumImports; i++) {

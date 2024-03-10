@@ -20,7 +20,7 @@ namespace arco {
         static void CheckForDuplicateFuncDeclarations(Module* Mod);
         static void CheckForDuplicateFuncDeclarations(Namespace* NSpace);
 
-        void CheckFuncDecl(FuncDecl* Func);
+        void CheckFuncDecl(FuncDecl* Func, GenericBind* Binding);
         
         void CheckStructDecl(StructDecl* Struct);
         void CheckEnumDecl(EnumDecl* Enum);
@@ -103,6 +103,8 @@ namespace arco {
                                        llvm::SmallVector<NonNamedValue>& Args,
                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                        bool& VarArgsPassAlong,
+                                       GenericBind*& Binding,
+                                       Type*& RetTy,
                                        bool CapturesErrors);
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
@@ -128,7 +130,7 @@ namespace arco {
         void DisplayErrorForSingleFuncForFuncCall(
             const char* CallType,
             SourceLoc Loc,
-            const llvm::SmallVector<TypeInfo>& ParamTypes,
+            llvm::SmallVector<TypeInfo>& ParamTypes,
             const llvm::SmallVector<NonNamedValue>& Args,
             const llvm::SmallVector<NamedValue>& NamedArgs,
             ulen NumDefaultArgs = 0,
@@ -136,7 +138,7 @@ namespace arco {
         );
         std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
         std::string GetCallMismatchInfo(const char* CallType,
-                                        const llvm::SmallVector<TypeInfo>& ParamTypes,
+                                        llvm::SmallVector<TypeInfo>& ParamTypes,
                                         const llvm::SmallVector<NonNamedValue>& Args,
                                         const llvm::SmallVector<NamedValue>& NamedArgs,
                                         ulen NumDefaultArgs,
@@ -197,14 +199,25 @@ namespace arco {
 
         static llvm::SmallVector<TypeInfo> ParamsToTypeInfo(FuncDecl* Func);
 
+        void AddGenericErrorInfo() {
+            if (CFunc && CFunc->IsGeneric()) {
+                Log.AddMarkMessage(
+                    CFunc->CurBinding->OriginalFile,
+                    CFunc->CurBinding->OriginalLoc,
+                    "Original call location");
+            }
+        }
+
         void Error(SourceLoc Loc, const char* Msg) {
             Log.BeginError(Loc, Msg);
+            AddGenericErrorInfo();
             Log.EndError();
         }
 
         template<typename... TArgs>
         void Error(SourceLoc Loc, const char* Fmt, TArgs&&... Args) {
             Log.BeginError(Loc, Fmt, std::forward<TArgs>(Args)...);
+            AddGenericErrorInfo();
             Log.EndError();
         }
 

@@ -55,6 +55,7 @@ namespace arco {
         Enum,
         Interface,
         Function,
+        Generic,
 
         Null,
         Error,
@@ -105,6 +106,7 @@ namespace arco {
         FunctionType* AsFunctionType();
         
         Type* Unbox();
+        Type* UnboxGeneric();
 
         const ContainerType* AsContainerType() const;
         const PointerType* AsPointerTy() const;
@@ -125,7 +127,7 @@ namespace arco {
         static Type* GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoContext& Context);
         static Type* GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Context);
 
-        std::string ToString() const;
+        std::string ToString(bool ShowFullGenericTy = false) const;
 
         inline void SetUniqueId(u32 Id) {
             UniqueId = Id;
@@ -272,8 +274,41 @@ namespace arco {
 
     private:
         FunctionType()
-            :Type(TypeKind::Function) {}
+            : Type(TypeKind::Function) {}
 
+    };
+
+    class GenericType : public Type {
+    public:
+
+        static GenericType* Create(Identifier Name, ArcoContext& Context);
+
+        void BindType(Type* Ty) {
+            BoundTy = Ty->UnboxGeneric();
+        }
+
+        void UnbindType() {
+            BoundTy = nullptr;
+        }
+
+        Type* GetBoundTy() {
+            return BoundTy;
+        }
+
+        const Type* GetBoundTy() const {
+            return BoundTy;
+        }
+
+        const Identifier& GetName() const {
+            return Name;
+        }
+
+    private:
+        Identifier Name;
+        Type* BoundTy = nullptr;
+
+        GenericType()
+            : Type(TypeKind::Generic) {}
     };
 
 

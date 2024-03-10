@@ -94,14 +94,19 @@ void arco::Logger::EndError() {
         }
         ExtErrMsgAbovePrimaryLocAligned = nullptr;	
     }
-    DisplayErrorLoc(PrimaryErrLoc, PrimaryBetweenLines, TerminalColorDefault);
+    DisplayErrorLoc(FScope, PrimaryErrLoc, PrimaryBetweenLines, TerminalColorDefault);
 
     for (auto MarkMessage : MarkMessages) {
+        
+        SetTerminalColor(TerminalColorCyan);
+
+        // TODO: full paths vs. non full paths
+        OS << "\n" << LNPad << "  >> " << MarkMessage.FScope->Path;
         if (MarkMessage.Message != "") {
-            SetTerminalColor(TerminalColorCyan);
-            OS << "\n" << LNPad << "  >> " << MarkMessage.Message;
+            OS << "\n" << LNPad << "     " << MarkMessage.Message;
         }
-        DisplayErrorLoc(MarkMessage.Loc, MarkMessage.BetweenLines, TerminalColorCyan);
+
+        DisplayErrorLoc(MarkMessage.FScope, MarkMessage.Loc, MarkMessage.BetweenLines, TerminalColorCyan);
     }
     MarkMessages.clear();
     OS << "\n";
@@ -200,10 +205,10 @@ std::vector<std::string> arco::Logger::GenerateBetweenLines(llvm::StringRef Text
     return BetweenLines;
 }
 
-void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode) {
+void arco::Logger::DisplayErrorLoc(FileScope* FScope, SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode) {
 
-    std::string Backwards = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.begin(), -40));
-    std::string Forwards  = ReplaceTabsWithSpaces(RangeFromWindow(Loc.Text.end() - 1, +40));
+    std::string Backwards = ReplaceTabsWithSpaces(RangeFromWindow(FScope->Buffer, Loc.Text.begin(), -40));
+    std::string Forwards  = ReplaceTabsWithSpaces(RangeFromWindow(FScope->Buffer, Loc.Text.end() - 1, +40));
 
     assert(Backwards.find('\n', 0) == std::string::npos && "New Line in display!");
     assert(Forwards.find('\n', 0) == std::string::npos && "New Line in display!");
@@ -264,7 +269,7 @@ void arco::Logger::DisplayErrorLoc(SourceLoc Loc, const std::vector<std::string>
     SetTerminalColor(TerminalColorDefault);
 }
 
-std::string arco::Logger::RangeFromWindow(const char* Loc, i64 Direction) {
+std::string arco::Logger::RangeFromWindow(SourceBuf Buffer, const char* Loc, i64 Direction) {
     const char* MemPtr = Loc; // Pointering to character start.
 
     const char* EndOfBuffer = Buffer.Memory + Buffer.length - 1;

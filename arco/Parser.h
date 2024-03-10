@@ -85,7 +85,7 @@ namespace arco {
 
         void ParseOptStmt(AstNode*& Stmt, u16 TokenEndDelim);
         AstNode* ParseStmt();
-        FuncDecl* ParseFuncDecl(Modifiers Mods);
+        FuncDecl* ParseFuncDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys);
         void ParseFuncSignature(FuncDecl* Func);
         VarDecl* ParseVarDecl(Modifiers Mods);
         VarDeclList* ParseVarDeclList(Modifiers Mods);
@@ -113,6 +113,7 @@ namespace arco {
         Type* ParseType(bool AllowImplicitArrayType);
         Type* ParseFunctionType();
         Type* ParseBasicType();
+        llvm::SmallVector<GenericType*> ParseGenerics();
 
         //===-------------------------------===//
         // Expressions

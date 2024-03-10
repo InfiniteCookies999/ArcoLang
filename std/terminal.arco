@@ -11,10 +11,6 @@ err := OutStream{ &err_file_handle };
 
 in  := TokenStream{ &in_file_handle };
 
-
-// TODO: Functions are redundent because there is no support for
-//       templating yet!
-
 // Functions for writing to std out.
 //----------------------------------------------
 
@@ -26,33 +22,20 @@ fn print(i uint64, base := 10) {
     try out.write(i, base);
 }
 
-fn print(msg cstr) {
-    try out.write(msg);
-}
-
 fn print(i int, base := 10) {
     try out.write(i, base);
 }
 
-fn print(b bool) {
-    try out.write(b);
+generics<T>
+fn print(value T) {
+    try out.write(value);
 }
 
-fn print(c char) {
-    try out.write(c);
-}
-
-fn print(f float64) {
-    try out.write(f);
-}
-
-fn print(f float32) {
-    try out.write(f);
-}
-
-fn print(any Any) {
-    try out.write(any);
-}
+// TODO:   Cannot do this yet until we have generic constraints.
+//
+//fn print(any Any) {
+//    try out.write(any);
+//}
 
 /*
  * See OutStream for list of formatting
@@ -78,29 +61,16 @@ fn println(i int, base := 10) {
     try out.writeln(i);
 }
 
-fn println(b bool) {
-    try out.writeln(b);
+generics<T>
+fn println(value T) {
+    try out.writeln(value);
 }
 
-fn println(c char) {
-    try out.writeln(c);
-}
-
-fn println(f float64) {
-    try out.writeln(f);
-}
-
-fn println(f float32) {
-    try out.writeln(f);
-}
-
-fn println() {
-    try out.writeln();
-}
-
-fn println(any Any) {
-    try out.writeln(any);
-}
+//  TODO: See comment above!
+//
+//fn println(any Any) {
+//    try out.writeln(any);
+//}
 
 /*
  * See OutStream for list of formatting
@@ -113,36 +83,9 @@ fn println(fmt cstr, args Any...) {
 // Functions for writing to std err.
 //----------------------------------------------
 
-fn eprint(i int64) {
-    e := err.write(i);
-}
-
-fn eprint(i uint64) {
-    e := err.write(i);
-}
-
-fn eprint(i int) {
-    e := err.write(i);
-}
-
-fn eprint(msg cstr) {
-    e := err.write(msg);
-}
-
-fn eprint(b bool) {
-    e := err.write(b);
-}
-
-fn eprint(c char) {
-    e := err.write(c);
-}
-
-fn eprint(f float64) {
-    e := err.writeln(f);
-}
-
-fn eprint(f float32) {
-    e := err.writeln(f);
+generics<T>
+fn eprint(value T) {
+    _ := err.write(value);
 }
 
 /*
@@ -150,39 +93,12 @@ fn eprint(f float32) {
  * options supported when printing. 
  */
 fn eprint(fmt cstr, args Any...) {
-    e := err.write(fmt, args);
+    _ := err.write(fmt, args);
 }
 
-fn eprintln(msg cstr) {
-    e := err.writeln(msg);
-}
-
-fn eprintln(i int) {
-    e := err.writeln(i);
-}
-
-fn eprintln(i int64) {
-    e := err.writeln(i);
-}
-
-fn eprintln(i uint64) {
-    e := err.writeln(i);
-}
-
-fn eprintln(b bool) {
-    e := err.writeln(b);
-}
-
-fn eprintln(c char) {
-    e := err.writeln(c);
-}
-
-fn eprintln(f float64) {
-    e := err.writeln(f);
-}
-
-fn eprintln(f float32) {
-    e := err.writeln(f);
+generics<T>
+fn eprintln(value T) {
+    _ := err.writeln(value);
 }
 
 /*
@@ -190,11 +106,11 @@ fn eprintln(f float32) {
  * options supported when printing. 
  */
 fn eprintln(fmt cstr, args Any...) {
-    e := err.writeln(fmt, args);
+    _ := err.writeln(fmt, args);
 }
 
 fn eprintln() {
-    e := err.writeln();
+    _ := err.writeln();
 }
 
 // Reading from terminal

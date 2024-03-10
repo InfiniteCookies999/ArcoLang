@@ -171,6 +171,7 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "raises"   , TokenKind::KW_RAISES    });
     TokenKeywordMap.insert({ "cast"     , TokenKind::KW_CAST      });
     TokenKeywordMap.insert({ "bitcast"  , TokenKind::KW_BITCAST   });
+    TokenKeywordMap.insert({ "generics" , TokenKind::KW_GENERICS  });
     TokenKeywordMap.insert({ "loop"     , TokenKind::KW_LOOP      });
     TokenKeywordMap.insert({ "break"    , TokenKind::KW_BREAK     });
     TokenKeywordMap.insert({ "continue" , TokenKind::KW_CONTINUE  });
@@ -222,10 +223,10 @@ arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {
     return TokenKind::INVALID;
 }
 
-void arco::ArcoContext::RequestGen(Decl* D) {
+void arco::ArcoContext::RequestGen(Decl* D, GenericBind* Binding) {
     if (D->GenRequestedAlready) return;
     D->GenRequestedAlready = true;
-    QueuedDeclsToGen.push(D);
+    QueuedDeclsToGen.push({ Binding, D });
 }
 
 constexpr bool arco::OrderGlobalsComparitor::operator()(const VarDecl* Global1, const VarDecl* Global2) const {

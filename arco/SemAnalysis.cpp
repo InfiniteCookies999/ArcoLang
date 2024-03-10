@@ -4,6 +4,7 @@
 #include "IRGen.h"
 #include "SpellChecking.h"
 #include "TermColors.h"
+#include "TypeBinding.h"
 
 #include <sstream>
 
@@ -303,14 +304,18 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
     }
 }
 
-void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
+void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func, GenericBind* Binding) {
     if (Func->HasBeenChecked) return;
     Func->HasBeenChecked = true;
     Context.UncheckedDecls.erase(Func);
     if (Func->ParsingError) return;
     
     // -- DEBUG
-    // llvm::outs() << "Checking function: " << Func->Name << "\n";
+    // llvm::outs() << "Checking function: " << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "") << Func->Name << "\n";
+
+    if (Func->IsGeneric()) {
+        BindTypes(Func, Binding);
+    }
 
     CheckFuncParams(Func);
 
@@ -467,6 +472,9 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
             }
         }
 
+        if (Func->IsGeneric()) {
+            UnbindTypes(Func);
+        }
         return;
     }
 
@@ -474,6 +482,10 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
     CheckScopeStmts(Func->Scope, FuncScope);
     if (!FuncScope.AllPathsReturn && !Func->RetTy->Equals(Context.VoidType)) {
         Error(Func, "Not all function paths return");
+    }
+
+    if (Func->IsGeneric()) {
+        UnbindTypes(Func);
     }
 }
 
@@ -536,17 +548,17 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 
     if (Struct->Destructor) {
         SemAnalyzer A(Context, Struct->Destructor);
-        A.CheckFuncDecl(Struct->Destructor);
+        A.CheckFuncDecl(Struct->Destructor, nullptr);
         Context.RequestGen(Struct->Destructor);
     }
     if (Struct->CopyConstructor) {
         SemAnalyzer A(Context, Struct->CopyConstructor);
-        A.CheckFuncDecl(Struct->CopyConstructor);
+        A.CheckFuncDecl(Struct->CopyConstructor, nullptr);
         Context.RequestGen(Struct->CopyConstructor);
     }
     if (Struct->MoveConstructor) {
         SemAnalyzer A(Context, Struct->MoveConstructor);
-        A.CheckFuncDecl(Struct->MoveConstructor);
+        A.CheckFuncDecl(Struct->MoveConstructor, nullptr);
         Context.RequestGen(Struct->MoveConstructor);
     }
 
@@ -587,13 +599,27 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
     CStruct = Func->Struct;
     FScope  = Func->FScope;
 
-    if (!FixupType(Func->RetTy)) {
+    bool FixupRet = true;
+    if (Func->RetTy->GetRealKind() == TypeKind::Generic) {
+        GenericType* GenTy = static_cast<GenericType*>(Func->RetTy);
+        FixupRet = GenTy->GetBoundTy() != nullptr;
+    }
+
+    if (FixupRet && !FixupType(Func->RetTy)) {
         Func->RetTy = Context.ErrorType;
     }
 
     llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
     bool ParamsHaveAssignment = false, ParamAssignmentNotLast = false;
     for (VarDecl* Param : Params) {
+        if (Param->Ty->GetRealKind() == TypeKind::Generic) {
+            GenericType* GenTy = static_cast<GenericType*>(Param->Ty);
+            if (!GenTy->GetBoundTy()) {
+                // We do not want to check the parameter yet because the type has
+                // not been bound!
+                continue;
+            }
+        }
         CheckVarDecl(Param);
         if (Param->Ty == Context.ErrorType) {
             // TODO: Hacky so that it stops showing errors later on.
@@ -2795,6 +2821,8 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
     IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
     FuncsList* Canidates = IRef->Funcs;
 
+    GenericBind* Binding;
+    Type* RetTy;
     bool VarArgsPassAlong = false;
     Call->CalledFunc = CheckCallToCanidates(IRef->Ident,
                                             Call->Loc,
@@ -2802,6 +2830,8 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
                                             Call->Args,
                                             Call->NamedArgs,
                                             VarArgsPassAlong,
+                                            Binding,
+                                            RetTy,
                                             CapturesErrors);
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
@@ -2814,9 +2844,10 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
     }
 
     Call->VarArgsPassAlong = VarArgsPassAlong;
+    Call->Binding = Binding;
 
     Call->IsFoldable = false;
-    Call->Ty = Call->CalledFunc->RetTy;
+    Call->Ty = RetTy;
     Call->HasConstAddress = Call->CalledFunc->ReturnsConstAddress;
 
 }
@@ -2827,12 +2858,21 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                                                         llvm::SmallVector<NonNamedValue>& Args,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong,
+                                                        GenericBind*& Binding,
+                                                        Type*& RetTy,
                                                         bool CapturesErrors) {
     FuncDecl* Selected = FindBestFuncCallCanidate(FuncName, Canidates, Args, NamedArgs, VarArgsPassAlong);
     if (!Selected) {
         DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
+        // Unbinding any bindings from generic functions
+        for (FuncDecl* Canidate : *Canidates) {
+            if (Canidate->IsGeneric()) {
+                UnbindTypes(Canidate);
+            }
+        }
         return nullptr;
     }
+    
     // If the call has named arguments the named arguments might conflict with the non-named
     // arguments so checking for that now.
     if (!NamedArgs.empty()) {
@@ -2882,24 +2922,25 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         for (ulen i = 0; i < Args.size(); i++) {
             Expr*    Arg   = Args[i].E;
             VarDecl* Param = Selected->Params[i];
-            CreateCast(Arg, Param->Ty);
+            CreateCast(Arg, Param->Ty->UnboxGeneric());
         }
     } else {
         ulen i = 0;
         for (; i < Selected->Params.size() - 1; i++) {
             Expr*    Arg   = Args[i].E;
             VarDecl* Param = Selected->Params[i];
-            CreateCast(Arg, Param->Ty);
+            CreateCast(Arg, Param->Ty->UnboxGeneric());
         }
         if (!VarArgsPassAlong) {
             VarDecl* LastParam = Selected->Params[i];
             Type*    VarArgTy  = LastParam->Ty->AsSliceTy()->GetElementType();
             for (; i < Args.size(); i++) {
                 Expr* Arg = Args[i].E;
-                CreateCast(Arg, VarArgTy);
+                CreateCast(Arg, VarArgTy->UnboxGeneric());
             }
         }
     }
+    RetTy = Selected->RetTy->UnboxGeneric();
 
     if (!CapturesErrors && !Selected->RaisedErrors.empty()) {
         CheckIfErrorsAreCaptures(ErrorLoc, Selected);
@@ -2909,9 +2950,31 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         // We do not want to generate this if it is an interface function
         // because interface functions are just pointers to functions not
         // actually functions themselves.
-        Context.RequestGen(Selected);
+        if (Selected->IsGeneric()) {
+            Binding = GetExistingBinding(Selected);
+            if (!Binding) {
+                Binding = CreateNewBinding(Selected);
+                if (CFunc && CFunc->IsGeneric()) {
+                    Binding->OriginalFile = CFunc->CurBinding->OriginalFile;
+                    Binding->OriginalLoc = CFunc->CurBinding->OriginalLoc;
+                } else {
+                    Binding->OriginalFile = FScope;
+                    Binding->OriginalLoc = ErrorLoc;
+                }
+                Context.RequestGen(Selected, Binding);
+            }
+        } else {
+            Context.RequestGen(Selected);
+        }
     }
-    
+
+    // Unbinding any bindings from generic functions
+    for (FuncDecl* Canidate : *Canidates) {
+        if (Canidate->IsGeneric()) {
+            UnbindTypes(Canidate);
+        }
+    }
+
     return Selected;
 }
 
@@ -2929,7 +2992,8 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
 
     ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
          LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max(),
-         LeastSignConflicts         = std::numeric_limits<ulen>::max();
+         LeastSignConflicts         = std::numeric_limits<ulen>::max(),
+         HasGenerics = true;
     for (ulen i = 0; i < Canidates->size(); i++) {
         FuncDecl* Canidate = (*Canidates)[i];
         if (!Canidate->ParamTypesChecked) {
@@ -2953,10 +3017,14 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
 LeastConflicts             = NumConflicts;          \
 LeastEnumImplicitConflicts = EnumImplicitConflicts; \
 LeastSignConflicts         = NumSignConflicts;      \
-SelectedVarArgsPassAlong   = VarArgsPassAlong;
+SelectedVarArgsPassAlong   = VarArgsPassAlong;      \
+HasGenerics = Canidate->IsGeneric()
 
         // TODO: What will be the performance on all this?
-        if (NumConflicts < LeastConflicts) {
+        if (!Canidate->IsGeneric() && HasGenerics) {
+            // Always select generic functions over non-generic.
+            SET_BEST;
+        } else if (NumConflicts < LeastConflicts) {
             SET_BEST;
         } else if (NumConflicts == LeastConflicts &&
                    NumSignConflicts < LeastSignConflicts) {
@@ -3072,6 +3140,25 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
                                      ulen& NumConflicts,
                                      ulen& EnumImplicitConflicts,
                                      ulen& NumSignConflicts) {
+    if (ParamType->GetRealKind() == TypeKind::Generic) {
+        // The type is not bound yet so cannot rely on IsAssignableTo.
+        
+        // TODO: Will want to check constraints once they are supported.
+        // 
+        
+        // TODO: This is missing other checks like const checkes as well!
+
+        GenericType* GenTy = static_cast<GenericType*>(ParamType);
+        if (!GenTy->GetBoundTy()) {
+            // TODO: May want to allow for better binding by not just having
+            //       the first bound type bind and requiring all following types to
+            //       follow.
+
+            GenTy->BindType(Arg->Ty);
+            return true;
+        }
+    }
+
     if (!IsAssignableTo(ParamType, Arg)) {
         // May be an implicit pointer type.
         if (Param->ImplicitPtr) {
@@ -3117,9 +3204,10 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
     if (Canidates && Canidates->size() == 1) {
         FuncDecl* SingleCanidate = (*Canidates)[0];
         
+        auto ParamTypes = ParamsToTypeInfo(SingleCanidate);
         DisplayErrorForSingleFuncForFuncCall(CallType,
                                              ErrorLoc,
-                                             ParamsToTypeInfo(SingleCanidate),
+                                             ParamTypes,
                                              Args,
                                              NamedArgs,
                                              SingleCanidate->NumDefaultArgs,
@@ -3200,7 +3288,7 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     const char* CallType,
     SourceLoc CallLoc,
-    const llvm::SmallVector<TypeInfo>& ParamTypes,
+    llvm::SmallVector<TypeInfo>& ParamTypes,
     const llvm::SmallVector<NonNamedValue>& Args,
     const llvm::SmallVector<NamedValue>& NamedArgs,
     ulen NumDefaultArgs,
@@ -3264,7 +3352,7 @@ std::string arco::SemAnalyzer::GetFuncDefForError(const llvm::SmallVector<TypeIn
 }
 
 std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
-                                                   const llvm::SmallVector<TypeInfo>& ParamTypes,
+                                                   llvm::SmallVector<TypeInfo>& ParamTypes,
                                                    const llvm::SmallVector<NonNamedValue>& Args,
                                                    const llvm::SmallVector<NamedValue>& NamedArgs,
                                                    ulen NumDefaultArgs,
@@ -3310,6 +3398,16 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
         return MismatchInfo;   
     }
 
+    // Need to undo the bindings since the bindings provide information regarding assignability.
+    // They will be rebound once in the order in which the checking function bound the types to
+    // see if it can reproduce the issues with the type not being assignable.
+    for (TypeInfo& ParamTyInfo : ParamTypes) {
+        if (ParamTyInfo.Ty->GetRealKind() == TypeKind::Generic) {
+            GenericType* GenTy = static_cast<GenericType*>(ParamTyInfo.Ty);
+            GenTy->UnbindType();
+        }
+    }
+
     // One or more of the arguments are incorrect.
     bool EncounteredError = false;
     for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
@@ -3331,14 +3429,30 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
             ParamTy          = ParamTyInfo.Ty;
             ParamConstMemory = ParamTyInfo.ConstMemory;
         }
-            
-        if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+        
+        bool IsAssignable, NonBoundTy = false;
+        if (ParamTy->GetRealKind() == TypeKind::Generic) {
+            GenericType* GenTy = static_cast<GenericType*>(ParamTy);
+            if (!GenTy->GetBoundTy()) {
+                IsAssignable = true;
+                NonBoundTy = true;
+                GenTy->BindType(Arg->Ty);
+            } else {
+                IsAssignable = IsAssignableTo(ParamTy, Arg->Ty, Arg);
+            }
+        } else if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
+            IsAssignable = false;
+        }
+        
+        if (!IsAssignable) {
             if (EncounteredError)  MismatchInfo += "\n";
             MismatchInfo += "- Cannot assign argument "
-                         + std::to_string(ArgCount+1) + " of type '" + Arg->Ty->ToString() + "' "
-                         + "to parameter of type '" + ParamTy->ToString() + "'.";
+                + std::to_string(ArgCount + 1) + " of type '" + Arg->Ty->ToString() + "' "
+                + "to parameter of type '" + ParamTy->ToString() + "'.";
             EncounteredError = true;
-        } else if (ViolatesConstAssignment(ParamTy, ParamConstMemory, Arg)) {
+        } else if (!NonBoundTy && ViolatesConstAssignment(ParamTy, ParamConstMemory, Arg)) {
+            // ^^ TODO: Fix this for generics
+
             if (EncounteredError)  MismatchInfo += "\n";
             MismatchInfo += "- Cannot assign argument "
                          + std::to_string(ArgCount+1) + " with const memory to non-const parameter.";
@@ -3420,7 +3534,7 @@ void arco::SemAnalyzer::CheckTryError(TryError* Try) {
             for (FuncDecl* Func : List) {
 
                 SemAnalyzer A(Context, Func);
-                A.CheckFuncDecl(Func);
+                A.CheckFuncDecl(Func, nullptr);
                 if (Func->Params.size() != 1) {
                     continue;
                 }
@@ -3575,6 +3689,9 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
             Cast->Value->Ty->ToString(), Cast->Ty->ToString());
         YIELD_ERROR(Cast);
     }
+    if (Cast->Value->Ty->GetKind() == TypeKind::CStr) {
+        Cast->IsFoldable = false;
+    }
 }
 
 void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
@@ -3585,8 +3702,7 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
 
     CheckNode(Cast->Value);
     YIELD_ERROR_WHEN(Cast, Cast->Value);
-    //Cast->IsFoldable = Cast->Value->IsFoldable;
-    Cast->IsFoldable = false;
+    Cast->IsFoldable = true;
     Cast->HasConstAddress = Cast->Value->HasConstAddress;
 
     Type* ValueTy = Cast->Value->Ty;
@@ -3602,6 +3718,9 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
             Error(Cast, "Cannot bitcast types of different sizes");
             YIELD_ERROR(Cast);
         }
+    }
+    if (Cast->Value->Ty->GetKind() == TypeKind::CStr) {
+        Cast->IsFoldable = false;
     }
 }
 
@@ -3656,6 +3775,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
             return nullptr;
         }
 
+        GenericBind* Binding;
+        Type* RetTy;
         return CheckCallToCanidates(
                 Identifier{},
                 ErrorLoc,
@@ -3663,6 +3784,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 Args,
                 NamedArgs,
                 VarArgPassAlong,
+                Binding,
+                RetTy,
                 CapturesErrors);
     }
 
@@ -3900,6 +4023,7 @@ void arco::SemAnalyzer::CheckTernary(Ternary* Tern) {
         CreateCast(Tern->LHS, Tern->Ty);
     } else {
         Error(Tern, "Incompatible values for ternary expression");
+        YIELD_ERROR(Tern);
     }
 }
 
@@ -4394,6 +4518,8 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
             Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
         }
         return true;
+    } else if (Ty->GetKind() == TypeKind::Generic) {
+        return true;
     }
     return true;
 }
@@ -4637,8 +4763,14 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
     //
     // TODO: Alternative optimization: mark functions which already stated that they
     // are a duplicate and then just skip them in the future.
+
+    // TODO: Deal with checking for duplicate generic functions somehow.
     for (const FuncDecl* Func1 : FuncList) {
+        if (Func1->IsGeneric()) continue;
+
         for (const FuncDecl* Func2 : FuncList) {
+            if (Func2->IsGeneric()) continue;
+            
             if (Func1 == Func2) continue;
             if (Func1->Name != Func2->Name) continue;
             if (Func1->Params.size() != Func2->Params.size()) continue;

@@ -69,7 +69,7 @@ namespace arco {
             return TokenKeywordInvertedMap.find(static_cast<u32>(Kind))->second;
         }
 
-        void RequestGen(Decl* D);
+        void RequestGen(Decl* D, GenericBind* Binding = nullptr);
 
         bool EmitDebugInfo;
         bool StandAlone;
@@ -143,7 +143,12 @@ namespace arco {
         // Maps a binary operator to its precedence.
         llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
 
-        std::queue<Decl*> QueuedDeclsToGen;
+        struct QuduedGenDecl {
+            GenericBind* Binding;
+            Decl*        D;
+        };
+
+        std::queue<QuduedGenDecl> QueuedDeclsToGen;
 
         // Even if a declaration is not generated it should
         // still be checked to make sure there is not errors

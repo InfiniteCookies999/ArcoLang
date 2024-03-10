@@ -26,10 +26,22 @@ namespace arco {
     struct VarDecl;
     struct Expr;
     struct Decl;
+    struct FileScope;
     using ScopeStmts = llvm::SmallVector<AstNode*>;
     using FuncsList  = llvm::SmallVector<FuncDecl*>;
     class DebugInfoEmitter;
     struct StructInitializer;
+
+    // TODO: May want to make this a DenseMap so to increase lookup
+    //       performance.
+    struct GenericBind {
+        llvm::Function*          LLFunction = nullptr;
+        llvm::SmallVector<Type*> BindableTypes;
+        FileScope*               OriginalFile;
+        SourceLoc                OriginalLoc;
+    };
+
+    using Bindings    = llvm::SmallVector<GenericBind*>;
 
     enum class AstKind {
         
@@ -281,15 +293,25 @@ namespace arco {
         
     };
 
+    struct GenericData {
+        llvm::SmallVector<GenericType*> GenTys;
+        Bindings                        GenBindings;
+    };
+
     struct FuncDecl : Decl {
         FuncDecl() : Decl(AstKind::FUNC_DECL) {}
 
+    private:
         llvm::Function* LLFunction = nullptr;
+    public:
 
         // Zero means it is not a LLVMIntrinsic.
         llvm::Intrinsic::ID LLVMIntrinsicID = 0;
 
         Identifier CallingConv;
+
+        GenericData* GenData = nullptr;
+        GenericBind* CurBinding;
 
         // TODO: This should be turned into a bitset.
         bool ParamTypesChecked   = false;
@@ -345,6 +367,26 @@ namespace arco {
         llvm::SmallVector<InitializerValue> InitializerValues;
 
         Expr* GetInitializerValue(VarDecl* Field);
+
+        inline bool IsGeneric() const {
+            return GenData != nullptr;
+        }
+
+        inline llvm::Function* GetLLFunction() {
+            if (IsGeneric()) {
+                return CurBinding->LLFunction;
+            } else {
+                return LLFunction;
+            }
+        }
+
+        inline void SetLLFunction(llvm::Function* LLFunction) {
+            if (IsGeneric()) {
+                CurBinding->LLFunction = LLFunction;
+            } else {
+                this->LLFunction = LLFunction;
+            }
+        }
 
         // If not empty it defines the explicit name for a linked
         // function.
@@ -704,6 +746,10 @@ namespace arco {
         // variable within an array.
         Expr*     Site;
         FuncDecl* CalledFunc = nullptr;
+
+        // If calling a generic function the binding information is stored
+        // so that the correct generic function may be called.
+        GenericBind* Binding;
 
     };
 

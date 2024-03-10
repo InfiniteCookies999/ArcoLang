@@ -123,7 +123,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 	llvm::DISubprogram* DIFunc = DBuilder->createFunction(
 		Scope,
 		Func->Name.Text,
-		Func->LLFunction->getName(), // Linkage name
+		Func->GetLLFunction()->getName(), // Linkage name
 		DebugUnit->getFile(),
 		Func->Loc.LineNumber,
 		DIFuncTy,
@@ -134,14 +134,14 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 		nullptr //DIForwardDeclaredFunc // There might have been a forward declaration!
 	);
 
-	Func->LLFunction->setSubprogram(DIFunc);
+	Func->GetLLFunction()->setSubprogram(DIFunc);
 	DILexicalScopes.push_back(DIFunc);
 	return DIFunc;
 }
 
 void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder) {
 	
-	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
+	llvm::DIScope* DIScope = Func->GetLLFunction()->getSubprogram();
 
 	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
 		DIScope,
@@ -169,7 +169,7 @@ void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRB
 
 void arco::DebugInfoEmitter::EmitFuncEnd(FuncDecl* Func) {
 	DILexicalScopes.clear();
-	llvm::DISubprogram* DIFunc = Func->LLFunction->getSubprogram();
+	llvm::DISubprogram* DIFunc = Func->GetLLFunction()->getSubprogram();
 
 	// !! IF THE PROGRAM HAS A FORWARD DECLARATION YOU STILL HAVE TO FINALIZE IT OR THE RETAINED
 	// NODES WILL BE TEMPORARY !!
@@ -205,7 +205,7 @@ void arco::DebugInfoEmitter::EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBui
 }
 
 void arco::DebugInfoEmitter::EmitThisVar(llvm::Value* LLThisAddr, FuncDecl* Func, llvm::IRBuilder<>& IRBuilder) {
-	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
+	llvm::DIScope* DIScope = Func->GetLLFunction()->getSubprogram();
 
 	StructType* StructTy = StructType::Create(Func->Struct, Context);
 	PointerType* LLThisTy = PointerType::Create(StructTy, Context);

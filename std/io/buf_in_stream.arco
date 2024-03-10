@@ -19,9 +19,6 @@ BufferedInStream struct : Readable{
         if buffer_size < 0 {
             panic("buffer_size < 0");
         }
-        /*if handle == FlushHandler {
-            (cast(FlushHandler*) handle).set_flushable(handle);
-        }*/
         this.buffer_size = buffer_size;
         buffer = new char[buffer_size];
     }

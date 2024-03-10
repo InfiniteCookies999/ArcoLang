@@ -26,7 +26,7 @@ namespace arco {
 
         explicit IRGenerator(ArcoContext& Context);
 
-        void GenFunc(FuncDecl* Func);
+        void GenFunc(FuncDecl* Func, GenericBind* Binding);
         
         void GenGlobalVar(VarDecl* Global);
 
@@ -109,8 +109,8 @@ namespace arco {
 
         ulen FieldInitializingIdx = -1;
 
-        void GenFuncDecl(FuncDecl* Func);
-        void GenFuncBody(FuncDecl* Func);
+        void GenFuncDecl(FuncDecl* Func, GenericBind* Binding = nullptr);
+        void GenFuncBody(FuncDecl* Func, GenericBind* Binding);
 
         llvm::Function* GenGlobalInitFuncDecl();
         llvm::Function* GenDestroyGlobalsFuncDecl();

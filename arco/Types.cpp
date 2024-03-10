@@ -5,14 +5,20 @@
 #include "Context.h"
 
 arco::TypeKind arco::Type::GetKind() const {
-    if (Kind == TypeKind::Enum) {
-        Type* ValuesType = static_cast<const StructType*>(this)->GetEnum()->ValuesType;
-        return ValuesType->GetKind();
-    }
-    return Kind;
+    return Unbox()->GetRealKind();
 }
 
 bool arco::Type::Equals(const Type* Ty) const {
+    if (Ty->GetRealKind() == TypeKind::Generic) {
+        const GenericType* GenTy = static_cast<const GenericType*>(Ty);
+        Ty = GenTy->GetBoundTy();
+    }
+
+    if (GetRealKind() == TypeKind::Generic) {
+        const GenericType* ThisGenTy = static_cast<const GenericType*>(this);
+        return ThisGenTy->GetBoundTy()->UniqueId == Ty->UniqueId;
+    }
+
     return UniqueId == Ty->UniqueId;
 }
 
@@ -129,6 +135,19 @@ arco::Type* arco::Type::Unbox() {
         // Enums are alias for their value types.
         StructType* StructTy = static_cast<StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
+    } else if (Kind == TypeKind::Generic) {
+        GenericType* GenTy = static_cast<GenericType*>(this);
+        // Still have to unbox the type again in case it is an enum.
+        return GenTy->GetBoundTy()->Unbox();
+    }
+    return this;
+}
+
+arco::Type* arco::Type::UnboxGeneric() {
+    if (GetRealKind() == TypeKind::Generic) {
+        GenericType* GenTy = static_cast<GenericType*>(this);
+        // Still have to unbox the type again in case it is an enum.
+        return GenTy->GetBoundTy();
     }
     return this;
 }
@@ -168,20 +187,24 @@ const arco::Type* arco::Type::Unbox() const {
         // Enums are alias for their value types.
         const StructType* StructTy = static_cast<const StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
+    } else if (Kind == TypeKind::Generic) {
+        const GenericType* GenTy = static_cast<const GenericType*>(this);
+        // Still have to unbox the type again in case it is an enum.
+        return GenTy->GetBoundTy()->Unbox();
     }
     return this;
 }
 
 bool arco::Type::TypeNeedsDestruction() const {
     if (GetKind() == TypeKind::Struct) {
-        const StructDecl* Struct = static_cast<const StructType*>(this)->GetStruct();
+        const StructDecl* Struct = AsStructType()->GetStruct();
         return Struct->NeedsDestruction;
     } else if (GetKind() == TypeKind::Array) {
         const ArrayType* ArrayTy = static_cast<const ArrayType*>(this);
         const Type*      BaseTy  = ArrayTy->GetBaseType();
 
         if (BaseTy->GetKind() == TypeKind::Struct) {
-            const StructDecl* Struct = static_cast<const StructType*>(BaseTy)->GetStruct();
+            const StructDecl* Struct = BaseTy->AsStructType()->GetStruct();
             return Struct->NeedsDestruction;
         }
     }
@@ -270,7 +293,7 @@ arco::Type* arco::Type::GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Cont
     }
 }
 
-std::string arco::Type::ToString() const {
+std::string arco::Type::ToString(bool ShowFullGenericTy) const {
     switch (GetRealKind()) {
     case TypeKind::Int8:		    return "int8";
     case TypeKind::Int16:		    return "int16";
@@ -296,6 +319,17 @@ std::string arco::Type::ToString() const {
     case TypeKind::StructRef:       return "struct reference";
     case TypeKind::EnumRef:         return "enum reference";
     case TypeKind::InterfaceRef:    return "interface reference";
+    case TypeKind::Generic: {
+        // TODO: think about how exactly we want to display these.
+        const GenericType* GenTy = static_cast<const GenericType*>(this);
+        std::string S = "<";
+        S += GenTy->GetName().Text.str();
+        if (GenTy->GetBoundTy()) {
+            S += "=" + GenTy->GetBoundTy()->ToString();
+        }
+        S += ">";
+        return S;
+    }
     case TypeKind::Pointer: {
         if (!this->UniqueId) {
             return "error";
@@ -525,4 +559,13 @@ llvm::SmallVector<u32> arco::FunctionType::GetUniqueHashKey(TypeInfo RetTy, cons
         UniqueKey.push_back(ParamTyKey);
     }
     return UniqueKey;
+}
+
+arco::GenericType* arco::GenericType::Create(Identifier Name, ArcoContext& Context) {
+    // NOTE: there is no need to cache since every instance of a created generic
+    //       type is known during parsing and only exists within a local scope.
+    GenericType* GenTy = new GenericType;
+    GenTy->UniqueId = Context.UniqueTypeIdCounter++;
+    GenTy->Name = Name;
+    return GenTy;
 }
