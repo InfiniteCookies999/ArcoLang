@@ -14,6 +14,15 @@ fn print(msg cstr, length int) {
     WriteFile(handle, msg, cast(uint32) length, &bytes_written, null);
 }
 
+fn print(msg cstr) {
+    print(msg, strlen(msg));
+}
+
+fn strlen(s cstr) int {
+    return cast(int) _strlen(s);
+}
+native("strlen") fn(cdecl) _strlen(s cstr) ptrsize;
+
 fn print(i int) {
     if i == 0 {
         msg cstr = "0";

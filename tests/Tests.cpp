@@ -132,7 +132,7 @@ int main() {
     RunTest(SRC("loops/loops18.arco"), "124346221577");
     RunTest(SRC("loops/loops19.arco"), "10");
     RunTest(SRC("loops/loops20.arco"), "10");
-
+    
     RunTest(SRC("arrays/arrays1.arco"), "21 55 11 56 3 ");
     RunTest(SRC("arrays/arrays2.arco"), "412 21 5 6 4 0 ");
     RunTest(SRC("arrays/arrays3.arco"), "412 77 121 45 56 ");
@@ -239,6 +239,10 @@ int main() {
     RunTest(SRC("interfaces/interfaces4.arco"), "42 32 56 88");
     
     RunTest(SRC("multiarray_to_voidptr_craziness.arco"), "hello hello hello hello hello hello hello hello hello ");
+
+    RunTest(SRC("generics/generics1.arco"), "44 hello");
+    RunTest(SRC("generics/generics2.arco"), "44 562");
+    RunTest(SRC("generics/generics3.arco"), "44 hello");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

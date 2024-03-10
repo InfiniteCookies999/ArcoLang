@@ -25,7 +25,8 @@ IOFlag enum : uint32 {
      */
     SHARE  :: 0x0004;
     
-    /* Creates the file if it does not exist.
+    /*
+     * Creates the file if it does not exist.
      * Will override the contents of the old
      * file.
      *
@@ -104,7 +105,7 @@ FileHandle struct : Writeable, Readable {
     
     fn close() {
         if flushable {
-            err := flushable.flush();
+            _ := flushable.flush();
         }
         win32.CloseHandle(handle);
         handle = null;
@@ -248,8 +249,7 @@ fn remove(path String^) bool {
  * intervals since January 1, 1601 (UTC).
  */
 fn last_modified(path cstr) uint64 raises IOError {
-    // TODO: Proper error handling.
-
+    
     handle := win32.CreateFileA(path,
                                 win32.GENERIC_ALL,
                                 win32.FILE_SHARE_READ,

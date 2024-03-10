@@ -26,6 +26,19 @@ fn print(i int, base := 10) {
     try out.write(i, base);
 }
 
+/*
+generics<T>
+private requires_any :: typeof(T).id == TypeId.ARRAY ||
+                        typeof(T).id == TypeId.SLICE ||
+                        typeof(T).id == TypeId.ENUM  ||
+                        typeof(T).id == TypeId.STRUCT;
+
+
+generics<!requies_any T>
+fn print(value T) {
+    try out.write(value);
+}*/
+
 generics<T>
 fn print(value T) {
     try out.write(value);

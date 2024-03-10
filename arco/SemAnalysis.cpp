@@ -305,7 +305,7 @@ void arco::SemAnalyzer::CheckForDuplicateFuncDeclarations(Namespace* NSpace) {
 }
 
 void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func, GenericBind* Binding) {
-    if (Func->HasBeenChecked) return;
+    if (Func->HasBeenChecked && !Func->IsGeneric()) return;
     Func->HasBeenChecked = true;
     Context.UncheckedDecls.erase(Func);
     if (Func->ParsingError) return;
@@ -4254,7 +4254,7 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
             ArrayType* FromArrayTy = FromTy->AsArrayTy();
             return FromArrayTy->GetElementType() == Context.CharType;
         }
-        return FromTy == Context.CStrType || FromTy->Equals(Context.CharPtrType);
+        return FromTy->Equals(Context.CStrType) || FromTy->Equals(Context.CharPtrType);
     }
     case TypeKind::Pointer: {
         if (FromTy == Context.NullType)

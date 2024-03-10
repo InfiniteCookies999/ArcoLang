@@ -1,0 +1,10 @@
+
+generics<T>
+fn foo(a T) {
+    print(a);
+}
+
+fn main() {
+    foo(44);
+    foo(" hello");
+}

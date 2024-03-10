@@ -430,7 +430,7 @@ OutStream struct : Writeable {
 
     ~OutStream() {
         if flushable {
-            err := flushable.flush();
+            _ := flushable.flush();
         }
     }
 }

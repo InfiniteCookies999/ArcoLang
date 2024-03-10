@@ -33,7 +33,8 @@ TypeId enum {
     ENUM;
     INTERFACE;
     FUNCTION;
-    
+    GENERIC;
+
     NULL;
     ERROR;
     // When an array is declared with no elements.

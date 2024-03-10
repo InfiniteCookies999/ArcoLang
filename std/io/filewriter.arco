@@ -43,6 +43,6 @@ FileWriter struct : Writeable {
     }
 
     fn flush() {
-        err := stream.flush();
+        _ := stream.flush();
     }
 }

@@ -142,3 +142,13 @@ fn count_leading_zeros(x uint64) int {
         return count_leading_zeros(high);
     }
 }
+
+/*
+ * Copies the contents of x into y and y into x.
+ */
+/*generics<T>
+fn swap(a T^, b T^) {
+    t T* = a;
+    *a = *b;
+    *b = *t;
+}*/
