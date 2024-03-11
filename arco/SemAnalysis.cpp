@@ -586,7 +586,7 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
         CheckStructDecl(Func->Struct);
     }
 
-    if (Func->ParamTypesChecked) return;
+    if (Func->ParamTypesChecked && !Func->IsGeneric()) return;
     Func->ParamTypesChecked = true;
     if (Func->ParsingError) return;
 
@@ -599,27 +599,26 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func) {
     CStruct = Func->Struct;
     FScope  = Func->FScope;
 
-    bool FixupRet = true;
-    if (Func->RetTy->GetRealKind() == TypeKind::Generic) {
-        GenericType* GenTy = static_cast<GenericType*>(Func->RetTy);
-        FixupRet = GenTy->GetBoundTy() != nullptr;
-    }
-
-    if (FixupRet && !FixupType(Func->RetTy)) {
+    if (!FixupType(Func->RetTy)) {
         Func->RetTy = Context.ErrorType;
     }
 
     llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
     bool ParamsHaveAssignment = false, ParamAssignmentNotLast = false;
     for (VarDecl* Param : Params) {
-        if (Param->Ty->GetRealKind() == TypeKind::Generic) {
-            GenericType* GenTy = static_cast<GenericType*>(Param->Ty);
-            if (!GenTy->GetBoundTy()) {
+        if (Param->Ty->ContainsGenerics) {
+            if (!Param->Ty->QualifiedType) {
                 // We do not want to check the parameter yet because the type has
                 // not been bound!
+                if (!FixupType(Param->Ty)) {
+                    Param->Ty = Context.ErrorType;
+                    Func->ParsingError = true;
+                    return;
+                }
                 continue;
             }
         }
+
         CheckVarDecl(Param);
         if (Param->Ty == Context.ErrorType) {
             // TODO: Hacky so that it stops showing errors later on.
@@ -2917,30 +2916,32 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         }
     }
     
+
+
     // Creating casts for the arguments.
     if (!Selected->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
             Expr*    Arg   = Args[i].E;
             VarDecl* Param = Selected->Params[i];
-            CreateCast(Arg, Param->Ty->UnboxGeneric());
+            CreateCast(Arg, Param->Ty->QualifyGeneric());
         }
     } else {
         ulen i = 0;
         for (; i < Selected->Params.size() - 1; i++) {
             Expr*    Arg   = Args[i].E;
             VarDecl* Param = Selected->Params[i];
-            CreateCast(Arg, Param->Ty->UnboxGeneric());
+            CreateCast(Arg, Param->Ty->QualifyGeneric());
         }
         if (!VarArgsPassAlong) {
             VarDecl* LastParam = Selected->Params[i];
             Type*    VarArgTy  = LastParam->Ty->AsSliceTy()->GetElementType();
             for (; i < Args.size(); i++) {
                 Expr* Arg = Args[i].E;
-                CreateCast(Arg, VarArgTy->UnboxGeneric());
+                CreateCast(Arg, VarArgTy->QualifyGeneric());
             }
         }
     }
-    RetTy = Selected->RetTy->UnboxGeneric();
+    RetTy = Selected->RetTy->QualifyGeneric();
 
     if (!CapturesErrors && !Selected->RaisedErrors.empty()) {
         CheckIfErrorsAreCaptures(ErrorLoc, Selected);
@@ -3140,23 +3141,8 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
                                      ulen& NumConflicts,
                                      ulen& EnumImplicitConflicts,
                                      ulen& NumSignConflicts) {
-    if (ParamType->GetRealKind() == TypeKind::Generic) {
-        // The type is not bound yet so cannot rely on IsAssignableTo.
-        
-        // TODO: Will want to check constraints once they are supported.
-        // 
-        
-        // TODO: This is missing other checks like const checkes as well!
-
-        GenericType* GenTy = static_cast<GenericType*>(ParamType);
-        if (!GenTy->GetBoundTy()) {
-            // TODO: May want to allow for better binding by not just having
-            //       the first bound type bind and requiring all following types to
-            //       follow.
-
-            GenTy->BindType(Arg->Ty);
-            return true;
-        }
+    if (ParamType->ContainsGenerics && !ParamType->QualifiedType) {
+        return CheckCallArgGeneric(Arg->Ty->QualifyGeneric(), Param->ImplicitPtr, ParamType);
     }
 
     if (!IsAssignableTo(ParamType, Arg)) {
@@ -3191,6 +3177,146 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
             }
         }
     }
+    return true;
+}
+
+bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
+                                            bool AllowImplicitPointer,
+                                            Type* ParamType) {
+
+    // Basically we want to decend the type and continue to qualify the generic type
+    // with the type information if not already qualified.
+    
+
+    // The type is not bound yet so cannot rely on IsAssignableTo.
+
+    // TODO: Will want to check constraints once they are supported.
+    // 
+
+    // TODO: This is missing other checks like const checkes as well!
+
+    switch (ParamType->GetRealKind()) {
+    case TypeKind::Generic: {
+        // Any type can bind to a generic type with no additional content.
+        break;
+    }
+    case TypeKind::Pointer: {
+        // TODO: Deal with implicit pointers.
+        // TODO: Change this to allow for other pointers types like cstr
+        // and also allow also take into account mismatch.
+
+        PointerType* ParamPtrTy = static_cast<PointerType*>(ParamType);
+        if (AllowImplicitPointer) {
+            if (ArgTy->GetKind() != TypeKind::Pointer) {
+                // Implicit pointer case have to check to see if it
+                // can be taken implicitly.
+                if (!CheckCallArgGeneric(ArgTy,
+                                         false,
+                                         ParamPtrTy->GetElementType())) {
+                    return false;
+                } else {
+                    // ArgTy is not the correct qualified type because it was taken implicitly.
+                    // Have to create the type now.
+                    PointerType* QualPtrTy = PointerType::Create(ArgTy, Context);
+                    ParamType->QualifiedType = QualPtrTy;
+                    return true;
+                }
+            }
+        }
+
+        if (ArgTy->GetKind() != TypeKind::Pointer) {
+            return false;
+        }
+        PointerType* ArgPtrTy   = ArgTy->AsPointerTy();
+
+        if (!CheckCallArgGeneric(ArgPtrTy->GetElementType(),
+                                 false,
+                                 ParamPtrTy->GetElementType())) {
+            return false;
+        }
+        
+        break;
+    }
+    case TypeKind::Slice: {
+        if (ArgTy->GetKind() != TypeKind::Slice) {
+            return false;
+        }
+        
+        SliceType* ArgSliceTy   = ArgTy->AsSliceTy();
+        SliceType* ParamSliceTy = static_cast<SliceType*>(ParamType);
+
+        if (!CheckCallArgGeneric(ArgSliceTy->GetElementType(),
+                                 false,
+                                 ParamSliceTy->GetElementType())) {
+            return false;
+        }
+
+        break;
+    }
+    case TypeKind::Array: {
+        if (ArgTy->GetKind() != TypeKind::Array) {
+            return false;
+        }
+
+        ArrayType* ArgArrTy   = ArgTy->AsArrayTy();
+        ArrayType* ParamArrTy = static_cast<ArrayType*>(ParamType);
+        if (ArgArrTy->GetLength() != ParamArrTy->GetLength()) {
+            return false;
+        }
+
+        if (!CheckCallArgGeneric(ArgArrTy->GetElementType(),
+                                 false,
+                                 ParamArrTy->GetElementType())) {
+            return false;
+        }
+
+        break;
+    }
+    case TypeKind::Function: {
+        if (ArgTy->GetKind() != TypeKind::Function) {
+            return false;
+        }
+
+        FunctionType* ArgFuncTy   = ArgTy->AsFunctionType();
+        FunctionType* ParamFuncTy = static_cast<FunctionType*>(ParamType);
+
+        if (ArgFuncTy->ParamTypes.size() != ParamFuncTy->ParamTypes.size()) {
+            return false;
+        }
+
+        if (ParamFuncTy->RetTyInfo.Ty->ContainsGenerics) {
+            if (!CheckCallArgGeneric(ArgFuncTy->RetTyInfo.Ty,
+                                     false,
+                                     ParamFuncTy->RetTyInfo.Ty)) {
+                return false;
+            }
+        }
+        if (ArgFuncTy->RetTyInfo.ConstMemory != ParamFuncTy->RetTyInfo.ConstMemory) {
+            return false;
+        }
+
+        for (ulen i = 0; i < ArgFuncTy->ParamTypes.size(); i++) {
+            TypeInfo ArgPInfo   = ArgFuncTy->ParamTypes[i];
+            TypeInfo ParamPInfo = ParamFuncTy->ParamTypes[i];
+            if (ParamPInfo.Ty->ContainsGenerics) {
+                if (!CheckCallArgGeneric(ArgPInfo.Ty,
+                                         false,
+                                         ParamPInfo.Ty)) {
+                    return false;
+                }
+            }
+            if (ArgPInfo.ConstMemory != ParamPInfo.ConstMemory) return false;
+        }
+
+        break;
+    }
+    default:
+        assert(!"unreachable");
+        break;
+    }
+
+    ParamType->QualifiedType = ArgTy;
+
     return true;
 }
 
@@ -3402,9 +3528,8 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     // They will be rebound once in the order in which the checking function bound the types to
     // see if it can reproduce the issues with the type not being assignable.
     for (TypeInfo& ParamTyInfo : ParamTypes) {
-        if (ParamTyInfo.Ty->GetRealKind() == TypeKind::Generic) {
-            GenericType* GenTy = static_cast<GenericType*>(ParamTyInfo.Ty);
-            GenTy->UnbindType();
+        if (ParamTyInfo.Ty->ContainsGenerics) {
+            ParamTyInfo.Ty->QualifiedType = nullptr;
         }
     }
 
@@ -3412,7 +3537,8 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     bool EncounteredError = false;
     for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
         Expr* Arg = Args[ArgCount].E;
-        bool  ParamConstMemory;
+        // TODO: This needs to include information about implicit pointers!
+        bool  ParamConstMemory, AllowImplicitPtr = false;
         Type* ParamTy;
         if (IsVariadic) {
             if (ArgCount >= ParamTypes.size() - 1) {
@@ -3431,14 +3557,11 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
         }
         
         bool IsAssignable, NonBoundTy = false;
-        if (ParamTy->GetRealKind() == TypeKind::Generic) {
-            GenericType* GenTy = static_cast<GenericType*>(ParamTy);
-            if (!GenTy->GetBoundTy()) {
-                IsAssignable = true;
-                NonBoundTy = true;
-                GenTy->BindType(Arg->Ty);
-            } else {
+        if (ParamTy->ContainsGenerics) {
+            if (ParamTy->QualifiedType) {
                 IsAssignable = IsAssignableTo(ParamTy, Arg->Ty, Arg);
+            } else {
+                IsAssignable = CheckCallArgGeneric(Arg->Ty, AllowImplicitPtr, ParamTy);
             }
         } else if (!IsAssignableTo(ParamTy, Arg->Ty, Arg)) {
             IsAssignable = false;
@@ -4451,12 +4574,17 @@ bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddr
 }
 
 bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
-    if (Ty->GetKind() == TypeKind::Array) {
-        return FixupArrayType(Ty->AsArrayTy(), AllowDynamicArrays);
-    } else if (Ty->GetKind() == TypeKind::Struct || Ty->GetKind() == TypeKind::Interface) {
-        return FixupStructType(Ty->AsStructType());
-    } else if (Ty->GetKind() == TypeKind::Pointer) {
-        PointerType* PointerTy = Ty->AsPointerTy();
+    // NOTE: It should be safe here to just use the real kind since the if it
+    // is an enum the enum may be safely checked and have it's indexing type
+    // fixed up.
+    TypeKind Kind = Ty->GetRealKind();
+
+    if (Kind == TypeKind::Array) {
+        return FixupArrayType(static_cast<ArrayType*>(Ty), AllowDynamicArrays);
+    } else if (Kind == TypeKind::Struct || Kind == TypeKind::Interface || Kind == TypeKind::Enum) {
+        return FixupStructType(static_cast<StructType*>(Ty));
+    } else if (Kind == TypeKind::Pointer) {
+        PointerType* PointerTy = static_cast<PointerType*>(Ty);
         Type* ElementType = PointerTy->GetElementType();
         if (!FixupType(ElementType, AllowDynamicArrays)) {
             return false;
@@ -4478,8 +4606,8 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
         }
 
         return true;
-    } else if (Ty->GetKind() == TypeKind::Slice) {
-        SliceType* SliceTy = Ty->AsSliceTy();
+    } else if (Kind == TypeKind::Slice) {
+        SliceType* SliceTy = static_cast<SliceType*>(Ty);
         Type* ElementType = SliceTy->GetElementType();
         if (!FixupType(ElementType, AllowDynamicArrays)) {
             return false;
@@ -4501,8 +4629,8 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
         }
 
         return true;
-    } else if (Ty->GetKind() == TypeKind::Function) {
-        FunctionType* FuncTy = Ty->AsFunctionType();
+    } else if (Kind == TypeKind::Function) {
+        FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
         for (auto ParamTy : FuncTy->ParamTypes) {
             if (!FixupType(ParamTy.Ty)) {
                 return false;
@@ -4518,8 +4646,10 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
             Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
         }
         return true;
-    } else if (Ty->GetKind() == TypeKind::Generic) {
-        return true;
+    } else if (Kind == TypeKind::Generic) {
+        if (Ty->QualifiedType && Ty->QualifiedType == Context.ErrorType) {
+            return false;
+        }
     }
     return true;
 }

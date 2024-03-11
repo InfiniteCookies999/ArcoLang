@@ -478,22 +478,6 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
     PUSH_SCOPE();
     ParseFuncSignature(Func);
 
-    // Making sure that all the generic types actually are being declared in parameters
-    // to prevent using a generic type without binding.
-    if (Func->IsGeneric()) {
-        for (GenericType* GenTy : Func->GenData->GenTys) {
-            auto Itr = std::find_if(Func->Params.begin(), Func->Params.end(),
-                [GenTy](VarDecl* Param) {
-                    return Param->Ty == GenTy;
-                });
-            if (Itr == Func->Params.end()) {
-                Error(Func->Loc,
-                      "Generic by name '%s' declared but never used to declared a parameter's type",
-                      GenTy->GetName());
-            }
-        }
-    }
-
     if (!(Func->Mods & ModKinds::NATIVE)) {
         ParseScopeStmts(Func->Scope);
     } else {
@@ -532,7 +516,8 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
         do {
             VarDecl* Param = ParseVarDecl(0);
             if (Param->Ty && CTok.Is('^')) {
-                if (Param->Ty->GetKind() != TypeKind::Array) {
+                // TODO: Use of GetRealKind() might cause problems for enums!
+                if (Param->Ty->GetRealKind() != TypeKind::Array) {
                     NextToken(); // Implicit pointer type.
                     Param->Ty = PointerType::Create(Param->Ty, Context);
                     Param->ImplicitPtr = true;

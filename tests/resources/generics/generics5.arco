@@ -1,0 +1,17 @@
+
+generics<T>
+fn foo(a T[3]) {
+    print(a[0]);
+    print(" ", 1);
+    print(a[1]);
+    print(" ", 1);
+    print(a[2]);
+    print(" ", 1);
+}
+
+fn main() {
+    a int[3] = [ 662, 52, 113 ];
+    foo(a);
+    b cstr[3] = [ "abc", "xyz", "ijq" ];
+    foo(b);
+}

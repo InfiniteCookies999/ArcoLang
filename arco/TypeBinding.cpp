@@ -6,18 +6,22 @@ void arco::BindTypes(FuncDecl* Func, GenericBind* Binding) {
     // a generic function with different types. Or disallow this since that
     // is a very odd thing to do.
     Func->CurBinding = Binding;
-    auto& GenTys = Func->GenData->GenTys;
-    for (ulen i = 0; i < GenTys.size(); i++) {
-        GenericType* GenTy    = GenTys[i];
-        Type*        TyToBind = Binding->BindableTypes[i];
-        GenTy->BindType(TyToBind);
+    ulen Count = 0;
+    for (VarDecl* Param : Func->Params) {
+        if (Param->Ty->ContainsGenerics) {
+            Param->Ty->QualifiedType = Binding->BindableTypes[Count++];
+        }
     }
 }
 
 void arco::UnbindTypes(FuncDecl* Func) {
+    // TODO: Does this need to be recursive and dequalify more than just
+    // the root?
     auto& GenTys = Func->GenData->GenTys;
-    for (GenericType* GenTy : GenTys) {
-        GenTy->UnbindType();
+    for (VarDecl* Param : Func->Params) {
+        if (Param->Ty->ContainsGenerics) {
+            Param->Ty->QualifiedType = nullptr;
+        }
     }
 }
 
@@ -25,15 +29,19 @@ arco::GenericBind* arco::GetExistingBinding(FuncDecl* Func) {
 
     auto* GenData = Func->GenData;
     for (GenericBind* Binding : GenData->GenBindings) {
+        ulen Count = 0;
         bool TysMatch = true;
-        for (ulen i = 0; i < Binding->BindableTypes.size(); i++) {
-            Type* ExistingBindTy = Binding->BindableTypes[i];
-            Type* BoundTy        = GenData->GenTys[i];
-            if (!ExistingBindTy->Equals(BoundTy)) {
-                TysMatch = false;
-                break;
+        for (VarDecl* Param : Func->Params) {
+            if (Param->Ty->ContainsGenerics) {
+                Type* ExistingBindTy = Binding->BindableTypes[Count++];
+                Type* BoundTy        = Param->Ty->QualifiedType;
+                if (!ExistingBindTy->Equals(BoundTy)) {
+                    TysMatch = false;
+                    break;
+                }
             }
         }
+
         if (TysMatch) {
             // There exists a binding with thoses types.
             return Binding;
@@ -46,9 +54,10 @@ arco::GenericBind* arco::CreateNewBinding(FuncDecl* Func) {
 
     // TODO: use of new
     GenericBind* Binding = new GenericBind;
-    auto* GenData = Func->GenData;
-    for (GenericType* GenTy : GenData->GenTys) {
-        Binding->BindableTypes.push_back(GenTy->GetBoundTy());
+    for (VarDecl* Param : Func->Params) {
+        if (Param->Ty->ContainsGenerics) {
+            Binding->BindableTypes.push_back(Param->Ty->QualifiedType);
+        }
     }
 
     Func->GenData->GenBindings.push_back(Binding);

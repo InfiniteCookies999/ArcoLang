@@ -890,7 +890,12 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
     switch (E->Kind) {
     case AstKind::IDENT_REF:
     case AstKind::ARRAY_ACCESS:
-    case AstKind::FIELD_ACCESSOR: {
+    case AstKind::FIELD_ACCESSOR:
+
+        // Want moveobj here since it refers to an l-value still.
+        // TODO: Probably want to do the other checks sitll if it is
+        //       a moveobj expr.
+    case AstKind::MOVEOBJ: {
         
         if (E->Is(AstKind::FIELD_ACCESSOR)) {
             FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(E);
@@ -940,6 +945,8 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
             // to load.
             LLValue = CreateLoad(LLValue);
         }
+        // Reset CastTy in case it is part of a generic function.
+        E->CastTy = nullptr;
     }
     return LLValue;
 }

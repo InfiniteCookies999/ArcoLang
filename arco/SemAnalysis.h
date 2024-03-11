@@ -123,6 +123,9 @@ namespace arco {
                           ulen& NumConflicts,
                           ulen& EnumImplicitConflicts,
                           ulen& NumSignConflicts);
+        bool CheckCallArgGeneric(Type* ArgTy,
+                                 bool AllowImplicitPointer,
+                                 Type* ParamType);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue>& Args,

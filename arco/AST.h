@@ -36,6 +36,8 @@ namespace arco {
     //       performance.
     struct GenericBind {
         llvm::Function*          LLFunction = nullptr;
+        // A list of fully qualified types which will bind to any
+        // type that contains generics.
         llvm::SmallVector<Type*> BindableTypes;
         FileScope*               OriginalFile;
         SourceLoc                OriginalLoc;

@@ -243,6 +243,8 @@ int main() {
     RunTest(SRC("generics/generics1.arco"), "44 hello");
     RunTest(SRC("generics/generics2.arco"), "44 562");
     RunTest(SRC("generics/generics3.arco"), "44 hello");
+    RunTest(SRC("generics/generics4.arco"), "44");
+    RunTest(SRC("generics/generics5.arco"), "662 52 113 abc xyz ijq ");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

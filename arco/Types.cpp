@@ -9,14 +9,13 @@ arco::TypeKind arco::Type::GetKind() const {
 }
 
 bool arco::Type::Equals(const Type* Ty) const {
-    if (Ty->GetRealKind() == TypeKind::Generic) {
-        const GenericType* GenTy = static_cast<const GenericType*>(Ty);
-        Ty = GenTy->GetBoundTy();
+    
+    if (Ty->ContainsGenerics) {
+        Ty = Ty->QualifiedType;
     }
 
-    if (GetRealKind() == TypeKind::Generic) {
-        const GenericType* ThisGenTy = static_cast<const GenericType*>(this);
-        return ThisGenTy->GetBoundTy()->UniqueId == Ty->UniqueId;
+    if (this->ContainsGenerics) {
+        return QualifiedType->UniqueId == Ty->UniqueId;
     }
 
     return UniqueId == Ty->UniqueId;
@@ -135,20 +134,19 @@ arco::Type* arco::Type::Unbox() {
         // Enums are alias for their value types.
         StructType* StructTy = static_cast<StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
-    } else if (Kind == TypeKind::Generic) {
+    } else if (ContainsGenerics) {
         GenericType* GenTy = static_cast<GenericType*>(this);
         // Still have to unbox the type again in case it is an enum.
-        return GenTy->GetBoundTy()->Unbox();
+        return GenTy->QualifiedType->Unbox();
     }
     return this;
 }
 
-arco::Type* arco::Type::UnboxGeneric() {
-    if (GetRealKind() == TypeKind::Generic) {
-        GenericType* GenTy = static_cast<GenericType*>(this);
-        // Still have to unbox the type again in case it is an enum.
-        return GenTy->GetBoundTy();
+arco::Type* arco::Type::QualifyGeneric() {
+    if (ContainsGenerics) {
+        return QualifiedType;
     }
+    
     return this;
 }
 
@@ -187,10 +185,10 @@ const arco::Type* arco::Type::Unbox() const {
         // Enums are alias for their value types.
         const StructType* StructTy = static_cast<const StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
-    } else if (Kind == TypeKind::Generic) {
+    } else if (ContainsGenerics) {
         const GenericType* GenTy = static_cast<const GenericType*>(this);
         // Still have to unbox the type again in case it is an enum.
-        return GenTy->GetBoundTy()->Unbox();
+        return GenTy->QualifiedType->Unbox();
     }
     return this;
 }
@@ -324,8 +322,8 @@ std::string arco::Type::ToString(bool ShowFullGenericTy) const {
         const GenericType* GenTy = static_cast<const GenericType*>(this);
         std::string S = "<";
         S += GenTy->GetName().Text.str();
-        if (GenTy->GetBoundTy()) {
-            S += "=" + GenTy->GetBoundTy()->ToString();
+        if (GenTy->QualifiedType) {
+            S += "=" + GenTy->QualifiedType->ToString();
         }
         S += ">";
         return S;
@@ -422,6 +420,9 @@ arco::PointerType* arco::PointerType::Create(Type* ElmTy, ArcoContext& Context) 
     }
     PointerType* Ty = new PointerType;
     Ty->ElmTy = ElmTy;
+    if (Ty->ElmTy->ContainsGenerics) {
+        Ty->ContainsGenerics = true;
+    }
     if (UniqueId != 0) {
         Ty->UniqueId = Context.UniqueTypeIdCounter++;
         Context.PointerTyCache.insert({ UniqueId, Ty });
@@ -443,6 +444,9 @@ arco::SliceType* arco::SliceType::Create(Type* ElmTy, ArcoContext& Context) {
     }
     SliceType* Ty = new SliceType;
     Ty->ElmTy = ElmTy;
+    if (Ty->ElmTy->ContainsGenerics) {
+        Ty->ContainsGenerics = true;
+    }
     if (UniqueId != 0) {
         Ty->UniqueId = Context.UniqueTypeIdCounter++;
         Context.SliceTyCache.insert({ UniqueId, Ty });
@@ -462,6 +466,9 @@ arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, ulen Length, ArcoContext& 
         Ty->UniqueId = Context.UniqueTypeIdCounter++;
         Context.ArrayTyCache.insert({ UniqueKey, Ty });
         Ty->ElmTy  = ElmTy;
+        if (Ty->ElmTy->ContainsGenerics) {
+            Ty->ContainsGenerics = true;
+        }
         Ty->Length = Length;
         return Ty;
     }
@@ -473,6 +480,9 @@ arco::ArrayType* arco::ArrayType::Create(Type* ElmTy,
                                          ArcoContext& Context) {
     ArrayType* Ty = new ArrayType;
     Ty->ElmTy              = ElmTy;
+    if (Ty->ElmTy->ContainsGenerics) {
+        Ty->ContainsGenerics = true;
+    }
     Ty->LengthExprErrorLoc = LengthExprErrorLoc;
     Ty->LengthExpr         = LengthExpr;
     return Ty;
@@ -542,6 +552,13 @@ arco::FunctionType* arco::FunctionType::Create(TypeInfo RetTy, llvm::SmallVector
         FuncTy->UniqueId = Context.UniqueTypeIdCounter++;
         Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
     }
+    for (TypeInfo& PInfo : ParamTypes) {
+        if (PInfo.Ty->ContainsGenerics) {
+            FuncTy->ContainsGenerics = true;
+            break;
+        }
+    }
+
     FuncTy->RetTyInfo  = RetTy;
     FuncTy->ParamTypes = std::move(ParamTypes);
     return FuncTy;
@@ -567,5 +584,6 @@ arco::GenericType* arco::GenericType::Create(Identifier Name, ArcoContext& Conte
     GenericType* GenTy = new GenericType;
     GenTy->UniqueId = Context.UniqueTypeIdCounter++;
     GenTy->Name = Name;
+    GenTy->ContainsGenerics = true;
     return GenTy;
 }

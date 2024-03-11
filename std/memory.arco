@@ -144,11 +144,11 @@ fn count_leading_zeros(x uint64) int {
 }
 
 /*
- * Copies the contents of x into y and y into x.
+ * Moves the contents of x into y and y into x.
  */
-/*generics<T>
+generics<T>
 fn swap(a T^, b T^) {
-    t T* = a;
-    *a = *b;
-    *b = *t;
-}*/
+    t := moveobj(*a);
+    *a = moveobj(*b);
+    *b = moveobj(t);
+}

@@ -76,6 +76,10 @@ namespace arco {
 
     class Type {
     public:
+        bool ContainsGenerics = false;
+        // Temporary fully qualified instance of the type with all
+        // generic information removed. Stored for quick comparisons.
+        Type* QualifiedType = nullptr;
 
         Type(TypeKind Kind)
             : Kind(Kind) {}
@@ -106,7 +110,7 @@ namespace arco {
         FunctionType* AsFunctionType();
         
         Type* Unbox();
-        Type* UnboxGeneric();
+        Type* QualifyGeneric();
 
         const ContainerType* AsContainerType() const;
         const PointerType* AsPointerTy() const;
@@ -283,34 +287,16 @@ namespace arco {
 
         static GenericType* Create(Identifier Name, ArcoContext& Context);
 
-        void BindType(Type* Ty) {
-            BoundTy = Ty->UnboxGeneric();
-        }
-
-        void UnbindType() {
-            BoundTy = nullptr;
-        }
-
-        Type* GetBoundTy() {
-            return BoundTy;
-        }
-
-        const Type* GetBoundTy() const {
-            return BoundTy;
-        }
-
         const Identifier& GetName() const {
             return Name;
         }
 
     private:
         Identifier Name;
-        Type* BoundTy = nullptr;
-
+        
         GenericType()
             : Type(TypeKind::Generic) {}
     };
-
 
 }
 
