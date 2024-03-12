@@ -1,0 +1,13 @@
+
+generics<T>
+fn foo(func fn(T) void, value T) {
+    func(value);
+}
+
+fn takes_value(value int) {
+    print(value);
+}
+
+fn main() {
+    foo(&takes_value, 6524);
+}

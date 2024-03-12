@@ -152,3 +152,14 @@ fn swap(a T^, b T^) {
     *a = moveobj(*b);
     *b = moveobj(t);
 }
+
+/*
+ * Replaces value with new_value and returns the
+ * old value.
+ */
+generics<T>
+fn replace(value T^, new_value T) T {
+    old_value := *value;
+    *value     = moveobj(new_value);
+    return old_value;
+}

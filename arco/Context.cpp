@@ -223,7 +223,7 @@ arco::TokenKind arco::ArcoContext::GetKeywordKind(llvm::StringRef Text) const {
     return TokenKind::INVALID;
 }
 
-void arco::ArcoContext::RequestGen(Decl* D, GenericBind* Binding) {
+void arco::ArcoContext::RequestGen(Decl* D, GenericBinding* Binding) {
     if (D->GenRequestedAlready && !Binding) return;
     D->GenRequestedAlready = true;
     QueuedDeclsToGen.push({ Binding, D });

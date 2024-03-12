@@ -478,6 +478,15 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
     PUSH_SCOPE();
     ParseFuncSignature(Func);
 
+    if (Func->IsGeneric()) {
+        for (VarDecl* Param : Func->Params) {
+            if (Param->Ty->ContainsGenerics) {
+                Param->GenericIdx = Func->GenData->NumQualifications;
+                ++Func->GenData->NumQualifications;
+            }
+        }
+    }
+
     if (!(Func->Mods & ModKinds::NATIVE)) {
         ParseScopeStmts(Func->Scope);
     } else {
@@ -606,6 +615,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     if (CTok.Is(TokenKind::KW_CONST)) {
         NextToken(); // Consuming 'const' token.
         Var->HasConstAddress = true;
+        Var->ExplicitlyMarkedConst = true;
     }
     if (!Var->HasConstAddress && CTok.Is(TokenKind::COL_EQ)) {
         NextToken(); // Consuming ':=' token.
@@ -618,6 +628,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
         Var->Ty = Context.ErrorType;
         Var->TyIsInfered = true;
         Var->HasConstAddress = true;
+        Var->ExplicitlyMarkedConst = true;
     } else {
         Var->Ty = ParseType(true);
     
@@ -1555,9 +1566,11 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
     llvm::SmallVector<GenericType*> Generics;
     Match('<');
     bool MoreGenerics = false;
+    ulen GenericIdx = 0;
+
     do {
         Token NameTok = CTok;
-        Identifier Name = ParseIdentifier("Expected identifier for generic type");
+        Identifier Name = ParseIdentifier("Expected identifier for generic type");        
         auto Itr = std::find_if(Generics.begin(), Generics.end(),
             [&Name](const GenericType* GenTy) {
                 return GenTy->GetName() == Name;
@@ -1565,7 +1578,8 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
         if (Itr != Generics.end()) {
             Error(NameTok, "Duplicate generic by name '%s'", Name);
         } else if (!Name.IsNull()) {
-            GenericType* GenTy = GenericType::Create(Name, Context);
+            GenericType* GenTy = GenericType::Create(Name, GenericIdx, Context);
+            ++GenericIdx;
             Generics.push_back(GenTy);
         }
 

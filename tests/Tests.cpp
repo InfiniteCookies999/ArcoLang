@@ -239,12 +239,14 @@ int main() {
     RunTest(SRC("interfaces/interfaces4.arco"), "42 32 56 88");
     
     RunTest(SRC("multiarray_to_voidptr_craziness.arco"), "hello hello hello hello hello hello hello hello hello ");
-
+    
     RunTest(SRC("generics/generics1.arco"), "44 hello");
     RunTest(SRC("generics/generics2.arco"), "44 562");
     RunTest(SRC("generics/generics3.arco"), "44 hello");
     RunTest(SRC("generics/generics4.arco"), "44");
     RunTest(SRC("generics/generics5.arco"), "662 52 113 abc xyz ijq ");
+    RunTest(SRC("generics/generics6.arco"), "52 some message");
+    RunTest(SRC("generics/generics7.arco"), "6524");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

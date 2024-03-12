@@ -3,6 +3,7 @@
 
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/SmallVector.h>
+#include <stack>
 
 #include "Source.h"
 #include "Identifier.h"
@@ -34,16 +35,14 @@ namespace arco {
 
     // TODO: May want to make this a DenseMap so to increase lookup
     //       performance.
-    struct GenericBind {
+    struct GenericBinding {
         llvm::Function*          LLFunction = nullptr;
-        // A list of fully qualified types which will bind to any
-        // type that contains generics.
         llvm::SmallVector<Type*> BindableTypes;
         FileScope*               OriginalFile;
         SourceLoc                OriginalLoc;
     };
 
-    using Bindings    = llvm::SmallVector<GenericBind*>;
+    using GenericBindings = llvm::SmallVector<GenericBinding*>;
 
     enum class AstKind {
         
@@ -296,8 +295,13 @@ namespace arco {
     };
 
     struct GenericData {
-        llvm::SmallVector<GenericType*> GenTys;
-        Bindings                        GenBindings;
+        llvm::SmallVector<GenericType*>   GenTys;
+        GenericBindings                   Bindings;
+        GenericBinding*                   CurBinding = nullptr;
+        // Stack used to restore state of whatever the previous binding
+        // was if the binding changed while it currently had a binding.
+        std::stack<GenericBinding*>       BindingStack;
+        ulen                              NumQualifications = 0;
     };
 
     struct FuncDecl : Decl {
@@ -313,7 +317,6 @@ namespace arco {
         Identifier CallingConv;
 
         GenericData* GenData = nullptr;
-        GenericBind* CurBinding;
 
         // TODO: This should be turned into a bitset.
         bool ParamTypesChecked   = false;
@@ -376,7 +379,7 @@ namespace arco {
 
         inline llvm::Function* GetLLFunction() {
             if (IsGeneric()) {
-                return CurBinding->LLFunction;
+                return GenData->CurBinding->LLFunction;
             } else {
                 return LLFunction;
             }
@@ -384,7 +387,7 @@ namespace arco {
 
         inline void SetLLFunction(llvm::Function* LLFunction) {
             if (IsGeneric()) {
-                CurBinding->LLFunction = LLFunction;
+                GenData->CurBinding->LLFunction = LLFunction;
             } else {
                 this->LLFunction = LLFunction;
             }
@@ -412,20 +415,24 @@ namespace arco {
         // an interface it is offset so that it does not interfere with the
         // interface data.
         ulen LLFieldIdx;
+        ulen GenericIdx;
 
         // If the variable is declared inside a function
         // and returned.
-        bool IsLocalRetValue    = false;
-        bool IsGlobal           = false;
-        bool HasConstAddress    = false;
-        bool TyIsInfered        = false;
-        bool ImplicitPtr        = false;
+        bool IsLocalRetValue       = false;
+        bool IsGlobal              = false;
+        bool TyIsInfered           = false;
+        bool ImplicitPtr           = false;
         // If this is set to try then the memory will not be initialized
         // to a default value.
-        bool LeaveUninitialized = false;
+        bool LeaveUninitialized    = false;
         // If true the variable is a declaration of an error captured from the
         // raised error of a function.
-        bool IsErrorDecl        = false;
+        bool IsErrorDecl           = false;
+        // Needed because generic type information might override if the
+        // variable had a const address or not.
+        bool ExplicitlyMarkedConst = false;
+        bool HasConstAddress       = false;
 
         // One variable may depend on another variable in its
         // declaration.
@@ -751,7 +758,7 @@ namespace arco {
 
         // If calling a generic function the binding information is stored
         // so that the correct generic function may be called.
-        GenericBind* Binding;
+        GenericBinding* Binding;
 
     };
 

@@ -1,65 +1,89 @@
 #include "TypeBinding.h"
 
-void arco::BindTypes(FuncDecl* Func, GenericBind* Binding) {
-    // TODO: This will have to store previous binding stack in order to
-    // take into account really weird cases of the user recursively calling
-    // a generic function with different types. Or disallow this since that
-    // is a very odd thing to do.
-    Func->CurBinding = Binding;
-    ulen Count = 0;
-    for (VarDecl* Param : Func->Params) {
-        if (Param->Ty->ContainsGenerics) {
-            Param->Ty->QualifiedType = Binding->BindableTypes[Count++];
-        }
+void arco::BindTypes(FuncDecl* Func, GenericBinding* Binding) {
+    
+    auto& GenTys = Func->GenData->GenTys;
+
+    // -- DEBUG
+    //llvm::outs() << "BINDING TYPES:\n";
+    //for (ulen i = 0; i < GenTys.size(); i++) {
+    //    Type* TyToBind = Binding->BindableTypes[i];
+    //    llvm::outs() << TyToBind->ToString() << "\n";
+    //}
+    //llvm::outs() << "BINDING TYPES END\n";
+
+    GenericBinding* PreviousBinding = Func->GenData->CurBinding;
+    if (PreviousBinding) {
+        Func->GenData->BindingStack.push(PreviousBinding);
+    }
+    Func->GenData->CurBinding = Binding;
+    for (ulen i = 0; i < GenTys.size(); i++) {
+        GenericType* GenTy = GenTys[i];
+        Type* TyToBind = Binding->BindableTypes[i];
+        GenTy->BindType(TyToBind);
     }
 }
 
 void arco::UnbindTypes(FuncDecl* Func) {
-    // TODO: Does this need to be recursive and dequalify more than just
-    // the root?
+
     auto& GenTys = Func->GenData->GenTys;
-    for (VarDecl* Param : Func->Params) {
-        if (Param->Ty->ContainsGenerics) {
-            Param->Ty->QualifiedType = nullptr;
-        }
+
+    // -- DEBUG
+    //llvm::outs() << "REMOVING BINDING TYPES:\n";
+    //for (GenericType* GenTy : GenTys) {
+    //    llvm::outs() << GenTy->GetBoundTy()->ToString() << "\n";
+    //}
+    //llvm::outs() << "REMOVING BINDING TYPES END\n";
+
+    Func->GenData->CurBinding = nullptr;
+    for (GenericType* GenTy : GenTys) {
+        GenTy->UnbindType();
+    }
+
+
+    if (!Func->GenData->BindingStack.empty()) {
+        // Restoring previous qualification.
+        GenericBinding* PreviousBinding = Func->GenData->BindingStack.top();
+        Func->GenData->BindingStack.pop();
+        BindTypes(Func, PreviousBinding);
     }
 }
 
-arco::GenericBind* arco::GetExistingBinding(FuncDecl* Func) {
+arco::GenericBinding* arco::GetExistingBinding(FuncDecl* Func, const llvm::SmallVector<Type*, 8>& BindableTypes) {
 
     auto* GenData = Func->GenData;
-    for (GenericBind* Binding : GenData->GenBindings) {
-        ulen Count = 0;
+    for (GenericBinding* Binding : GenData->Bindings) {
         bool TysMatch = true;
-        for (VarDecl* Param : Func->Params) {
-            if (Param->Ty->ContainsGenerics) {
-                Type* ExistingBindTy = Binding->BindableTypes[Count++];
-                Type* BoundTy        = Param->Ty->QualifiedType;
-                if (!ExistingBindTy->Equals(BoundTy)) {
-                    TysMatch = false;
-                    break;
-                }
+        for (ulen i = 0; i < Binding->BindableTypes.size(); i++) {
+            Type* ExistingBindTy = Binding->BindableTypes[i];
+            Type* BoundTy        = BindableTypes[i];
+            if (!ExistingBindTy->Equals(BoundTy)) {
+                TysMatch = false;
+                break;
             }
         }
-
         if (TysMatch) {
             // There exists a binding with thoses types.
             return Binding;
         }
     }
+
     return nullptr;
 }
 
-arco::GenericBind* arco::CreateNewBinding(FuncDecl* Func) {
+arco::GenericBinding* arco::CreateNewBinding(FuncDecl* Func, llvm::SmallVector<Type*, 8> BindableTypes) {
 
     // TODO: use of new
-    GenericBind* Binding = new GenericBind;
-    for (VarDecl* Param : Func->Params) {
-        if (Param->Ty->ContainsGenerics) {
-            Binding->BindableTypes.push_back(Param->Ty->QualifiedType);
-        }
-    }
+    GenericBinding* Binding = new GenericBinding;
+    Binding->BindableTypes = std::move(BindableTypes);
 
-    Func->GenData->GenBindings.push_back(Binding);
+    // -- DEBUG
+    //llvm::outs() << "NEW TYPE BINDING:\n";
+    //for (Type* QualTy : Binding->BindableTypes) {
+    //    llvm::outs() << QualTy->ToString() << "\n";
+    //}
+    //llvm::outs() << "NEW TYPE BINDING END\n";
+
+    Func->GenData->Bindings.push_back(Binding);
     return Binding;
 }

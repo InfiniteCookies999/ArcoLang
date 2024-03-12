@@ -65,9 +65,8 @@ FileHandle struct : Writeable, Readable {
         this.auto_close = auto_close;
     }
     
-    FileHandle moveobj(fhandle FileHandle*) {
-        this.handle = fhandle.handle;
-        fhandle.handle = null;
+    FileHandle moveobj(fhandle FileHandle*)
+        : handle(replace(fhandle.handle, null)) {
     }
     
     fn set_flushable(flushable Flushable*) {

@@ -89,6 +89,7 @@ namespace arco {
         llvm::SmallVector<MarkMessage>                             MarkMessages;
 
         void InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod);
+        void DisplayErrorLocInfo(FileScope* FScope, SourceLoc Loc);
 
         std::vector<std::string> GenerateBetweenLines(llvm::StringRef Text);
         void DisplayErrorLoc(FileScope* FScope, SourceLoc Loc, const std::vector<std::string>& Lines, u32 ColorCode);

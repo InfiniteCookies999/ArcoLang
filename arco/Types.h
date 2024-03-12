@@ -77,10 +77,7 @@ namespace arco {
     class Type {
     public:
         bool ContainsGenerics = false;
-        // Temporary fully qualified instance of the type with all
-        // generic information removed. Stored for quick comparisons.
-        Type* QualifiedType = nullptr;
-
+        
         Type(TypeKind Kind)
             : Kind(Kind) {}
 
@@ -110,7 +107,7 @@ namespace arco {
         FunctionType* AsFunctionType();
         
         Type* Unbox();
-        Type* QualifyGeneric();
+        Type* UnboxGeneric();
 
         const ContainerType* AsContainerType() const;
         const PointerType* AsPointerTy() const;
@@ -120,6 +117,7 @@ namespace arco {
         const FunctionType* AsFunctionType() const;
         
         const Type* Unbox() const;
+        const Type* UnboxGeneric() const;
 
         bool TypeNeedsDestruction() const;
 
@@ -131,7 +129,9 @@ namespace arco {
         static Type* GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoContext& Context);
         static Type* GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Context);
 
-        std::string ToString(bool ShowFullGenericTy = false) const;
+        std::string ToString(bool                               ShowFullGenericTy = true,
+                             const llvm::SmallVector<Type*, 8>* PartiallyBoundTys = nullptr,
+                             bool                               ReplaceGenTyWithBoundTy = false) const;
 
         inline void SetUniqueId(u32 Id) {
             UniqueId = Id;
@@ -141,6 +141,11 @@ namespace arco {
             return UniqueId;
         }
 
+    private:
+        bool GenericsEquals(const Type* Ty) const;
+
+        bool HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundTys) const;
+
     protected:
         TypeKind Kind;
         u32      UniqueId = 0;
@@ -149,6 +154,7 @@ namespace arco {
     struct TypeInfo {
         Type* Ty;
         bool  ConstMemory;
+        bool  AllowImplicitPtr = false;
     };
 
     class ContainerType : public Type {
@@ -285,15 +291,37 @@ namespace arco {
     class GenericType : public Type {
     public:
 
-        static GenericType* Create(Identifier Name, ArcoContext& Context);
+        static GenericType* Create(Identifier Name, ulen Idx, ArcoContext& Context);
 
         const Identifier& GetName() const {
             return Name;
         }
 
+        inline ulen GetIdx() const {
+            return Idx;
+        }
+
+        inline void BindType(Type* Ty) {
+            BoundTy = Ty;
+        }
+
+        inline void UnbindType() {
+            BoundTy = nullptr;
+        }
+
+        inline const Type* GetBoundTy() const {
+            return BoundTy;
+        }
+
+        inline Type* GetBoundTy() {
+            return BoundTy;
+        }
+
     private:
         Identifier Name;
-        
+        ulen       Idx = 0;
+        Type*      BoundTy = nullptr;
+
         GenericType()
             : Type(TypeKind::Generic) {}
     };

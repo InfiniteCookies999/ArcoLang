@@ -1,5 +1,7 @@
 #include "AST.h"
 
+#include "Context.h"
+
 // TODO: These predicate find_if functions may be slower than just iterating
 // normally.
 

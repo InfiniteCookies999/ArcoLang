@@ -2,20 +2,19 @@
 #define ARCO_TYPE_BINDING_H
 
 #include "AST.h"
+#include <llvm/ADT/SmallVector.h>
 
 namespace arco {
 
-    //void BindTypes(FuncDecl* Func, const llvm::SmallVector<Type*>& Tys);
-
-    void BindTypes(FuncDecl* Func, GenericBind* Binding);
-
+    void BindTypes(FuncDecl* Func, GenericBinding* Binding);
+    
     void UnbindTypes(FuncDecl* Func);
-
+    
     // The types must be bound before calling this function. Will check if there
     // exists an instance of the function for the given bound types.
-    GenericBind* GetExistingBinding(FuncDecl* Func);
+    GenericBinding* GetExistingBinding(FuncDecl* Func, const llvm::SmallVector<Type*, 8>& BindableTypes);
 
-    GenericBind* CreateNewBinding(FuncDecl* Func);
+    GenericBinding* CreateNewBinding(FuncDecl* Func, llvm::SmallVector<Type*, 8> BindableTypes);
 
 }
 

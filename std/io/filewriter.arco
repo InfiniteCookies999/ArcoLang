@@ -28,7 +28,7 @@ FileWriter struct : Writeable {
     }
 
     FileWriter moveobj(o FileWriter*)
-        : handle(o.handle),
+        : handle(moveobj(o.handle)),
           stream(moveobj(o.stream)) {
         // Got to reset the handle since it no longer points to the same location.
         this.stream.reapply_handle(&this.handle);

@@ -1,0 +1,13 @@
+
+A struct {
+    generics<T>
+    fn foo(a T) {
+        print(a);
+    }
+}
+
+fn main() {
+    a A;
+    a.foo(52);
+    a.foo(" some message");
+}

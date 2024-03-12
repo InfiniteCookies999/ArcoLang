@@ -3,14 +3,17 @@
 
 #include "AST.h"
 #include "Logger.h"
+#include "TypeBinding.h"
 
 namespace arco {
 
     class ArcoContext;
 
     class SemAnalyzer {
+        using BindableList = llvm::SmallVector<Type*, 8>;
+    
     public:
-
+        
         explicit SemAnalyzer(ArcoContext& Context, Decl* D);
 
         static void ReportStatementsInInvalidContext(FileScope* FScope);
@@ -20,7 +23,7 @@ namespace arco {
         static void CheckForDuplicateFuncDeclarations(Module* Mod);
         static void CheckForDuplicateFuncDeclarations(Namespace* NSpace);
 
-        void CheckFuncDecl(FuncDecl* Func, GenericBind* Binding);
+        void CheckFuncDecl(FuncDecl* Func);
         
         void CheckStructDecl(StructDecl* Struct);
         void CheckEnumDecl(EnumDecl* Enum);
@@ -57,7 +60,7 @@ namespace arco {
             bool AllPathsReturn = false;
         }  * LocScope = nullptr;
 
-        void CheckFuncParams(FuncDecl* Func);
+        void CheckFuncParams(FuncDecl* Func, bool NotFullyQualified = false);
 
         void CheckNode(AstNode* Node);
 
@@ -103,14 +106,24 @@ namespace arco {
                                        llvm::SmallVector<NonNamedValue>& Args,
                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                        bool& VarArgsPassAlong,
-                                       GenericBind*& Binding,
+                                       GenericBinding*& Binding,
                                        Type*& RetTy,
                                        bool CapturesErrors);
+        
+        void CreateCallCasts(FuncDecl* Selected,
+                             llvm::SmallVector<NonNamedValue>& Args,
+                             llvm::SmallVector<NamedValue>& NamedArgs,
+                             bool VarArgsPassAlong,
+                             Type*& RetTy,
+                             const BindableList* QualifiedTypes);
+        Type* QualifyRetType(Type* RetTy, const BindableList& BindableTypes);
+
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
                                            llvm::SmallVector<NonNamedValue>& Args,
                                            llvm::SmallVector<NamedValue>& NamedArgs,
-                                           bool& SelectedVarArgsPassAlong);
+                                           bool& SelectedVarArgsPassAlong,
+                                           llvm::SmallVector<BindableList, 8>& AllBindableTypes);
         
         bool CompareAsCanidate(FuncDecl* Canidate,
                                llvm::SmallVector<NonNamedValue>& Args,
@@ -118,14 +131,22 @@ namespace arco {
                                ulen& NumConflicts,
                                ulen& EnumImplicitConflicts,
                                ulen& NumSignConflicts,
-                               bool& CanidateVarArgPassAlong);
+                               bool& CanidateVarArgPassAlong,
+                               BindableList* BindableTypes);
         bool CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
                           ulen& NumConflicts,
                           ulen& EnumImplicitConflicts,
-                          ulen& NumSignConflicts);
+                          ulen& NumSignConflicts,
+                          BindableList* BindableTypes,
+                          ulen NumGenerics);
         bool CheckCallArgGeneric(Type* ArgTy,
                                  bool AllowImplicitPointer,
-                                 Type* ParamType);
+                                 Type* ParamType,
+                                 BindableList* BindableTypes,
+                                 Type*& QualType,
+                                 ulen NumGenerics,
+                                 ulen GenericIdx,
+                                 bool IsRoot);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue>& Args,
@@ -145,7 +166,10 @@ namespace arco {
                                         const llvm::SmallVector<NonNamedValue>& Args,
                                         const llvm::SmallVector<NamedValue>& NamedArgs,
                                         ulen NumDefaultArgs,
-                                        bool IsVariadic);
+                                        bool IsVariadic,
+                                        ulen NumGenerics,
+                                        ulen NumQualifications,
+                                        FuncDecl* Canidate);
         void CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
         void CheckTryError(TryError* Try);
 
@@ -205,8 +229,8 @@ namespace arco {
         void AddGenericErrorInfo() {
             if (CFunc && CFunc->IsGeneric()) {
                 Log.AddMarkMessage(
-                    CFunc->CurBinding->OriginalFile,
-                    CFunc->CurBinding->OriginalLoc,
+                    CFunc->GenData->CurBinding->OriginalFile,
+                    CFunc->GenData->CurBinding->OriginalLoc,
                     "Original call location");
             }
         }

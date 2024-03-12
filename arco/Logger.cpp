@@ -99,9 +99,9 @@ void arco::Logger::EndError() {
     for (auto MarkMessage : MarkMessages) {
         
         SetTerminalColor(TerminalColorCyan);
-
-        // TODO: full paths vs. non full paths
-        OS << "\n" << LNPad << "  >> " << MarkMessage.FScope->Path;
+        OS << "\n" << LNPad << "  >> ";
+        DisplayErrorLocInfo(MarkMessage.FScope, MarkMessage.Loc);
+        
         if (MarkMessage.Message != "") {
             OS << "\n" << LNPad << "     " << MarkMessage.Message;
         }
@@ -148,18 +148,7 @@ ulen arco::Logger::CalcHeaderIndent(SourceLoc Loc) {
 void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::function<void()>& Printer, bool ShowPeriod) {
     
     SetTerminalColor(TerminalColorWhite);
-    std::string UsedPath = FullPaths ? FScope->FullPath : FScope->Path;
-    OS << UsedPath;
-
-    SetTerminalColor(TerminalColorWhite);
-    OS << ":" << Loc.LineNumber << ":";
-    ulen Column = 0;
-    const char* MemPtr = Loc.Text.begin();
-    while (MemPtr > Buffer.Memory && *MemPtr != '\n' && *MemPtr != '\r') {
-        ++Column;
-        --MemPtr;
-    }
-    OS << Column << ":";
+    DisplayErrorLocInfo(FScope, Loc);
 
     SetTerminalColor(TerminalColorRed);
     OS << " error: ";
@@ -172,6 +161,21 @@ void arco::Logger::InternalErrorHeaderPrinting(SourceLoc Loc, const std::functio
     SetTerminalColor(TerminalColorDefault);
     
     FoundCompileError = true;
+}
+
+void arco::Logger::DisplayErrorLocInfo(FileScope* FScope, SourceLoc Loc) {
+    std::string UsedPath = FullPaths ? FScope->FullPath : FScope->Path;
+    OS << UsedPath;
+    SourceBuf& Buffer = FScope->Buffer;
+
+    OS << ":" << Loc.LineNumber << ":";
+    ulen Column = 0;
+    const char* MemPtr = Loc.Text.begin();
+    while (MemPtr > Buffer.Memory && *MemPtr != '\n' && *MemPtr != '\r') {
+        ++Column;
+        --MemPtr;
+    }
+    OS << Column << ":";
 }
 
 std::vector<std::string> arco::Logger::GenerateBetweenLines(llvm::StringRef Text) {

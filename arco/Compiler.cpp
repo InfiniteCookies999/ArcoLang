@@ -12,6 +12,7 @@
 #include "CodeGen.h"
 #include "FloatConversions.h"
 #include "EmitDebugInfo.h"
+#include "TypeBinding.h"
 
 static bool ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
     std::ifstream Stream(Path, std::ios::binary | std::ios::in);
@@ -321,18 +322,32 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
 
         SemAnalyzer Analyzer(Context, DToGen.D);
         if (DToGen.D->Is(AstKind::FUNC_DECL)) {
-            Analyzer.CheckFuncDecl(static_cast<FuncDecl*>(DToGen.D), DToGen.Binding);
+            FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
+            if (Func->IsGeneric()) {
+                BindTypes(Func, DToGen.Binding);
+            }
+            Analyzer.CheckFuncDecl(Func);
         }
         SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
     
         IRGenBegin = GetTimeInMilliseconds();
         if (FoundCompileError || Stage == PARSE_SEMCHECK_ONLY) {
+            if (DToGen.D->Is(AstKind::FUNC_DECL)) {
+                FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
+                if (Func->IsGeneric()) {
+                    UnbindTypes(Func);
+                }
+            }
             continue;
         }
 
         IRGenerator IRGen(Context);	
         if (DToGen.D->Is(AstKind::FUNC_DECL)) {
-            IRGen.GenFunc(static_cast<FuncDecl*>(DToGen.D), DToGen.Binding);
+            FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
+            IRGen.GenFunc(Func);
+            if (Func->IsGeneric()) {
+                UnbindTypes(Func);
+            }
         } else if (DToGen.D->Is(AstKind::VAR_DECL)) {
             IRGen.GenGlobalVar(static_cast<VarDecl*>(DToGen.D));
         }
@@ -364,7 +379,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         if (D->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(D);
             if (!Func->IsGeneric()) {
-                Analyzer.CheckFuncDecl(Func, nullptr);
+                Analyzer.CheckFuncDecl(Func);
             } else {
                 Context.UncheckedDecls.erase(Func);
             }

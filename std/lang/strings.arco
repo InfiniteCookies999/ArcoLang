@@ -104,11 +104,9 @@ String struct {
         this.buffer[length] = '\0';
     }
 
-    String moveobj(string String*) {
-        this.length = string.length;
-        this.buffer = string.buffer;
-        string.length = 0;
-        string.buffer = null;
+    String moveobj(string String*)
+        : length(replace(string.length, 0)),
+          buffer(replace(string.buffer, null)) {
     }
 
     /*

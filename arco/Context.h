@@ -69,7 +69,7 @@ namespace arco {
             return TokenKeywordInvertedMap.find(static_cast<u32>(Kind))->second;
         }
 
-        void RequestGen(Decl* D, GenericBind* Binding = nullptr);
+        void RequestGen(Decl* D, GenericBinding* Binding = nullptr);
 
         bool EmitDebugInfo;
         bool StandAlone;
@@ -144,8 +144,8 @@ namespace arco {
         llvm::DenseMap<u16, u32> BinaryOpsPrecedence;
 
         struct QuduedGenDecl {
-            GenericBind* Binding;
-            Decl*        D;
+            GenericBinding* Binding;
+            Decl*           D;
         };
 
         std::queue<QuduedGenDecl> QueuedDeclsToGen;

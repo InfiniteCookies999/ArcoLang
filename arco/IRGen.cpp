@@ -363,21 +363,14 @@ arco::IRGenerator::IRGenerator(ArcoContext& Context)
 {
 }
 
-void arco::IRGenerator::GenFunc(FuncDecl* Func, GenericBind* Binding) {
+void arco::IRGenerator::GenFunc(FuncDecl* Func) {
     
     // -- DEBUG
     // llvm::outs() << "generating function: " << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "") << Func->Name << '\n';
 
-    if (Func->IsGeneric()) {
-        BindTypes(Func, Binding);
-    }
+    GenFuncDecl(Func);
+    GenFuncBody(Func);
 
-    GenFuncDecl(Func, Binding);
-    GenFuncBody(Func, Binding);
-
-    if (Func->IsGeneric()) {
-        UnbindTypes(Func);
-    }
 }
 
 void arco::IRGenerator::GenGlobalVar(VarDecl* Global) {
@@ -462,8 +455,8 @@ void arco::IRGenerator::GenGlobalDestroyFuncBody() {
     Builder.CreateRetVoid();
 }
 
-void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBind* Binding) {
-    if (Func->IsGeneric()) {
+void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, bool ShouldBind) {
+    if (Func->IsGeneric() && ShouldBind) {
         BindTypes(Func, Binding);
     }
 
@@ -533,9 +526,12 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBind* Binding) {
         //LLFunc->getArg(i + ImplicitParams)->setName(Func->Params[i]->Name.Text);
     }
 
+    if (Func->IsGeneric() && ShouldBind) {
+        UnbindTypes(Func);
+    }
 }
 
-void arco::IRGenerator::GenFuncBody(FuncDecl* Func, GenericBind* Binding) {
+void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (Func->Mods & ModKinds::NATIVE) return;
 
     CFunc  = Func;
@@ -2456,6 +2452,18 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call,
         GenType(Call->Site->Ty)->getPointerElementType());
     llvm::Value* LLCallee = GenRValue(Call->Site);
 
+    // -- DEBUG
+    //llvm::outs() << "Calling variable function\n";
+    //llvm::outs() << "Types passed to function:\n";
+    //for (ulen i = 0; i < LLArgs.size(); i++) {
+    //    llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
+    //}
+    //llvm::outs() << "Types expected by function:\n";
+    //for (ulen i = 0; i < LLFuncTy->getNumParams(); i++) {
+    //    llvm::outs() << LLTypePrinter(LLFuncTy->getFunctionParamType(i)) << "\n";
+    //}
+    //llvm::outs() << "\n";
+
     llvm::Value* LLRetValue = Builder.CreateCall(LLFuncTy, LLCallee, LLArgs);
     EMIT_DI(EmitDebugLocation(Call));
 
@@ -2472,12 +2480,12 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong,
                                                    const ErrorAddrList& LLErrorAddrs) {
-    GenericBind* Binding;
+    GenericBinding* Binding;
     if (!CalledFunc->Interface) {
         if (CalledFunc->IsGeneric()) {
             FuncCall* Call = static_cast<FuncCall*>(CallNode);
             Binding = Call->Binding;
-            GenFuncDecl(CalledFunc, Binding);
+            GenFuncDecl(CalledFunc, Binding, true);
         } else {
             GenFuncDecl(CalledFunc);
         }
@@ -2671,14 +2679,14 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     if (!CalledFunc->Interface) {
 
         llvm::Function* LLCalledFunc;
-        GenericBind* PrevBinding;
+        GenericBinding* PrevBinding;
         if (CalledFunc->IsGeneric()) {
-            PrevBinding = CalledFunc->CurBinding;
-            CalledFunc->CurBinding = Binding;
+            PrevBinding = CalledFunc->GenData->CurBinding;
+            CalledFunc->GenData->CurBinding = Binding;
         }
         LLCalledFunc = CalledFunc->GetLLFunction();
         if (CalledFunc->IsGeneric()) {
-            CalledFunc->CurBinding = PrevBinding;
+            CalledFunc->GenData->CurBinding = PrevBinding;
         }
 
         // -- DEBUG
@@ -2717,6 +2725,20 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             llvm::Value* LLFuncPtr = CreateLoad(LLOffsetIntoVTable);
             // Have to bitcast to the function type.
             llvm::FunctionType* LLFuncTy = GenArcoConvFuncType(Context, CalledFunc);
+
+            // -- DEBUG
+            //llvm::outs() << "Calling virtual interface function with name: " << CalledFunc->Name << "\n";
+            //llvm::outs() << "Types passed to function:\n";
+            //for (ulen i = 0; i < LLArgs.size(); i++) {
+            //    llvm::outs() << LLValTypePrinter(LLArgs[i]) << "\n";
+            //}
+            //llvm::outs() << "Types expected by function:\n";
+            //for (ulen i = 0; i < LLFuncTy->getNumParams(); i++) {
+            //    llvm::outs() << LLTypePrinter(LLFuncTy->getFunctionParamType(i)) << "\n";
+            //}
+            //llvm::outs() << "\n";
+
+
             LLFuncPtr = Builder.CreateBitCast(LLFuncPtr, llvm::PointerType::get(LLFuncTy, 0));
             LLRetValue = Builder.CreateCall(LLFuncTy, LLFuncPtr, LLArgs);
             EMIT_DI(EmitDebugLocation(CallNode));
@@ -2752,7 +2774,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         AddObjectToDestroyOpt(CallNode->Ty, LLAddr);
     }
     
-    if (CalledFunc->IsConstructor) {
+    if (CalledFunc->IsConstructor || CalledFunc->UsesParamRetSlot) {
         // Return the address if we had to create one.
         return LLAddr;
     } else {
@@ -3521,6 +3543,7 @@ llvm::Value* arco::IRGenerator::GenTryError(TryError* Try, llvm::Value* LLAddr) 
 
     Builder.SetInsertPoint(LLThenBB);
     GenFuncDecl(Context.StdErrorPanicFunc);
+    
     Builder.CreateCall(Context.StdErrorPanicFunc->GetLLFunction(), { CreateLoad(LLInterfaceAddr) });
     
     GenBranchIfNotTerm(LLEndBB);
@@ -4210,6 +4233,9 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
     if (Struct->CopyConstructor) {
         // It has a copy constructor let's use that.
         GenFuncDecl(Struct->CopyConstructor);
+        // -- DEBUG
+        //llvm::outs() << "LLToAddr Type: "   << LLValTypePrinter(LLToAddr) << "\n";
+        //llvm::outs() << "LLFromAddr Type: " << LLValTypePrinter(LLFromAddr) << "\n";
         Builder.CreateCall(Struct->CopyConstructor->GetLLFunction(), { LLToAddr, LLFromAddr });
     } else {
         // Fallback on memcopy if no copy constructor.
@@ -4719,6 +4745,8 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
             if (Value->Is(AstKind::MOVEOBJ)) {
                 CopyOrMoveStructObject(LLAddress, GenNode(static_cast<MoveObj*>(Value)), Struct);
             } else {
+                // TODO: This is inefficient for try expressions because it can cause
+                // undo copying when the address could have just been passed.
                 CopyStructObject(LLAddress, GenNode(Value), Struct);
             }
         }
