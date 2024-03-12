@@ -3367,15 +3367,10 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
     // Basically we want to decend the type and continue to qualify the generic type
     // with the type information if not already qualified.
     
-
     // The type is not bound yet so cannot rely on IsAssignableTo.
 
     // TODO: Will want to check constraints once they are supported.
-    // 
-
-    // TODO: This is missing other checks like const checkes as well!
-
-    // TODO: Actually figure out how we want to get this variable.
+    
     BindableList& BindableTypes = *BindableTypesIn;
     
     ulen QualIdx = NumGenerics + GenericIdx;
@@ -3385,10 +3380,6 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
     case TypeKind::Generic: {
         // Any type can bind to a generic type with no additional content.
 
-        
-        // TODO: Will need a way to signal that this was the problem as well
-        //       to provide proper error reporting to the user.
-        
         // Want to always qualify the generic types because the information
         // needs to be known when checking other parameters.
         
@@ -3400,9 +3391,8 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
             // on the existing bound type.
             QualType = ExistingBind;
         } else {
-            // TODO: Check for more types without storage.
-            switch (ArgTy->GetKind()) {
-            case TypeKind::Null:
+            // TODO: Could signal to provide better error reporting
+            if (!ArgTy->TypeHasStorage()) {
                 return false;
             }
 
@@ -3412,7 +3402,6 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         break;
     }
     case TypeKind::Pointer: {
-        // TODO: Deal with implicit pointers.
         // TODO: Change this to allow for other pointers types like cstr
         // and also allow also take into account mismatch.
 
@@ -3840,8 +3829,6 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
             AllowImplicitPtr = ParamTyInfo.AllowImplicitPtr;
         }
         
-        // TODO: Also got to make checks for implicit pointers when doing calls
-        // to IsAssignableTo
         Type* QualType = nullptr;
         bool IsAssignable = true;
         if (ParamTy->ContainsGenerics) {
@@ -3918,8 +3905,6 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
         bool  ParamConstMemory = Param->HasConstAddress;
         Type* ParamTy = Param->Ty;
 
-        // TODO: Also got to make checks for implicit pointers when doing calls
-        // to IsAssignableTo
         Type* QualType = nullptr;
         bool IsAssignable = true;
         if (ParamTy->ContainsGenerics) {
@@ -4847,34 +4832,9 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
         if (Context.StdAnyStruct) {
             StructDecl* Struct = ToTy->AsStructType()->GetStruct();
             if (Struct == Context.StdAnyStruct) {
-                // Still need to make sure the type is sensible.
-                switch (FromTy->GetKind()) {
-                case TypeKind::Null:
-                    return false;
-                case TypeKind::Array: {
-                    ArrayType* ArrayTy = FromTy->AsArrayTy();
-                    Type* BaseTy = ArrayTy->GetBaseType();
-                    TypeKind Kind = BaseTy->GetKind();
-                    if (Kind == TypeKind::Null) {
-                        return false;
-                    } else if (Kind == TypeKind::Import || Kind == TypeKind::FuncRef ||
-                               Kind == TypeKind::StructRef || Kind == TypeKind::EnumRef ||
-                               Kind == TypeKind::InterfaceRef ||
-                               Kind == TypeKind::EmptyArrayElm) {
-                        return false;
-                    }
-                    break;
-                }
-                case TypeKind::Import:
-                case TypeKind::FuncRef:
-                case TypeKind::StructRef:
-                case TypeKind::EnumRef:
-                case TypeKind::InterfaceRef:
-                case TypeKind::Void:
-                case TypeKind::EmptyArrayElm:
+                if (!FromTy->TypeHasStorage()) {
                     return false;
                 }
-
                 return true;
             }
         }

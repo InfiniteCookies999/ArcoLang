@@ -8,6 +8,39 @@ arco::TypeKind arco::Type::GetKind() const {
     return Unbox()->GetRealKind();
 }
 
+bool arco::Type::TypeHasStorage() const {
+    switch (GetRealKind()) {
+    case TypeKind::Null:
+    case TypeKind::Import:
+    case TypeKind::FuncRef:
+    case TypeKind::StructRef:
+    case TypeKind::EnumRef:
+    case TypeKind::InterfaceRef:
+    case TypeKind::EmptyArrayElm:
+    case TypeKind::Void:
+        return false;
+    case TypeKind::Pointer:
+    case TypeKind::Slice:
+    case TypeKind::Array: {
+        const ContainerType* ContainerTy = static_cast<const ContainerType*>(this);
+        Type* ElmTy = nullptr;
+        while (true) {
+            ElmTy = ContainerTy->GetElementType();
+            if (ElmTy->GetRealKind() == TypeKind::Pointer ||
+                ElmTy->GetRealKind() == TypeKind::Slice ||
+                ElmTy->GetRealKind() == TypeKind::Array) {
+                ContainerTy = static_cast<const ContainerType*>(this);
+            } else {
+                break;
+            }
+        }
+        return ElmTy->TypeHasStorage();
+    }
+    default:
+        return true;
+    }
+}
+
 bool arco::Type::Equals(const Type* Ty) const {
     
     if (Ty->ContainsGenerics || this->ContainsGenerics) {

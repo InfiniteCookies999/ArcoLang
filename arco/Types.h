@@ -89,6 +89,8 @@ namespace arco {
             return Kind;
         }
 
+        bool TypeHasStorage() const;
+        
         bool Equals(const Type* Ty) const;
 
         bool IsNumber() const;
