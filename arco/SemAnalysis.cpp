@@ -357,7 +357,7 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
             Type* ExpectedType = PointerType::Create(StructType::Create(Func->Struct, Context), Context);
             if (!ParamTy->Equals(ExpectedType)) {
                 Error(Func->Loc, "%s constructor must have type '%s' but found type '%s'",
-                    ConstructorType, ExpectedType->ToString(), ParamTy->ToString());
+                    ConstructorType, ExpectedType, ParamTy);
             }
         }
     };
@@ -637,7 +637,7 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
         
         VarDecl* Last = Func->Params[Func->Params.size() - 1];
         if (Last->Ty->GetKind() == TypeKind::Array) {
-            Error(Last, "Cannot have variadic arguments of type '%s'", Last->Ty->ToString());
+            Error(Last, "Cannot have variadic arguments of type '%s'", Last->Ty);
             Func->ParsingError = true; // Hacky but reduces error messages later on.
         }
         // TODO: can there be circular dependency here?
@@ -1136,7 +1136,7 @@ void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
         if (Value.Assignment->Ty != Context.ErrorType) {
             if (!IsAssignableTo(ValuesType, Value.Assignment)) {
                 Error(Value.Loc, "Cannot assign enum value of type '%s' to enum's value type '%s'",
-                    Value.Assignment->Ty->ToString(), ValuesType->ToString());
+                    Value.Assignment->Ty, ValuesType);
             } else {
                 CreateCast(Value.Assignment, ValuesType);
                 if (Value.Assignment->IsFoldable && Value.Assignment->Ty->IsInt()) {
@@ -1347,7 +1347,7 @@ return;
                         if (!Var->TyIsInfered) {
                             if (!Var->Ty->Equals(Context.ErrorInterfacePtrType)) {
                                 Error(Var, "Expected variable to be of type '%s' to capture the raised error",
-                                    Context.ErrorInterfacePtrType->ToString());
+                                    Context.ErrorInterfacePtrType);
                             }
                         }
 
@@ -1425,8 +1425,8 @@ return;
                 VAR_YIELD(
                     Error(Var,
                         "Cannot assign array with element types '%s' to implicit array element types '%s'",
-                        FromArrayType->GetBaseType()->ToString(),
-                        ImplicitArrayType->GetBaseType()->ToString()),
+                        FromArrayType->GetBaseType(),
+                        ImplicitArrayType->GetBaseType()),
                     true);
             }
 
@@ -1495,7 +1495,7 @@ return;
                 Log.BeginError(
                         Var->Loc,
                         "Cannot declare variable with struct type '%s' because the type is incomplete",
-                        StructTy->ToString());
+                        StructTy);
                 Log.AddNoteLine([](llvm::raw_ostream& OS) {
                     OS << "This often happens due to cyclical struct dependencies.";
                 });
@@ -1586,8 +1586,8 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
 
     if (!ReturnMatched) {
         Error(Return, "Expected return type '%s' but got '%s'",
-            CFunc->RetTy->ToString(),
-            Return->Value ? Return->Value->Ty->ToString() : Context.VoidType->ToString());
+            CFunc->RetTy,
+            Return->Value ? Return->Value->Ty : Context.VoidType);
     }
 }
 
@@ -1668,7 +1668,7 @@ void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
             IterOnType = IterableType->AsContainerType()->GetElementType();
         } else {
             // TODO: expanded location?
-            Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType->ToString());
+            Error(Loop->IterOnExpr->Loc, "Cannot iterate on type '%s'", IterableType);
             return;
         }
     }
@@ -1681,7 +1681,7 @@ void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
                   IterOnType->Equals(Loop->VarVal->Ty->AsPointerTy()->GetElementType())
                 )) {
                 Error(Loop->VarVal->Loc, "Cannot assign type '%s' to variable of type '%s'",
-                    IterOnType->ToString(), Loop->VarVal->Ty->ToString());
+                    IterOnType, Loop->VarVal->Ty);
                 return;
             }
         }
@@ -1703,7 +1703,7 @@ void arco::SemAnalyzer::CheckDeleteStmt(DeleteStmt* Delete) {
     YIELD_IF_ERROR(Delete->Value);
 
     if (Delete->Value->Ty->GetKind() != TypeKind::Pointer) {
-        Error(Delete, "Cannot delete type '%s'", Delete->Value->Ty->ToString());
+        Error(Delete, "Cannot delete type '%s'", Delete->Value->Ty);
     }
 }
 
@@ -1846,19 +1846,19 @@ void arco::SemAnalyzer::CheckBinaryOp(BinaryOp* BinOp) {
 #define OPERATOR_CANNOT_APPLY(T)                                         \
 Error(BinOp, "Operator '%s' cannot apply to type '%s'   ('%s' %s '%s')", \
     Token::TokenKindToString(BinOp->Op, Context),                        \
-    T->ToString(),                                                       \
-    LTy->ToString(),                                                     \
+    T,                                                                   \
+    LTy,                                                                 \
     Token::TokenKindToString(BinOp->Op, Context),		                 \
-    RTy->ToString()                                                      \
+    RTy                                                                  \
     );                                                                   \
 YIELD_ERROR(BinOp)
 
 #define TYPE_MISMATCH()                                                  \
 Error(BinOp, "Operator '%s' had mismatched types   ('%s' %s '%s')",      \
     Token::TokenKindToString(BinOp->Op, Context),                        \
-    LTy->ToString(),                                                     \
+    LTy,                                                                 \
     Token::TokenKindToString(BinOp->Op, Context),		                 \
-    RTy->ToString()                                                      \
+    RTy                                                                  \
     );                                                                   \
 YIELD_ERROR(BinOp)
 
@@ -2083,7 +2083,7 @@ YIELD_ERROR(BinOp)
             IRGenerator IRGen(Context);
             llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
             if (LLInt->getZExtValue()-1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
-                Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy->ToString());
+                Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy);
             }
         }
 
@@ -2108,9 +2108,9 @@ YIELD_ERROR(BinOp)
                 Error(BinOp,
                       "Both sides of the operator '%s' must both be a booleans or integers   ('%s' %s '%s')",
                       Token::TokenKindToString(BinOp->Op, Context),
-                      LTy->ToString(),
+                      LTy,
                       Token::TokenKindToString(BinOp->Op, Context),
-                      RTy->ToString()
+                      RTy
                 );
                 YIELD_ERROR(BinOp);
             }
@@ -2254,9 +2254,9 @@ void arco::SemAnalyzer::CheckUnaryOp(UnaryOp* UniOp) {
     UniOp->IsFoldable = UniOp->Value->IsFoldable;
     Type* ValTy = UniOp->Value->Ty;
 
-#define OPERATOR_CANNOT_APPLY(T)                                  \
-Error(UniOp, "Operator '%s' cannot apply to type '%s'",           \
-    Token::TokenKindToString(UniOp->Op, Context), T->ToString()); \
+#define OPERATOR_CANNOT_APPLY(T)                        \
+Error(UniOp, "Operator '%s' cannot apply to type '%s'", \
+    Token::TokenKindToString(UniOp->Op, Context), T);   \
 YIELD_ERROR(UniOp);
 
     switch (UniOp->Op) {
@@ -2653,7 +2653,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
           Site->Ty->AsPointerTy()->GetElementType()->GetKind() == TypeKind::Struct) ||
         InterfacePtrRef
          )) {
-        Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty->ToString());
+        Error(FieldAcc, "Cannot access field of type '%s'", Site->Ty);
         YIELD_ERROR(FieldAcc);
     }
 
@@ -2699,7 +2699,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
         // 	cb int = a.ca;
         // }
         Error(FieldAcc, "Cannot access field of struct '%s' because the type is incomplete",
-            StructTy->ToString());
+            StructTy);
         YIELD_ERROR(FieldAcc);
     } else {
         CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
@@ -2803,7 +2803,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
         return;
     } else if (SiteTy->GetKind() != TypeKind::FuncRef) {
         // Invalid call.
-        Log.BeginError(Call->Loc, "cannot call type '%s'", SiteTy->ToString());
+        Log.BeginError(Call->Loc, "cannot call type '%s'", SiteTy);
         if (SiteTy->GetKind() == TypeKind::StructRef) {
             IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
             StructDecl* Struct = IRef->Struct;
@@ -3362,7 +3362,8 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                                             Type*& QualType,
                                             ulen NumGenerics,
                                             ulen GenericIdx,
-                                            bool IsRoot) {
+                                            bool IsRoot,
+                                            bool FromPtr) {
 
     // Basically we want to decend the type and continue to qualify the generic type
     // with the type information if not already qualified.
@@ -3393,7 +3394,10 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         } else {
             // TODO: Could signal to provide better error reporting
             if (!ArgTy->TypeHasStorage()) {
-                return false;
+                // Still want to allow void*, void**, ect..
+                if (!(FromPtr && ArgTy->Equals(Context.VoidType))) {
+                    return false;
+                }
             }
 
             BindableTypes[GenTy->GetIdx()] = ArgTy;
@@ -3417,8 +3421,8 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                                      QualType,
                                      NumGenerics,
                                      GenericIdx,
-                                     false
-                                     )) {
+                                     false,
+                                     true)) {
                 return false;
             } else {
                 // ArgTy is not the correct qualified type because it was taken implicitly.
@@ -3446,7 +3450,8 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                                  ParamPtrTy->GetElementType(),
                                  BindableTypesIn,
                                  QualType,
-                                 0, 0, false)) {
+                                 0, 0, false,
+                                 true)) {
             return false;
         }
 
@@ -4122,14 +4127,14 @@ void arco::SemAnalyzer::CheckArrayAccess(ArrayAccess* Access) {
     YIELD_ERROR_WHEN(Access, Access->Site);
 
     if (!Access->Index->Ty->IsInt()) {
-        Error(Access, "Expected int type for index. Found type '%s'", Access->Index->Ty->ToString());
+        Error(Access, "Expected int type for index. Found type '%s'", Access->Index->Ty);
     }
 
     TypeKind Kind = Access->Site->Ty->GetKind();
     if (!(Kind == TypeKind::Array || Kind == TypeKind::Pointer || Kind == TypeKind::CStr ||
           Kind == TypeKind::Slice)) {
         Error(Access, "Cannot index non-array or pointer type. Type was '%s'",
-            Access->Site->Ty->ToString());
+            Access->Site->Ty);
         YIELD_ERROR(Access);
     }
 
@@ -4155,8 +4160,7 @@ void arco::SemAnalyzer::CheckTypeCast(TypeCast* Cast) {
     Cast->HasConstAddress = Cast->Value->HasConstAddress;
 
     if (!IsCastableTo(Cast->Ty, Cast->Value->Ty)) {
-        Error(Cast, "Cannot cast from type '%s' to type '%s'",
-            Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+        Error(Cast, "Cannot cast from type '%s' to type '%s'", Cast->Value->Ty, Cast->Ty);
         YIELD_ERROR(Cast);
     }
     if (Cast->Value->Ty->GetKind() == TypeKind::CStr) {
@@ -4180,8 +4184,7 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
            (ValueTy->IsNumber()  || ValueTy->IsQualifiedPointer() )
          )
         ) {
-        Error(Cast, "Cannot bitcast from type '%s' to type '%s'",
-            Cast->Value->Ty->ToString(), Cast->Ty->ToString());
+        Error(Cast, "Cannot bitcast from type '%s' to type '%s'", Cast->Value->Ty, Cast->Ty);
         YIELD_ERROR(Cast);
     } else {
         if (Cast->Ty->GetSizeInBytes(Context.LLArcoModule) != ValueTy->GetSizeInBytes(Context.LLArcoModule)) {
@@ -4353,7 +4356,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
                                                        CapturesErrors);
     } else if (!Alloc->Values.empty()) {
         if (Alloc->Values.size() > 1) {
-            Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc->ToString());
+            Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc);
         } else {
             CheckNode(Alloc->Values[0].E);
             if (Alloc->Values[0].E->Ty != Context.ErrorType) {
@@ -4364,8 +4367,8 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
                 if (!IsAssignableTo(Alloc->TypeToAlloc, Alloc->Values[0].E)) {
                     Error(Alloc->Values[0].ExpandedLoc,
                         "Cannot initialize allocation of type '%s' with type '%s'",
-                        Alloc->TypeToAlloc->ToString(),
-                        Alloc->Values[0].E->Ty->ToString());
+                        Alloc->TypeToAlloc,
+                        Alloc->Values[0].E->Ty);
                 } else {
                     CreateCast(Alloc->Values[0].E, Alloc->TypeToAlloc);
                 }
@@ -4399,8 +4402,7 @@ void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
     if (SOf->TypeToGetSizeOf->GetKind() == TypeKind::Struct) {
         StructType* StructTy = SOf->TypeToGetSizeOf->AsStructType();
         if (StructTy->GetStruct()->IsBeingChecked) {
-            Error(SOf, "Cannot get sizeof struct '%s' because the type is incomplete",
-                StructTy->ToString());
+            Error(SOf, "Cannot get sizeof struct '%s' because the type is incomplete", StructTy);
         }
     }
 }
@@ -4429,12 +4431,12 @@ void arco::SemAnalyzer::CheckRange(Range* Rg) {
     bool Errors = false;
     if (!Rg->LHS->Ty->IsInt() &&
             Rg->LHS->Ty->GetRealKind() != TypeKind::Enum) {
-        Error(Rg->LHS, "Expected indexable type for range. Found type '%s'", Rg->LHS->Ty->ToString());
+        Error(Rg->LHS, "Expected indexable type for range. Found type '%s'", Rg->LHS->Ty);
         Errors = true;
     }
     if (!Rg->RHS->Ty->IsInt() &&
             Rg->RHS->Ty->GetRealKind() != TypeKind::Enum) {
-        Error(Rg->RHS, "Expected indexable type for range. Found type '%s'", Rg->RHS->Ty->ToString());
+        Error(Rg->RHS, "Expected indexable type for range. Found type '%s'", Rg->RHS->Ty);
         Errors = true;
     }
 
@@ -4571,7 +4573,7 @@ void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
     if (Cond->Ty == Context.ErrorType) return;
     if (!IsComparable(Cond->Ty)) {
         Error(Cond, "%s condition expected to be type 'bool' but found type '%s'",
-             PreErrorText, Cond->Ty->ToString());
+             PreErrorText, Cond->Ty);
     }
 }
 
@@ -5268,7 +5270,7 @@ void arco::SemAnalyzer::DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToT
                 } else {
                     OS << Number->UnsignedIntValue;
                 }
-                OS << " could not fit into '" << ToTy->ToString() << "' ";
+                OS << " could not fit into '" << ToTy << "' ";
                 OS << "(" << ToTy->GetSizeInBytes(Context.LLArcoModule) * 8 << " bits)";
                 });
         }
@@ -5277,7 +5279,7 @@ void arco::SemAnalyzer::DisplayNoteInfoForTypeMismatch(Expr* FromExpr, Type* ToT
 
 void arco::SemAnalyzer::DisplayErrorForTypeMismatch(const char* ErrMsg, SourceLoc ErrorLoc,
                                                     Expr* FromExpr, Type* ToTy) {
-    Log.BeginError(ErrorLoc, ErrMsg, FromExpr->Ty->ToString(), ToTy->ToString());
+    Log.BeginError(ErrorLoc, ErrMsg, FromExpr->Ty, ToTy);
     DisplayNoteInfoForTypeMismatch(FromExpr, ToTy);
     Log.EndError();
 }

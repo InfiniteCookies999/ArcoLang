@@ -146,7 +146,8 @@ namespace arco {
                                  Type*& QualType,
                                  ulen NumGenerics,
                                  ulen GenericIdx,
-                                 bool IsRoot);
+                                 bool IsRoot,
+                                 bool FromPtr = false);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue>& Args,

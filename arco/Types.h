@@ -89,7 +89,7 @@ namespace arco {
             return Kind;
         }
 
-        bool TypeHasStorage() const;
+        bool TypeHasStorage(bool FromPtr = false) const;
         
         bool Equals(const Type* Ty) const;
 
@@ -328,6 +328,10 @@ namespace arco {
             : Type(TypeKind::Generic) {}
     };
 
+}
+
+namespace llvm {
+    raw_ostream& operator<<(raw_ostream& OS, const arco::Type* Ty);
 }
 
 #endif // ARCO_TYPES_H

@@ -8,8 +8,10 @@ arco::TypeKind arco::Type::GetKind() const {
     return Unbox()->GetRealKind();
 }
 
-bool arco::Type::TypeHasStorage() const {
+bool arco::Type::TypeHasStorage(bool FromPtr) const {
     switch (GetRealKind()) {
+    case TypeKind::Void:
+        return FromPtr;
     case TypeKind::Null:
     case TypeKind::Import:
     case TypeKind::FuncRef:
@@ -17,7 +19,6 @@ bool arco::Type::TypeHasStorage() const {
     case TypeKind::EnumRef:
     case TypeKind::InterfaceRef:
     case TypeKind::EmptyArrayElm:
-    case TypeKind::Void:
         return false;
     case TypeKind::Pointer:
     case TypeKind::Slice:
@@ -34,7 +35,7 @@ bool arco::Type::TypeHasStorage() const {
                 break;
             }
         }
-        return ElmTy->TypeHasStorage();
+        return ElmTy->TypeHasStorage(GetRealKind() == TypeKind::Pointer);
     }
     default:
         return true;
@@ -781,4 +782,11 @@ arco::GenericType* arco::GenericType::Create(Identifier Name, ulen Idx, ArcoCont
     GenTy->ContainsGenerics = true;
     GenTy->Idx = Idx;
     return GenTy;
+}
+
+namespace llvm {
+    raw_ostream& llvm::operator<<(raw_ostream& OS, const arco::Type* Ty) {
+        OS << Ty->ToString();
+        return OS;
+    }
 }
