@@ -1370,10 +1370,17 @@ return;
             VAR_YIELD(, true);
         }
 
+        if (Var->Ty->Equals(Context.CStrType)) {
+            Var->HasConstAddress = true;
+        }
+
         if (Var->TyIsInfered) {
             // The type is infered.
             
             Var->Ty = Var->Assignment->Ty;
+            if (Var->Ty->Equals(Context.CStrType)) {
+                Var->HasConstAddress = true;
+            }
             if (Var->Assignment->HasConstAddress &&
                 (Var->Assignment->Ty->IsPointer() || Var->Assignment->Ty->GetKind() == TypeKind::Array)) {
                 // If the memory is protected from the infered assignment take on that
@@ -1456,15 +1463,17 @@ return;
         }
 
         if (ViolatesConstAssignment(Var, Var->Assignment)) {
-            VAR_YIELD(Error(Var, "Cannot assign const memory to non-const variable"),
-                true);
+            VAR_YIELD(Error(Var, "Cannot assign const memory to non-const variable"), true);
         }
     } else {
         // No assignment.
 
         if (Var->TyIsInfered) {
-            VAR_YIELD(Error(Var, "Cannot infer type because there is no assignment"),
-                true);
+            VAR_YIELD(Error(Var, "Cannot infer type because there is no assignment"), true);
+        }
+
+        if (Var->Ty->Equals(Context.CStrType)) {
+            Var->HasConstAddress = true;
         }
 
         StructDecl* StructForTy = nullptr;
@@ -1513,10 +1522,6 @@ return;
         }
     } else if (Var->Ty->GetKind() == TypeKind::Interface) {
         Error(Var, "Cannot declare a variable type as an interface type. You must use a pointer");
-    }
-
-    if (Var->Ty->Equals(Context.CStrType)) {
-        Var->HasConstAddress = true;
     }
 
     if (Var->HasConstAddress && !Var->Assignment &&
@@ -2634,6 +2639,12 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
         if (!FieldAcc->EnumValue) {
             Error(FieldAcc, "enum '%s' does not contain value '%s'",
                 IRef->Struct->Name, FieldAcc->Ident);
+        }
+
+        if (IRef->Enum->ValuesType && IRef->Enum->ValuesType->Equals(Context.CStrType)) {
+            FieldAcc->HasConstAddress = true;
+        } else {
+            FieldAcc->HasConstAddress = false;
         }
 
         return;
@@ -4587,14 +4598,16 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Expr* FromExpr) {
 }
 
 bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr) {
-    if (FromTy->GetRealKind() == TypeKind::Enum || ToTy->GetRealKind() == TypeKind::Enum) {
-        if (ToTy->GetRealKind()== TypeKind::Enum) {
+    if (FromTy->UnboxGeneric()->GetRealKind() == TypeKind::Enum ||
+        ToTy->UnboxGeneric()->GetRealKind() == TypeKind::Enum) {
+        
+        if (ToTy->UnboxGeneric()->GetRealKind()== TypeKind::Enum) {
             return ToTy->Equals(FromTy);
         }
 
         // Enums have special rules for assignments since they
         // can assign to whatever their index type is.
-        EnumDecl* Enum = static_cast<StructType*>(FromTy)->GetEnum();
+        EnumDecl* Enum = static_cast<StructType*>(FromTy->UnboxGeneric())->GetEnum();
         return IsAssignableTo(ToTy, Enum->ValuesType, nullptr);
     }
 
@@ -4890,7 +4903,7 @@ bool arco::SemAnalyzer::ViolatesConstAssignment(VarDecl* DestVar, Expr* Assignme
 }
 
 bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddress, Expr* Assignment) {
-    TypeKind DestTyKind = DestTy->GetKind();
+    TypeKind DestTyKind = DestTy->UnboxGeneric()->GetRealKind();
     return !DestConstAddress           &&
            Assignment->HasConstAddress &&
            (DestTyKind == TypeKind::Pointer || DestTyKind == TypeKind::CStr ||

@@ -511,8 +511,8 @@ std::string arco::Type::ToString(bool                               ShowFullGene
 
 bool arco::Type::GenericsEquals(const Type* Ty) const {
     
-    const Type* TyUnboxed   = Ty->Unbox();
-    const Type* ThisUnboxed = this->Unbox();
+    const Type* TyUnboxed   = Ty->UnboxGeneric();
+    const Type* ThisUnboxed = this->UnboxGeneric();
 
     switch (ThisUnboxed->GetRealKind()) {
     case TypeKind::Pointer: {

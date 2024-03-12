@@ -232,7 +232,7 @@ namespace arco {
                 Log.AddMarkMessage(
                     CFunc->GenData->CurBinding->OriginalFile,
                     CFunc->GenData->CurBinding->OriginalLoc,
-                    "Original call location");
+                    "Original bind location");
             }
         }
 

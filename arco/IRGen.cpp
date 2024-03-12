@@ -91,6 +91,12 @@ ulen NextPow2(ulen V) {
 
 llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
     llvm::LLVMContext& LLContext = Context.LLContext;
+    if (Ty->UnboxGeneric()->GetRealKind() == TypeKind::Enum) {
+        EnumDecl* Enum = static_cast<StructType*>(Ty->UnboxGeneric())->GetEnum();
+        Type* IndexType = Enum->IndexingInOrder ? Enum->ValuesType : Context.IntType;
+        return GenType(Context, IndexType);
+    }
+
     switch (Ty->GetKind()) {
     case TypeKind::Char:
     case TypeKind::Int8:
@@ -2820,7 +2826,9 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
                 // Any does not have ownership.
                 AddObjectToDestroyOpt(Arg->Ty, LLArg);
 
-                return CreateLoad(GenCast(Arg->CastTy, Arg->Ty, LLArg));
+                llvm::Value* LLValue = CreateLoad(GenCast(Arg->CastTy, Arg->Ty, LLArg));
+                Arg->CastTy = nullptr; // Reset in case of generics.
+                return LLValue;
             } else {
                 // Cast to any so nothing below applies.
                 return GenRValue(Arg);
@@ -2885,6 +2893,7 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
 llvm::Value* arco::IRGenerator::GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest) {
 
     ArrayType* DestTy = GetGenArrayDestType(Arr);
+    // TODO: Consider how generics will effect the CastTy.
     bool DestIsPointer = Arr->CastTy && Arr->CastTy->IsPointer();
 
     if (!LLAddr && !DestIsPointer) {
@@ -3094,10 +3103,10 @@ llvm::Value* arco::IRGenerator::GenTypeBitCast(TypeBitCast* Cast) {
     Type* FromType = Cast->Value->Ty;
     // Enum values may be floats and which are not indexable so need to load.
     //
-    if (FromType->GetRealKind() == TypeKind::Enum) {
+    if (FromType->UnboxGeneric()->GetRealKind() == TypeKind::Enum) {
         
         // KEEP static cast here because AsStructTy will strip away enum information.
-        EnumDecl* Enum = static_cast<StructType*>(FromType)->GetEnum();
+        EnumDecl* Enum = static_cast<StructType*>(FromType->UnboxGeneric())->GetEnum();
         FromType = Enum->ValuesType;
         if (!Enum->IndexingInOrder) {
             // Not indexing in order so we have to get the values out of a global array.
@@ -3284,7 +3293,7 @@ llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
     llvm::StructType* LLEnumStructType    = GenStructType(Context.StdEnumTypeStruct);
 
     // We use the GetRealKind() so as to not loose enum information.
-    TypeKind Kind = GetTy->GetRealKind();
+    TypeKind Kind = GetTy->UnboxGeneric()->GetRealKind();
 
     llvm::Constant* LLTypeId = GetSystemInt(static_cast<i64>(Kind));
     llvm::Constant* LLPointerInfo, *LLArrayInfo, *LLStructInfo, *LLEnumInfo;
@@ -3624,7 +3633,7 @@ void arco::IRGenerator::GenBlock(llvm::BasicBlock* LLBB, ScopeStmts& Stmts) {
 
 llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Value* LLValue) {
 
-    if (FromType->GetRealKind() == TypeKind::Enum) {
+    if (FromType->UnboxGeneric()->GetRealKind() == TypeKind::Enum) {
         if (ToType->GetKind() == TypeKind::Struct) {
             // If generating to Any then we actually need to perserve the enum information
             // rather than stripping it away.
@@ -3634,7 +3643,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
         }
 
         // KEEP static cast here because AsStructTy will strip away enum information.
-        EnumDecl* Enum = static_cast<StructType*>(FromType)->GetEnum();
+        EnumDecl* Enum = static_cast<StructType*>(FromType->UnboxGeneric())->GetEnum();
         FromType = Enum->ValuesType;
         if (!Enum->IndexingInOrder) {
             // Not indexing in order so we have to get the values out of a global array.
@@ -4647,6 +4656,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
                 Builder.CreateStore(LLAssignment, LLAddress);
             }
         }
+        Value->CastTy = nullptr; // Reset of generics
     } else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
         StructDecl* Struct = AddrTy->AsStructType()->GetStruct();
 
@@ -4753,6 +4763,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
     } else if (AddrTy->GetKind() == TypeKind::Slice) {
         if (Value->Ty->GetKind() == TypeKind::Array) {
             GenArrayToSlice(LLAddress, GenNode(Value), Value->CastTy, Value->Ty);
+            Value->CastTy = nullptr; // Reset for generics
         } else {
             GenSliceToSlice(LLAddress, Value);
         }
