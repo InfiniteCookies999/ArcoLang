@@ -83,6 +83,9 @@ void arco::Parser::Parse() {
     // work here. Same goes for any other uses of this.
     bool PrevNumErrors = TotalAccumulatedErrors;
 
+    // -- DEBUG
+    // llvm::outs() << "Parsing file: " << FScope->Path << "\n";
+
     NextToken(); // Prime the parser.
 
     FScope->Mod = Mod;

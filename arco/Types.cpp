@@ -30,7 +30,7 @@ bool arco::Type::TypeHasStorage(bool FromPtr) const {
             if (ElmTy->GetRealKind() == TypeKind::Pointer ||
                 ElmTy->GetRealKind() == TypeKind::Slice ||
                 ElmTy->GetRealKind() == TypeKind::Array) {
-                ContainerTy = static_cast<const ContainerType*>(this);
+                ContainerTy = static_cast<const ContainerType*>(ElmTy);
             } else {
                 break;
             }
@@ -347,7 +347,7 @@ bool arco::Type::HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundT
             if (ElmTy->GetRealKind() == TypeKind::Pointer ||
                 ElmTy->GetRealKind() == TypeKind::Slice ||
                 ElmTy->GetRealKind() == TypeKind::Array) {
-                ContainerTy = static_cast<const ContainerType*>(this);
+                ContainerTy = static_cast<const ContainerType*>(ElmTy);
             } else {
                 break;
             }

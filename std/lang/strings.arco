@@ -200,8 +200,6 @@ String struct {
             return this;
         }
 
-        // TODO:  quick pass for single lengths
-        
         // Create a temporary buffer of indices 
         tmp_buffer int[2];
         ext_buffer int*;

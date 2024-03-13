@@ -4,11 +4,12 @@ import reflect.TypeId;
 
 private FmtOptions enum {
     
-    NONE      :: 0x0000;
+    NONE        :: 0x0000;
     
-    HEX       :: 0x0001;
-    SHOW_SIGN :: 0x0002;
-    DECIMAL   :: 0x0004;
+    HEX         :: 0x0001;
+    SHOW_SIGN   :: 0x0002;
+    DECIMAL     :: 0x0004;
+    DEREFERENCE :: 0x0008;
 
 }
 
@@ -30,6 +31,9 @@ private FmtOptions enum {
  *                      the value.
  *   %+s             -- prints the positive sign of a value if
  *                      the value is positive numeric.
+ *   %p              -- If the value is a pointer it will be
+ *                      dereferenced.
+ *
  */
 OutStream struct : Writeable {
     
@@ -122,7 +126,11 @@ OutStream struct : Writeable {
 
         // TODO: replace with a switch statement once supported.
         if type.id == TypeId.CSTR {
-            write(cast(cstr) value);
+            if (options & FmtOptions.DEREFERENCE) != 0 {
+                write(*cast(cstr) value);
+            } else {
+                write(cast(cstr) value);
+            }
         }
         // Annoying but have to cast specitly to the right integer
         // size otherwise it won't be able to interpret the size right.
@@ -156,7 +164,12 @@ OutStream struct : Writeable {
             }
         } else if type.is_pointer() {
             // Using the to_string function because we have to buffer out of order.
-            write(to_string(value));
+            if (options & FmtOptions.DEREFERENCE) != 0 {
+                options &= ~FmtOptions.DEREFERENCE;
+                write_any(value, type.element_type, options);
+            } else {
+                write(to_string(value));
+            }
         } else if type.id == TypeId.ARRAY {
             array_info := type.array_info;
             write_array_like_type(value, array_info.element_type, array_info.length, options);
@@ -190,7 +203,7 @@ OutStream struct : Writeable {
             }
             
             write(type.struct_info.name);
-            write("{ ");
+            write("{");
             
             num_fields := type.struct_info.num_fields;
             loop i := 0; i < num_fields; i++ {
@@ -218,7 +231,7 @@ OutStream struct : Writeable {
                 }
             }
             
-            write(" }");
+            write("}");
         } else if type.id == TypeId.ENUM {
             
             index int;
@@ -255,7 +268,7 @@ OutStream struct : Writeable {
     
     private fn write_array_like_type(array void*, elm_type Type*, length int, options FmtOptions)
         raises IOError {
-        write("[ ");
+        write("[");
             
         elm_byte_size := elm_type.size_in_bytes;
         loop i := 0; i < length; i++ {
@@ -280,7 +293,7 @@ OutStream struct : Writeable {
             }
         }
         
-        write(" ]");
+        write("]");
     }
 
     fn write(fmt cstr, args Any...) raises IOError {
@@ -351,6 +364,8 @@ OutStream struct : Writeable {
                     write_any(any.value, any.type, options | FmtOptions.HEX);
                 } else if next == 'd' || next == 'D' {
                     write_any(any.value, any.type, options | FmtOptions.DECIMAL);
+                } else if next == 'p' || next == 'P' {
+                    write_any(any.value, any.type, options | FmtOptions.DEREFERENCE);
                 }
 
                 if pad < 0 {
