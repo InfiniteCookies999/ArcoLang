@@ -828,7 +828,7 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
     case AstKind::STRUCT_INITIALIZER:
         return GenStructInitializer(static_cast<StructInitializer*>(Node), nullptr);
     case AstKind::HEAP_ALLOC:
-        return GenHeapAlloc(static_cast<HeapAlloc*>(Node));
+        return GenHeapAlloc(static_cast<HeapAlloc*>(Node), nullptr);
     case AstKind::SIZEOF:
         return GetSystemInt(
             SizeOfTypeInBytesNonVirtualInclusive(static_cast<SizeOf*>(Node)->TypeToGetSizeOf));
@@ -920,6 +920,13 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
         // since arrays should always be taken as
         // l-values.
         if (E->Ty->GetKind() != TypeKind::Array) {
+            LLValue = CreateLoad(LLValue);
+        }
+        break;
+    }
+    case AstKind::HEAP_ALLOC: {
+        HeapAlloc* Alloc = static_cast<HeapAlloc*>(E);
+        if (Alloc->UsesSlice) {
             LLValue = CreateLoad(LLValue);
         }
         break;
@@ -1499,10 +1506,34 @@ llvm::Value* arco::IRGenerator::LoadIteratorLoopValueIfNeeded(llvm::Value* LLVal
 }
 
 llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
-    llvm::Value* LLValue = GenRValue(Delete->Value);
+    TypeKind Kind = Delete->Value->Ty->GetKind();
+    if (Kind == TypeKind::Slice) {
+        Type* ElmTys = Delete->Value->Ty->AsSliceTy()->GetElementType();
 
-    llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
-    Builder.Insert(LLFree);
+        llvm::Value* LLSliceAddr = GenNode(Delete->Value);
+        llvm::Value* LLArrayPtr = CreateLoad(CreateStructGEP(LLSliceAddr, 1));
+
+        if (ElmTys->TypeNeedsDestruction()) {
+            llvm::Value* LLLength = CreateLoad(CreateStructGEP(LLSliceAddr, 0));
+            GenInternalArrayLoop(ElmTys, LLArrayPtr, LLLength,
+                [this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
+                    CallDestructors(BaseTy, LLElmAddr, nullptr);
+                });
+        }
+        
+        llvm::Value* LLFree = llvm::CallInst::CreateFree(LLArrayPtr, Builder.GetInsertBlock());
+        Builder.Insert(LLFree);
+    } else {
+        llvm::Value* LLValue = GenRValue(Delete->Value);
+        Type* ElmTys = Delete->Value->Ty->AsPointerTy()->GetElementType();
+        if (ElmTys->TypeNeedsDestruction()) {
+            CallDestructors(ElmTys, LLValue, nullptr);
+        }
+
+        llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
+        Builder.Insert(LLFree);
+    }
+    
     EMIT_DI(EmitDebugLocation(Delete));
     return nullptr;
 }
@@ -3210,7 +3241,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
     }
 }
 
-llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, const ErrorAddrList& LLErrorAddrs) {
+llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr, const ErrorAddrList& LLErrorAddrs) {
     Type* TypeToAlloc = Alloc->TypeToAlloc;
     if (TypeToAlloc->GetKind() == TypeKind::Array) {
         ArrayType* ArrayTy = TypeToAlloc->AsArrayTy();
@@ -3233,7 +3264,20 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, const ErrorAddrLi
             StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
         }
 
-        return LLArrStartPtr;
+        if (Alloc->UsesSlice) {
+            if (!LLAddr) {
+                LLAddr = CreateUnseenAlloca(GenType(Alloc->Ty), "tmp.addr");
+            }
+
+            llvm::Value* LLLengthFieldAddr = CreateStructGEP(LLAddr, 0);
+            Builder.CreateStore(LLTotalLinearLength, LLLengthFieldAddr);
+            llvm::Value* LLPtrFieldAddr = CreateStructGEP(LLAddr, 1);
+            Builder.CreateStore(LLArrStartPtr, LLPtrFieldAddr);
+
+            return LLAddr;
+        } else {
+            return LLArrStartPtr;
+        }
     } else {
         llvm::Value* LLMalloc = GenMalloc(GenType(TypeToAlloc), nullptr);
         if (TypeToAlloc->GetKind() == TypeKind::Struct) {
@@ -4760,6 +4804,12 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
                 CopyStructObject(LLAddress, GenNode(Value), Struct);
             }
         }
+    } else if (Value->Is(AstKind::HEAP_ALLOC)) {
+        HeapAlloc* Alloc = static_cast<HeapAlloc*>(Value);
+        llvm::Value* LLAssignment = GenHeapAlloc(Alloc, LLAddress, LLErrorAddrs);
+        if (!Alloc->UsesSlice) {
+            Builder.CreateStore(LLAssignment, LLAddress);
+        }
     } else if (AddrTy->GetKind() == TypeKind::Slice) {
         if (Value->Ty->GetKind() == TypeKind::Array) {
             GenArrayToSlice(LLAddress, GenNode(Value), Value->CastTy, Value->Ty);
@@ -4767,10 +4817,6 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
         } else {
             GenSliceToSlice(LLAddress, Value);
         }
-    } else if (Value->Is(AstKind::HEAP_ALLOC)) {
-        HeapAlloc* Alloc = static_cast<HeapAlloc*>(Value);
-        llvm::Value* LLAssignment = GenHeapAlloc(Alloc, LLErrorAddrs);
-        Builder.CreateStore(LLAssignment, LLAddress);
     } else {
 
         llvm::Value* LLAssignment = GenRValue(Value);

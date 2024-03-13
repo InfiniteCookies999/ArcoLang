@@ -185,7 +185,7 @@ namespace arco {
                                       llvm::SmallVector<NamedValue>& NamedArgs,
                                       bool& VarArgPassAlong,
                                       bool CapturesErrors);
-        void CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors = false);
+        void CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType, bool CapturesErrors = false);
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);
         void CheckRange(Range* Rg);

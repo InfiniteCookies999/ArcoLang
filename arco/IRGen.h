@@ -174,7 +174,7 @@ namespace arco {
                                StructDecl* Struct,
                                llvm::SmallVector<NonNamedValue>& Args,
                                llvm::SmallVector<NamedValue>& NamedArgs);
-        llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, const ErrorAddrList& LLErrorAddrs = {});
+        llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr, const ErrorAddrList& LLErrorAddrs = {});
         llvm::Value* GenTypeOf(TypeOf* TOf);
         llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
         llvm::Constant* GenTypeOfType(Type* GetTy);

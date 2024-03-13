@@ -744,7 +744,7 @@ private fn array_like_type_to_string(array void*, elm_type Type*, length int) St
 
 fn concat(s1 String^, s2 String^) String {
     new_length := s1.length + s2.length;
-    buffer := new char[new_length + 1]; // +1 for null termination.
+    buffer char* = new char[new_length + 1]; // +1 for null termination.
     memcpy(buffer            , s1.buffer, s1.length);
     memcpy(buffer + s1.length, s2.buffer, s2.length);
     buffer[new_length] = '\0'; // Null termination.

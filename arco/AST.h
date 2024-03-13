@@ -838,6 +838,7 @@ namespace arco {
 
         FuncDecl* CalledConstructor = nullptr;
         bool VarArgsPassAlong = false;
+        bool UsesSlice = false;
 
         llvm::SmallVector<NonNamedValue> Values;
         llvm::SmallVector<NamedValue>    NamedValues;

@@ -768,7 +768,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         CheckStructInitializer(static_cast<StructInitializer*>(Node));
         break;
     case AstKind::HEAP_ALLOC:
-        CheckHeapAlloc(static_cast<HeapAlloc*>(Node));
+        CheckHeapAlloc(static_cast<HeapAlloc*>(Node), nullptr);
         break;
     case AstKind::SIZEOF:
         CheckSizeOf(static_cast<SizeOf*>(Node));
@@ -1333,6 +1333,8 @@ return;
 
     if (Var->Assignment) {
         if (!PartOfErrorDecomposition) {
+            // TODO: Doesn't this need to check heap allocation and struct initialization cases
+            //       as well.
             if (Var->Assignment->Is(AstKind::FUNC_CALL)) {
                 FuncCall* Call = static_cast<FuncCall*>(Var->Assignment);
                 CheckFuncCall(Call, true);
@@ -1362,6 +1364,8 @@ return;
                         CheckIfErrorsAreCaptures(Call->Loc, Call->CalledFunc);
                     }
                 }
+            } else if (Var->Assignment->Is(AstKind::HEAP_ALLOC)) {
+                CheckHeapAlloc(static_cast<HeapAlloc*>(Var->Assignment), Var->Ty);
             } else {
                 CheckNode(Var->Assignment);
             }
@@ -1707,7 +1711,10 @@ void arco::SemAnalyzer::CheckDeleteStmt(DeleteStmt* Delete) {
     CheckNode(Delete->Value);
     YIELD_IF_ERROR(Delete->Value);
 
-    if (Delete->Value->Ty->GetKind() != TypeKind::Pointer) {
+    TypeKind Kind = Delete->Value->Ty->GetKind();
+    if (Kind != TypeKind::Pointer &&
+        Kind != TypeKind::Slice
+        ) {
         Error(Delete, "Cannot delete type '%s'", Delete->Value->Ty);
     }
 }
@@ -1835,7 +1842,11 @@ static Type* DetermineTypeFromNumberTypes(ArcoContext& Context, Expr* LHS, Expr*
 void arco::SemAnalyzer::CheckBinaryOp(BinaryOp* BinOp) {
     
     CheckNode(BinOp->LHS);
-    CheckNode(BinOp->RHS);
+    if (BinOp->RHS->Is(AstKind::HEAP_ALLOC) && BinOp->Op == '=') {
+        CheckHeapAlloc(static_cast<HeapAlloc*>(BinOp->RHS), BinOp->LHS->Ty);
+    } else {
+        CheckNode(BinOp->RHS);
+    }
 
     Type* LTy = BinOp->LHS->Ty;
     Type* RTy = BinOp->RHS->Ty;
@@ -4347,7 +4358,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
     return nullptr;
 }
 
-void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
+void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType, bool CapturesErrors) {
     Alloc->IsFoldable = false;
 
     Type* TypeToAlloc = Alloc->TypeToAlloc;
@@ -4397,7 +4408,34 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, bool CapturesErrors) {
     }
 
     if (TypeToAlloc->GetKind() == TypeKind::Array) {
-        Alloc->Ty = PointerType::Create(TypeToAlloc->AsArrayTy()->GetBaseType(), Context);
+        Type* ArrBaseTy = TypeToAlloc->AsArrayTy()->GetBaseType();
+        if (AssignToType && AssignToType->GetKind() == TypeKind::Pointer) {
+            
+            PointerType* PtrTy = AssignToType->AsPointerTy();
+            if (PtrTy->GetElementType()->Equals(ArrBaseTy)) {
+                if (ArrBaseTy->TypeNeedsDestruction()) {
+                    Error(Alloc,
+                        "Cannot allocate memory as type '%s' because the base type '%s' has destructors. Use type '%s' instead",
+                        PtrTy, ArrBaseTy, SliceType::Create(ArrBaseTy, Context));
+                    YIELD_ERROR(Alloc);
+                }
+                
+                Alloc->Ty = PointerType::Create(ArrBaseTy, Context);
+            } else {
+                // Not matching let error reporting deal with mismatch.
+                // TODO: This should probably take into account poylmorphism.
+                Alloc->Ty = SliceType::Create(ArrBaseTy, Context);
+                Alloc->UsesSlice = true;
+            }
+        } else {
+            if (ArrBaseTy->TypeNeedsDestruction() || (AssignToType && AssignToType->GetKind() == TypeKind::Slice)) {
+                // Use slice type if it has destructors so that it knows how to delete.
+                Alloc->Ty = SliceType::Create(ArrBaseTy, Context);
+                Alloc->UsesSlice = true;
+            } else {
+                Alloc->Ty = PointerType::Create(ArrBaseTy, Context);
+            }
+        }
     } else {
         Alloc->Ty = PointerType::Create(TypeToAlloc, Context);
     }
@@ -4533,7 +4571,7 @@ void arco::SemAnalyzer::CheckVarDeclList(VarDeclList* List) {
             CalledFunc = StructInit->CalledConstructor;
         } else {
             HeapAlloc* Alloc = static_cast<HeapAlloc*>(CallNode);
-            CheckHeapAlloc(Alloc, true);
+            CheckHeapAlloc(Alloc, List->Decls[0]->Ty, true);
             CalledFunc = Alloc->CalledConstructor;
         }
 
