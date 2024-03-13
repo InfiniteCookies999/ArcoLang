@@ -741,7 +741,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         CheckUnaryOp(static_cast<UnaryOp*>(Node));
         break;
     case AstKind::IDENT_REF:
-        CheckIdentRef(static_cast<IdentRef*>(Node), false, Mod->DefaultNamespace);
+        CheckIdentRef(static_cast<IdentRef*>(Node), false, nullptr);
         break;
     case AstKind::FIELD_ACCESSOR:
         CheckFieldAccessor(static_cast<FieldAccessor*>(Node), false);
@@ -2389,7 +2389,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                                       Namespace* NamespaceToLookup,
                                       StructDecl* StructToLookup) {
 
-    bool LocalNamespace = NamespaceToLookup == Mod->DefaultNamespace;
+    bool LocalNamespace = !NamespaceToLookup;
 
     auto SearchForFuncs = [=]() {
         if (StructToLookup) {
@@ -2400,23 +2400,34 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             }
         } else {
             
-            auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
-            if (Itr != NamespaceToLookup->Funcs.end()) {
-                IRef->Funcs   = &Itr->second;
-                IRef->RefKind = IdentRef::RK::Funcs;
-                return;
-            }
-            
-            // Relative member functions.
-            if (CStruct) {
-                auto Itr = CStruct->Funcs.find(IRef->Ident);
-                if (Itr != CStruct->Funcs.end()) {
-                    IRef->Funcs   = &Itr->second;
+            if (!LocalNamespace) {
+                auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
+                if (Itr != NamespaceToLookup->Funcs.end()) {
+                    IRef->Funcs = &Itr->second;
                     IRef->RefKind = IdentRef::RK::Funcs;
                     return;
                 }
             }
 
+            // Relative member functions.
+            if (CStruct && LocalNamespace) {
+                auto Itr = CStruct->Funcs.find(IRef->Ident);
+                if (Itr != CStruct->Funcs.end()) {
+                    IRef->Funcs = &Itr->second;
+                    IRef->RefKind = IdentRef::RK::Funcs;
+                    return;
+                }
+            }
+
+            if (LocalNamespace) {
+                auto Itr = Mod->DefaultNamespace->Funcs.find(IRef->Ident);
+                if (Itr != Mod->DefaultNamespace->Funcs.end()) {
+                    IRef->Funcs = &Itr->second;
+                    IRef->RefKind = IdentRef::RK::Funcs;
+                    return;
+                }
+            }
+            
             // Search for private functions.
             if (LocalNamespace) {
                 if (FuncsList* Funcs = FScope->FindFuncsList(IRef->Ident)) {
@@ -2428,7 +2439,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 
             if (LocalNamespace && FScope->UniqueNSpace) {
                 // File marked with a namespace need to search the namespace the file belongs to as well.
-                Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
+                auto Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
                 if (Itr != FScope->UniqueNSpace->Funcs.end()) {
                     IRef->Funcs   = &Itr->second;
                     IRef->RefKind = IdentRef::RK::Funcs;
@@ -2482,8 +2493,14 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             }
         } else {
             
-            if (SearchNamespace(NamespaceToLookup)) {
-                return;
+            if (LocalNamespace) {
+                if (SearchNamespace(Mod->DefaultNamespace)) {
+                    return;
+                }
+            } else {
+                if (SearchNamespace(NamespaceToLookup)) {
+                    return;
+                }
             }
 
             // Search for private declarations.
@@ -2620,7 +2637,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
     Expr* Site = FieldAcc->Site;
 
     if (Site->Is(AstKind::IDENT_REF)) {
-        CheckIdentRef(static_cast<IdentRef*>(Site), false, Mod->DefaultNamespace);
+        CheckIdentRef(static_cast<IdentRef*>(Site), false, nullptr);
     } else {
         CheckNode(Site);
     }
@@ -2724,7 +2741,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
             StructTy);
         YIELD_ERROR(FieldAcc);
     } else {
-        CheckIdentRef(FieldAcc, ExpectsFuncCall, Mod->DefaultNamespace, StructTy->GetStruct());
+        CheckIdentRef(FieldAcc, ExpectsFuncCall, nullptr, StructTy->GetStruct());
         if (FieldAcc->Ty != Context.ErrorType) {
             if (FieldAcc->RefKind == IdentRef::RK::Var && (FieldAcc->Var->Mods & ModKinds::PRIVATE)) {
                 if (FieldAcc->Var->FScope != FScope) {
@@ -2764,7 +2781,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
 
     switch (Call->Site->Kind) {
     case AstKind::IDENT_REF:
-        CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, Mod->DefaultNamespace);
+        CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, nullptr);
         break;
     case AstKind::FIELD_ACCESSOR:
         CheckFieldAccessor(static_cast<FieldAccessor*>(Call->Site), true);

@@ -105,8 +105,8 @@ String struct {
     }
 
     String moveobj(string String*)
-        : length(replace(string.length, 0)),
-          buffer(replace(string.buffer, null)) {
+        : length(exchange(string.length, 0)),
+          buffer(exchange(string.buffer, null)) {
     }
 
     /*
@@ -137,7 +137,7 @@ String struct {
     }
     
     /*
-     * Replaces all occurences off of the old_char in this string
+     * Replaces all occurences of the old_char in this string
      * with the new_char.
      */
     fn replace(old_char char, new_char char) String* {
@@ -148,7 +148,160 @@ String struct {
         }
         return this;
     }
-    
+
+    /*
+     * Replaces all occurences of sub_str in this string
+     * with the new string replace_str.
+     */
+    fn replace(sub_str String^, replace_str String^) String* {
+        return replace(sub_str.buffer    , sub_str.length,
+                       replace_str.buffer, replace_str.length);
+    }
+
+    /*
+     * Replaces all occurences of sub_str in this string
+     * with the new string replace_str.
+     */
+    fn replace(sub_str cstr, replace_str String^) String* {
+        return replace(sub_str           , strlen(sub_str),
+                       replace_str.buffer, replace_str.length);
+    }
+
+    /*
+     * Replaces all occurences of sub_str in this string
+     * with the new string replace_str.
+     */
+    fn replace(sub_str String^, replace_str cstr) String* {
+        return replace(sub_str.buffer, sub_str.length,
+                       replace_str   , strlen(replace_str));
+    }
+
+    /*
+     * Replaces all occurences of sub_str in this string
+     * with the new string replace_str.
+     */
+    fn replace(sub_str cstr, replace_str cstr) String* {
+        return replace(sub_str, strlen(sub_str), replace_str, strlen(replace_str));
+    }
+
+    private fn replace(sub_str     cstr, sub_length     int,
+                       replace_str cstr, replace_length int) String* {
+        if sub_length <= 0 {
+            panic("sub_length <= 0");
+        }
+        if replace_length < 0 {
+            panic("replace_length < 0");
+        }
+
+        if sub_length == 1 && replace_length == 1 {
+            return replace(*sub_str, *replace_str);
+        }
+        if this.length == 0 {
+            return this;
+        }
+
+        // TODO:  quick pass for single lengths
+        
+        // Create a temporary buffer of indices 
+        tmp_buffer int[2];
+        ext_buffer int*;
+        index_count := 0;
+        head := this.buffer;
+        end  := this.buffer + this.length;
+        loop head + sub_length - 1 < end {
+            // TODO: Fix: pointer arithmetic doesn't support substraction
+            //            of pointers from pointers for some odd reason.
+            remaining int = cast(int) end - cast (int) head;
+            idx := std.find_first_of(head, remaining, sub_str, sub_length);
+            if idx == -1   break; // No more remaining substrings to replace.
+
+            // Have to add the offset of the head since we only search for indexes
+            // starting at the head but we want indexes relative to this.buffer's
+            // memory.
+            offset := cast(int) head - cast(int) this.buffer;
+            idx += offset;
+            if index_count >= tmp_buffer.length {
+                // Out of temporary memory must allocate memory!
+                ext_buffer_length := index_count+1 - tmp_buffer.length;
+                new_ext_buffer := new int[ext_buffer_length];
+                
+                if index_count != tmp_buffer.length {
+                    // Not first allocation so have to copy over.
+                    memcpy(new_ext_buffer, ext_buffer, (ext_buffer_length - 1) * sizeof(int));
+                }
+                delete ext_buffer;
+                ext_buffer = new_ext_buffer;
+                ext_buffer[index_count - tmp_buffer.length] = idx;
+
+            } else {
+                tmp_buffer[index_count] = idx;
+            }
+            ++index_count;
+            
+            head = this.buffer + idx + sub_length;
+        }
+
+        if index_count == 0 {
+            // There is nothing to replace!
+            return this;
+        }
+
+        new_string_length := this.length + (replace_length*index_count) - (sub_length*index_count);
+        new_buffer := new char[new_string_length + 1]; // +1 for null termination.
+
+
+        new_buffer_offset, buffer_offset := 0, 0;
+        loop i : 0 ..< index_count {
+            index int;
+            if i < tmp_buffer.length {
+                index = tmp_buffer[i];
+            } else {
+                index = ext_buffer[i - tmp_buffer.length];
+            }
+
+            length_before_index := index - buffer_offset;
+            if length_before_index > 0 {
+                memcpy(new_buffer  + new_buffer_offset,
+                       this.buffer + buffer_offset,
+                       length_before_index);
+                new_buffer_offset += length_before_index;
+                buffer_offset     += length_before_index;
+            }
+            
+            memcpy(new_buffer + new_buffer_offset, replace_str, replace_length);
+            new_buffer_offset += replace_length;
+            buffer_offset     += sub_length;
+        }
+        // There still might be stuff at the end!
+        // TODO: Replace with macro once supported!
+        length_before_index := length - buffer_offset;
+        if length_before_index > 0 {
+            memcpy(new_buffer   + new_buffer_offset,
+                   this.buffer + buffer_offset,
+                   length_before_index);
+            new_buffer_offset += length_before_index;
+            buffer_offset     += length_before_index;
+        }
+
+        // Null terminating.
+        new_buffer[new_string_length] = '\0';
+
+        delete this.buffer;
+        this.buffer = new_buffer;
+        this.length = new_string_length;
+
+        delete ext_buffer;
+        return this;
+    }
+
+    fn find_first_of(sub cstr) int {
+        return find_first_of(sub, strlen(sub));
+    }
+
+    fn find_first_of(sub cstr, sub_length int) int {
+        return std.find_first_of(this.buffer, this.length, sub, sub_length);
+    }
+
     /*
      * Finds the first occurence of the character c within this
      * string and returns the index of the character within this
@@ -158,14 +311,9 @@ String struct {
      * is returned.
      */
     fn find_first_of(c char) int {
-        loop i : 0..<length {
-            if buffer[i] == c {
-                return i;
-            }
-        }
-        return -1;
+        return std.find_first_of(this.buffer, this.length, c);
     }
-    
+
     /*
      * Finds the last occurence of the character c within this
      * string and returns the index of the character within this
@@ -299,7 +447,7 @@ String struct {
         }
         return true;
     }
-    
+
     /*
      * Parses the string into a signed an  integer
      * for using base-10. All the characters in the
@@ -749,4 +897,54 @@ fn concat(s1 String^, s2 String^) String {
     memcpy(buffer + s1.length, s2.buffer, s2.length);
     buffer[new_length] = '\0'; // Null termination.
     return String{ buffer, new_length, copy_buffer=false };
+}
+
+fn find_first_of(s cstr, s_length int, sub cstr, sub_length int) int {
+    if sub_length <= 0 {
+        panic("sub_length <= 0");
+    }
+    if s_length == 0 {
+        return -1;
+    }
+
+    if sub_length == 1 {
+        return find_first_of(s, s_length, *sub);
+    }
+    
+    head := s;
+    end  := s + s_length;
+    loop head + sub_length - 1 < end {
+        if *head == *sub {
+            // Possible start of substring.
+            tail    := head + 1;
+            matches := true;
+            loop i : 1 ..< sub_length {
+                if *tail != *(sub + i) {
+                    matches = false;
+                    break;
+                }
+                ++tail;
+            }
+            if matches {
+                // TODO: Fix: pointer arithmetic doesn't support substraction
+                //            of pointers from pointers for some odd reason.
+                return cast(int) head - cast(int) s;
+            }
+        }
+        ++head;
+    }
+    
+    return -1; 
+}
+
+fn find_first_of(s cstr, s_length int, c char) int {
+    if s_length < 0 {
+        panic("s_length < 0");
+    }
+    loop i : 0..<s_length {
+        if s[i] == c {
+            return i;
+        }
+    }
+    return -1;
 }

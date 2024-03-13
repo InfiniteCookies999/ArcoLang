@@ -66,7 +66,7 @@ FileHandle struct : Writeable, Readable {
     }
     
     FileHandle moveobj(fhandle FileHandle*)
-        : handle(replace(fhandle.handle, null)) {
+        : handle(exchange(fhandle.handle, null)) {
     }
     
     fn set_flushable(flushable Flushable*) {

@@ -18,9 +18,9 @@ TokenStream struct {
     }
 
     TokenStream moveobj(o TokenStream*)
-        : handle(replace(o.handle, null)),
-          buffer_length(replace(o.buffer_length, 0)),
-          pos(replace(o.pos, 0)) {
+        : handle(exchange(o.handle, null)),
+          buffer_length(exchange(o.buffer_length, 0)),
+          pos(exchange(o.pos, 0)) {
         memcpy(this.buffer, o.buffer, buffer_length);
         memset(o.buffer, 0, BUFFER_SIZE);
     }

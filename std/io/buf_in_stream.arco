@@ -24,11 +24,11 @@ BufferedInStream struct : Readable{
     }
     
     BufferedInStream moveobj(o BufferedInStream*)
-        : handle(replace(o.handle, null)),
-          buffer(replace(o.buffer, null)),
-          buffer_size(replace(o.buffer_size, 0)),
-          buffer_length(replace(o.buffer_length, 0)),
-          pos(replace(o.pos, 0)) {
+        : handle(exchange(o.handle, null)),
+          buffer(exchange(o.buffer, null)),
+          buffer_size(exchange(o.buffer_size, 0)),
+          buffer_length(exchange(o.buffer_length, 0)),
+          pos(exchange(o.pos, 0)) {
     }
 
     /*
