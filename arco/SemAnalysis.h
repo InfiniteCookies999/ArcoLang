@@ -227,6 +227,11 @@ namespace arco {
 
         static llvm::SmallVector<TypeInfo> ParamsToTypeInfo(FuncDecl* Func);
 
+        /// Returns nullptr if an error occured in folding the value such
+        /// as signed overflow (unhelpfully called "poision" value by LLVM).
+        /// 
+        llvm::Value* GenFoldable(SourceLoc ErrorLoc, Expr* E);
+
         void AddGenericErrorInfo() {
             if (CFunc && CFunc->IsGeneric()) {
                 Log.AddMarkMessage(

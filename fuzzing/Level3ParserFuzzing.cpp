@@ -42,9 +42,9 @@ void BuildType(TokList Tokens, bool AllowImplicitArrayType) {
     bool IsPtr   = rand() % 8 == 0;
     bool IsSlice = false;
     if (!IsPtr) {
-        IsSlice = rand() % 8 == 0;
+        IsSlice = rand() % 14 == 0;
     }
-    bool IsArray = rand() % 8 == 0;
+    bool IsArray = rand() % 14 == 0;
 
     TypeKind Kind = TypeKinds[rand() % TypeKinds.size()];
     switch (Kind) {
@@ -79,7 +79,8 @@ void BuildType(TokList Tokens, bool AllowImplicitArrayType) {
         Tokens.push_back(']');
     }
 
-    if (IsArray) {
+    // TODO: Should there be arrays of slices? The parser doesn't support this at the moment.
+    if (IsArray && !IsSlice) {
         int ArrayDepth = (rand() % 3) + 1;
         for (int i = 0; i < ArrayDepth; i++) {
             Tokens.push_back('[');
@@ -89,17 +90,24 @@ void BuildType(TokList Tokens, bool AllowImplicitArrayType) {
     }
 }
 
-void BuildVarDecl(TokList Tokens, bool AllowModifiers) {
+void BuildVarDecl(TokList Tokens, bool AllowModifiers, bool AllowAssignment = false) {
     if (AllowModifiers) {
         BuildModifiers(Tokens);
     }
     Tokens.push_back(TokenKind::IDENT);
-    bool InferType = rand() % 2 == 0;
+    bool InferType = rand() % 2 == 0 && AllowAssignment;
     if (InferType) {
         Tokens.push_back(TokenKind::COL_EQ);
         BuildExpr(Tokens);
     } else {
         BuildType(Tokens, true);
+        if (AllowAssignment) {
+            bool HasAssignment = rand() % 2;
+            if (HasAssignment) {
+                Tokens.push_back('=');
+                BuildExpr(Tokens);
+            }
+        }
     }
 }
 
@@ -145,6 +153,23 @@ void BuildImport(TokList Tokens) {
     Tokens.push_back(';');
 }
 
+void BuildArray(TokList Tokens) {
+    Tokens.push_back('[');
+    int NumValues = rand() % 8;
+    for (int i = 0; i < NumValues; i++) {
+        BuildExpr(Tokens);
+        if (i + 1 != NumValues) {
+            Tokens.push_back(',');
+        } else {
+            bool TrailingComma = rand() % 2 == 0;
+            if (TrailingComma) {
+                Tokens.push_back(',');
+            }
+        }
+    }
+    Tokens.push_back(']');
+}
+
 void BuildPrimaryExpr(TokList Tokens) {
     ++ExprDepth;
 
@@ -160,7 +185,8 @@ void BuildPrimaryExpr(TokList Tokens) {
         AstKind::TYPE_BITCAST,
         AstKind::SIZEOF,
         AstKind::THIS_REF,
-
+        AstKind::ARRAY,
+        AstKind::MOVEOBJ
     };
     static llvm::SmallVector<u16> NumberKinds = {
         TokenKind::INT_LITERAL,
@@ -178,6 +204,7 @@ void BuildPrimaryExpr(TokList Tokens) {
     if (ExprDepth > 30) {
         // The depth is too big let's just return a numberic value
         Tokens.push_back(NumberKinds[rand() % NumberKinds.size()]);
+        --ExprDepth;
         return;
     }
 
@@ -240,6 +267,16 @@ void BuildPrimaryExpr(TokList Tokens) {
     case AstKind::THIS_REF:
         Tokens.push_back(TokenKind::KW_THIS);
         break;
+    case AstKind::ARRAY:
+        BuildArray(Tokens);
+        break;
+    case AstKind::MOVEOBJ: {
+        Tokens.push_back(TokenKind::KW_MOVEOBJ);
+        Tokens.push_back('(');
+        BuildExpr(Tokens);
+        Tokens.push_back(')');
+        break;
+    }
     }
 
     --ExprDepth;
@@ -340,6 +377,45 @@ void BuildPredicateLoop(TokList Tokens) {
     BuildScopeStmtOrStmts(Tokens);
 }
 
+void BuildRangeLoop(TokList Tokens) {
+    Tokens.push_back(TokenKind::KW_LOOP);
+    bool DeclExpr = rand() % 2 == 0;
+    if (DeclExpr) {
+        bool IsAssignment = rand() % 2 == 0;
+        if (IsAssignment) {
+            Tokens.push_back(TokenKind::IDENT);
+            Tokens.push_back('=');
+            BuildExpr(Tokens);
+        } else {
+            BuildVarDecl(Tokens, false);
+        }
+    }
+    Tokens.push_back(';');
+    bool NoCond = rand() % 4 == 0;
+    if (!NoCond) {
+        BuildExpr(Tokens);
+    }
+    Tokens.push_back(';');
+    bool NoItrExpr = rand() % 4 == 0;
+    if (!NoItrExpr) {
+        BuildExpr(Tokens);
+    }
+    BuildScopeStmtOrStmts(Tokens);
+}
+
+void BuildIteratorLoop(TokList Tokens) {
+    Tokens.push_back(TokenKind::KW_LOOP);
+    bool TypeDeclared = rand() % 2 == 0;
+    if (TypeDeclared) {
+        BuildVarDecl(Tokens, false, false);
+    } else {
+        Tokens.push_back(TokenKind::IDENT);
+    }
+    Tokens.push_back(':');
+    BuildExpr(Tokens);
+    BuildScopeStmtOrStmts(Tokens);
+}
+
 void BuildStmt(TokList Tokens) {
     using arco::AstKind;
     static llvm::SmallVector<AstKind> StartNodes = {
@@ -349,7 +425,10 @@ void BuildStmt(TokList Tokens) {
         AstKind::RETURN,
         AstKind::IF,
         AstKind::STRUCT_DECL,
-        AstKind::VAR_DECL
+        AstKind::VAR_DECL,
+        AstKind::PREDICATE_LOOP,
+        AstKind::RANGE_LOOP,
+        AstKind::ITERATOR_LOOP
     };
 
     AstKind StartNode = StartNodes[rand() % StartNodes.size()];
@@ -375,11 +454,17 @@ void BuildStmt(TokList Tokens) {
         BuildStructDecl(Tokens);
         break;
     case AstKind::VAR_DECL:
-        BuildVarDecl(Tokens, true);
+        BuildVarDecl(Tokens, true, true);
         Tokens.push_back(';');
         break;
     case AstKind::PREDICATE_LOOP:
         BuildPredicateLoop(Tokens);
+        break;
+    case AstKind::RANGE_LOOP:
+        BuildRangeLoop(Tokens);
+        break;
+    case AstKind::ITERATOR_LOOP:
+        BuildIteratorLoop(Tokens);
         break;
     }
 }
@@ -393,7 +478,7 @@ void BuildScopeStmts(TokList Tokens, int NumNodes) {
 }
 
 void BuildRootNodes(TokList Tokens) {
-    int NumRootNodes = 100;
+    int NumRootNodes = 20;
     int NumImports = 10;
 
     for (int i = 0; i < NumImports; i++) {

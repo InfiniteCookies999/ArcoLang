@@ -1103,7 +1103,6 @@ void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
     // to reorder their indexes.
 
     ulen ValueIndex = 0;
-    IRGenerator IRGen(Context);
     for (ulen i = 0; i < Enum->Values.size(); i++) {
         EnumDecl::EnumValue& Value = Enum->Values[i];
         for (ulen j = i + 1; j < Enum->Values.size(); j++) {
@@ -1142,8 +1141,10 @@ void arco::SemAnalyzer::CheckEnumDecl(EnumDecl* Enum) {
                 if (Value.Assignment->IsFoldable && Value.Assignment->Ty->IsInt()) {
                     // TODO: Check to make sure that the index is well.. indexable!
 
-                    llvm::ConstantInt* LLValueIndex =
-                        llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(Value.Assignment));
+                    llvm::Value* LLValue = GenFoldable(Value.Assignment->Loc, Value.Assignment);
+                    if (!LLValue)  continue;
+                    
+                    llvm::ConstantInt* LLValueIndex = llvm::cast<llvm::ConstantInt>(LLValue);
                     ulen NewValueIndex = LLValueIndex->getZExtValue();
                     if (NewValueIndex < ValueIndex) {
                         Enum->IndexingInOrder = false;
@@ -1953,10 +1954,12 @@ YIELD_ERROR(BinOp)
 
         if (BinOp->Op == TokenKind::SLASH_EQ || BinOp->Op == TokenKind::MOD_EQ) {
             if (BinOp->RHS->IsFoldable) {
-                IRGenerator IRGen(Context);
-                llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
-                if (LLInt->isZeroValue()) {
-                    Error(BinOp, "Division by zero");
+                llvm::Value* LLValue = GenFoldable(BinOp->RHS->Loc, BinOp->RHS);
+                if (LLValue) {
+                    llvm::Constant* LLInt = llvm::cast<llvm::Constant>(LLValue);
+                    if (LLInt->isZeroValue()) {
+                        Error(BinOp, "Division by zero");
+                    }
                 }
             }
         }
@@ -2064,10 +2067,12 @@ YIELD_ERROR(BinOp)
         }
 
         if (BinOp->Op == '/' && BinOp->RHS->IsFoldable) {
-            IRGenerator IRGen(Context);
-            llvm::Constant* LLInt = llvm::cast<llvm::Constant>(IRGen.GenRValue(BinOp->RHS));
-            if (LLInt->isZeroValue()) {
-                Error(BinOp, "Division by zero");
+            llvm::Value* LLValue = GenFoldable(BinOp->RHS->Loc, BinOp->RHS);
+            if (LLValue) {
+                llvm::Constant* LLInt = llvm::cast<llvm::Constant>(LLValue);
+                if (LLInt->isZeroValue()) {
+                    Error(BinOp, "Division by zero");
+                }
             }
         }
 
@@ -2090,16 +2095,20 @@ YIELD_ERROR(BinOp)
         }
         
         if (BinOp->Op == '%' && BinOp->RHS->IsFoldable) {
-            IRGenerator IRGen(Context);
-            llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
-            if (LLInt->isZeroValue()) {
-                Error(BinOp, "Division by zero");
+            llvm::Value* LLValue = GenFoldable(BinOp->RHS->Loc, BinOp->RHS);
+            if (LLValue) {
+                llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLValue);
+                if (LLInt->isZeroValue()) {
+                    Error(BinOp, "Division by zero");
+                }
             }
         } else if (BinOp->RHS->IsFoldable) { // << or >>
-            IRGenerator IRGen(Context);
-            llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(BinOp->RHS));
-            if (LLInt->getZExtValue()-1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
-                Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy);
+            llvm::Value* LLValue = GenFoldable(BinOp->RHS->Loc, BinOp->RHS);
+            if (LLValue) {
+                llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLValue);
+                if (LLInt->getZExtValue() - 1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
+                    Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy);
+                }
             }
         }
 
@@ -5072,11 +5081,11 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
         return false;
     }
 
-    IRGenerator IRGen(Context);
-    
     if (LengthExpr->IsFoldable) {
-        llvm::ConstantInt* LLInt =
-            llvm::cast<llvm::ConstantInt>(IRGen.GenRValue(LengthExpr));
+        llvm::Value* LLValue = GenFoldable(ErrorLoc, LengthExpr);
+        if (!LLValue) return false;
+        
+        llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLValue);
 
         if (LLInt->isZero()) {
             Error(ErrorLoc, "The length of the array cannot be zero");
@@ -5363,4 +5372,14 @@ llvm::SmallVector<arco::TypeInfo> arco::SemAnalyzer::ParamsToTypeInfo(FuncDecl* 
             });
     }
     return ParamTypes;
+}
+
+llvm::Value* arco::SemAnalyzer::GenFoldable(SourceLoc ErrorLoc, Expr* E) {
+    IRGenerator IRGen(Context);
+    llvm::Value* LLValue = IRGen.GenRValue(E);
+    if (LLValue->getValueID() == llvm::Value::ValueTy::PoisonValueVal) {
+        Error(ErrorLoc, "Signed overflow");
+        return nullptr;
+    }
+    return LLValue;
 }

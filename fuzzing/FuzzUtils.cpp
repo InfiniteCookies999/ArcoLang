@@ -35,6 +35,9 @@ std::string GenRandomIntLiteral(int Base, int Limit) {
         { 10, 'a' }, { 11, 'b' }, { 12, 'c' }, { 13, 'd' }, { 14, 'e' },
         { 15, 'f' }
     };
+    if (Number == 0) {
+        Result = "0";
+    }
     while (Number) {
         int Rem = Number % Base;
         char Digit = 0;
