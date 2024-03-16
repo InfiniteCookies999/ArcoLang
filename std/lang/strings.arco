@@ -200,8 +200,8 @@ String struct {
             return this;
         }
 
-        // Create a temporary buffer of indices 
-        tmp_buffer int[2];
+        // Create a temporary buffer of indices
+        tmp_buffer int[64];
         ext_buffer int*;
         index_count := 0;
         head := this.buffer;

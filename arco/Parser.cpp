@@ -470,7 +470,7 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
         Func->Name = Name;
     }
     Func->Mods       = Mods;
-    Func->NativeName = NativeModifierName;
+    Func->LinkageName = NativeModifierName;
     NativeModifierName = "";
 
     Context.UncheckedDecls.insert(Func);
@@ -1320,6 +1320,9 @@ arco::Modifiers arco::Parser::ParseModifiers() {
             NextToken();
 
             if (CTok.Is('(') && PeekToken(1).Is(TokenKind::STRING_LITERAL)) {
+                if (Mods & ModKinds::LINKNAME) {
+                    Error(CTok, "Linkage name already by linkname modifier");
+                }
                 NextToken(); // Consuming '(' token.
                 NativeModifierName = CTok.GetText();
 
@@ -1328,13 +1331,40 @@ arco::Modifiers arco::Parser::ParseModifiers() {
                     NativeModifierName = NativeModifierName.substr(0, NativeModifierName.size() - 1);
                 }
                 if (NativeModifierName.empty()) {
-                    Error(CTok, "Native name cannot be empty");
+                    Error(CTok, "Linkage name cannot be empty");
                 }
 
                 NextToken(); // Consuming string literal.
                 Match(')');
             }
 
+            break;
+        }
+        case TokenKind::KW_LINKNAME: {
+            if (Mods & ModKinds::LINKNAME)
+                Error(CTok, "Duplicate modifier");
+            Mods |= ModKinds::LINKNAME;
+            NextToken();
+            Match('(');
+            // TODO: Better error recovery.
+            if (CTok.Is(TokenKind::STRING_LITERAL)) {
+                NativeModifierName = CTok.GetText();
+                NextToken();
+
+                NativeModifierName = NativeModifierName.substr(1); // Skip over " character.
+                if (!NativeModifierName.empty() && *(NativeModifierName.end() - 1) == '"') {
+                    NativeModifierName = NativeModifierName.substr(0, NativeModifierName.size() - 1);
+                }
+                if (NativeModifierName.empty()) {
+                    Error(CTok, "Linkage name cannot be empty");
+                }
+            } else {
+                Error(CTok, "Expected string literal for linkname");
+                if (PeekToken(1).Is(')')) {
+                    NextToken();
+                }
+            }
+            Match(')');
             break;
         }
         case TokenKind::KW_PRIVATE: {
@@ -1950,7 +1980,9 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         }
         if (AllowStructInitializer && CTok.Is('{')) {
             NextToken(); // Consumign '{'.
-            ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, '}', true);
+            if (CTok.IsNot('}')) {
+                ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, '}', true);
+            }
             Match('}', "for struct initializer");
         }
         return Alloc;

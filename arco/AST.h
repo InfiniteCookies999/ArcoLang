@@ -97,6 +97,7 @@ namespace arco {
         READONLY  = 0x04,
         WRITEONLY = 0x08,
         DLLIMPORT = 0x10,
+        LINKNAME  = 0x20,
     };
     using Modifiers = u16;
 
@@ -395,7 +396,7 @@ namespace arco {
 
         // If not empty it defines the explicit name for a linked
         // function.
-        llvm::StringRef NativeName;
+        llvm::StringRef LinkageName;
 
         ulen NumReturns     = 0;
         ulen NumDefaultArgs = 0;

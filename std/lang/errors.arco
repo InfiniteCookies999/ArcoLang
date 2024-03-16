@@ -1,4 +1,6 @@
 import reflect.Any;
+import win32;
+import win32.EXCEPTION_POINTERS;
 
 /*
  * This interface is required to be implemented for all
@@ -60,6 +62,61 @@ UnreachableError struct : Error {
     fn get_message() cstr {
         return "UnreachableError: unreachable code";
     }
+}
+
+MemoryAccessError struct : Error {
+    fn get_message() cstr {
+        return "MemoryAccessError: Cannot access memory";
+    }
+}
+
+DivideByZeroErrror struct : Error {
+    fn get_message() cstr {
+        return "DivideByZeroErrror: Division by zero";
+    }
+}
+
+private fn process_uncaught_error(err Error*) {
+    eprintln(err.get_message());
+    // TODO: Deal with complication of deleting throwing more errors!  delete err;
+    exit(1); // TODO: Once multithreading is supported should do thread cleanup instead!
+}
+
+private ARCO_WIN32_EXCEPTION_CODE :: 0xABC643D1'u32;
+
+private fn handle_uncaught_exception_handler(ptrs EXCEPTION_POINTERS*) int32 {
+    // TODO: handle more exceptions!
+    
+    record := ptrs.ExceptionRecord;
+    if record.ExceptionCode == ARCO_WIN32_EXCEPTION_CODE {
+        // It is an exception from arco!
+        err := cast(Error*) record.ExceptionInformation[0];
+        process_uncaught_error(err);
+    } else if record.ExceptionCode == win32.EXCEPTION_ACCESS_VIOLATION {
+        err := MemoryAccessError{};
+        process_uncaught_error(&err);
+    } else if record.ExceptionCode == win32.EXCEPTION_INT_DIVIDE_BY_ZERO ||
+              record.ExceptionCode == win32.EXCEPTION_FLT_DIVIDE_BY_ZERO {
+        err := DivideByZeroErrror{};
+        process_uncaught_error(&err);
+    }
+
+    return 0;
+}
+
+fn raise_unwind_error(err Error*) {
+    
+    payload uint64[1] = [
+        cast(uint64) err
+    ];
+    
+    // dwExceptionFlags=1     means it's noncontinuable.
+    // nNumberOfArguments=1   how much data should be passed to the filters. We use this to pass our exception object.
+    win32.RaiseException(ARCO_WIN32_EXCEPTION_CODE, dwExceptionFlags=1, nNumberOfArguments=1, lpArguments=payload);
+}
+
+fn initialize_error_handling() {
+    win32.SetUnhandledExceptionFilter(&handle_uncaught_exception_handler);
 }
 
 /*

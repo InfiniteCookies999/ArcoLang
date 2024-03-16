@@ -1,5 +1,7 @@
 namespace win32;
 
+// TODO: simplify syntax once macros are supported for native dllimport.
+
 // ------------------------------------------------
 // Win32: winnt.h
 
@@ -43,18 +45,69 @@ STD_INPUT_HANDLE  :: -10'u32;
 STD_OUTPUT_HANDLE :: -11'u32;
 STD_ERROR_HANDLE  :: -12'u32;
 
-native fn GetStdHandle(nStdHandle uint32) void*;
+native dllimport fn GetStdHandle(nStdHandle uint32) void*;
 
 // ------------------------------------------------
 // Win32: winbase.h
 
-native fn CreateDirectoryA(lpPathName cstr, lpSecurityAttributes void*) int32;
+native dllimport fn CreateDirectoryA(lpPathName cstr, lpSecurityAttributes void*) int32;
 
-native fn DeleteFileA(lpFileName cstr) int32;
+native dllimport fn DeleteFileA(lpFileName cstr) int32;
 
-native fn RemoveDirectoryA(lpPathName cstr) int32;
+native dllimport fn RemoveDirectoryA(lpPathName cstr) int32;
 
-native fn GetCurrentDirectoryA(nBufferLength uint32, lpBuffer char*) int32;
+native dllimport fn GetCurrentDirectoryA(nBufferLength uint32, lpBuffer char*) int32;
+
+// ------------------------------------------------
+// Win32: minwinbase.h
+
+EXCEPTION_ACCESS_VIOLATION      :: 0xC0000005'u32;
+EXCEPTION_DATATYPE_MISALIGNMENT :: 0x80000002'u32;
+EXCEPTION_BREAKPOINT            :: 0x80000003'u32;
+EXCEPTION_SINGLE_STEP           :: 0x80000004'u32;
+STATUS_ARRAY_BOUNDS_EXCEEDED    :: 0xC000008C'u32;
+EXCEPTION_FLT_DENORMAL_OPERAND  :: 0xC000008D'u32;
+EXCEPTION_FLT_DIVIDE_BY_ZERO    :: 0xC000008E'u32;
+EXCEPTION_FLT_INEXACT_RESULT    :: 0xC000008F'u32;
+EXCEPTION_FLT_INVALID_OPERATION :: 0xC0000090'u32;
+EXCEPTION_FLT_OVERFLOW          :: 0xC0000091'u32;
+EXCEPTION_FLT_STACK_CHECK       :: 0xC0000092'u32;
+EXCEPTION_FLT_UNDERFLOW         :: 0xC0000093'u32;
+EXCEPTION_INT_DIVIDE_BY_ZERO    :: 0xC0000094'u32;
+EXCEPTION_INT_OVERFLOW          :: 0xC0000095'u32;
+EXCEPTION_PRIV_INSTRUCTION      :: 0xC0000096'u32;
+EXCEPTION_IN_PAGE_ERROR         :: 0xC0000006'u32;
+EXCEPTION_ILLEGAL_INSTRUCTION   :: 0xC000001D'u32;
+// EXCEPTION_NONCONTINUABLE_EXCEPTION :: 
+EXCEPTION_STACK_OVERFLOW        :: 0xC00000FD'u32;
+EXCEPTION_INVALID_DISPOSITION   :: 0xC0000026'u32;
+EXCEPTION_GUARD_PAGE            :: 0x80000001'u32;
+EXCEPTION_INVALID_HANDLE        :: 0xC0000008'u32;
+// EXCEPTION_POSSIBLE_DEADLOCK     :: missing from minwinbase.h?
+
+// TODO: fix c-alignment nonsense.
+EXCEPTION_RECORD struct {
+    ExceptionCode        uint32;
+    ExceptionFlags       uint32;
+    ExceptionRecord      EXCEPTION_RECORD*; // because it forms a linked list.
+    ExceptionAddress     void*;
+    NumberParameters     uint32;
+    ExceptionInformation uint64[15];
+}
+
+// TODO: Fix c-alignment nonsense
+EXCEPTION_POINTERS struct {
+    ExceptionRecord EXCEPTION_RECORD*;
+    ContextRecord   void*;
+}
+
+native dllimport fn SetUnhandledExceptionFilter(lpTopLevelExceptionFilter fn(EXCEPTION_POINTERS*)int32) // ->
+    fn(EXCEPTION_POINTERS*)int32;
+
+native dllimport fn RaiseException(dwExceptionCode    uint32,
+                                   dwExceptionFlags   uint32,
+                                   nNumberOfArguments uint32,
+                                   lpArguments        const uint64*);
 
 // ------------------------------------------------
 // Win32: fileapi.h
@@ -69,52 +122,52 @@ INVALID_FILE_SIZE        :: 0xFFFFFFFF'u32;
 INVALID_SET_FILE_POINTER :: -1'u32;
 INVALID_FILE_ATTRIBUTES  :: -1'u32;
 
-native fn WriteFile(hFile                  void*,
-                    lpBuffer               cstr,
-                    nNumberOfBytesToWrite  uint32,
-                    lpNumberOfBytesWritten uint32*,
-                    lpOverlapped           void* // Ignored data structure.
-                    ) int32;
+native dllimport fn WriteFile(hFile                  void*,
+                              lpBuffer               cstr,
+                              nNumberOfBytesToWrite  uint32,
+                              lpNumberOfBytesWritten uint32*,
+                              lpOverlapped           void* // Ignored data structure.
+                              ) int32;
 
-native fn ReadFile(hFile                void*,
-                   lpBuffer             void*,
-                   nNumberOfBytesToRead uint32,
-                   lpNumberOfBytesRead  uint32*,
-                   lpOverlapped         void*  // Ignored data structure
-                   ) int32;
+native dllimport fn ReadFile(hFile               void*,
+                            lpBuffer             void*,
+                            nNumberOfBytesToRead uint32,
+                            lpNumberOfBytesRead  uint32*,
+                            lpOverlapped         void*  // Ignored data structure
+                            ) int32;
 
-native fn CreateFileA(lpFileName            cstr,
-                      dwDesiredAccess       uint32,
-                      dwShareMode           uint32,
-                      lpSecurityAttributes  void*, // TODO: Support for security attributes?
-                      dwCreationDisposition uint32,
-                      dwFlagsAndAttributes  uint32,
-                      hTemplateFile         void*
-                      ) void*;
+native dllimport fn CreateFileA(lpFileName            cstr,
+                                dwDesiredAccess       uint32,
+                                dwShareMode           uint32,
+                                lpSecurityAttributes  void*, // TODO: Support for security attributes?
+                                dwCreationDisposition uint32,
+                                dwFlagsAndAttributes  uint32,
+                                hTemplateFile         void*
+                                ) void*;
 
-native fn GetFileAttributesA(lpFileName cstr) uint32;
+native dllimport fn GetFileAttributesA(lpFileName cstr) uint32;
 
-native fn GetFileSize(hFile void*, lpFileSizeHigh ptrsize*) uint32;
+native dllimport fn GetFileSize(hFile void*, lpFileSizeHigh ptrsize*) uint32;
 
-native fn GetFileTime(hFile void*,
-                      lpCreationTime uint64*,
-                      lpLastAccessTime uint64*,
-                      lpLastWriteTime uint64*) int32;
+native dllimport fn GetFileTime(hFile void*,
+                                lpCreationTime uint64*,
+                                lpLastAccessTime uint64*,
+                                lpLastWriteTime uint64*) int32;
 
 // ------------------------------------------------
 // Win32: libloaderapi.h
 
-native fn ExitProcess(uExitCode uint32) void;
+native dllimport fn ExitProcess(uExitCode uint32) void;
 
 // ------------------------------------------------
 // Win32: handleapi.h
 
 INVALID_HANDLE_VALUE :: cast(void*) -1'i64;
 
-native fn CloseHandle(hObject void*) int32;
+native dllimport fn CloseHandle(hObject void*) int32;
 
 // ------------------------------------------------
 // Win32: profileapi.h
 
-native fn QueryPerformanceFrequency(lpFrequency int64*) bool;
-native fn QueryPerformanceCounter(lpPerformanceCount int64*) bool;
+native dllimport fn QueryPerformanceFrequency(lpFrequency int64*) bool;
+native dllimport fn QueryPerformanceCounter(lpPerformanceCount int64*) bool;

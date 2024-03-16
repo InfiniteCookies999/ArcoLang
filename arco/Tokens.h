@@ -43,6 +43,7 @@ namespace arco {
         KW_READONLY,
         KW_WRITEONLY,
         KW_DLLIMPORT,
+        KW_LINKNAME,
         
         KW_TRUE,
         KW_FALSE,

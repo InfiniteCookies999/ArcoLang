@@ -341,7 +341,7 @@ llvm::FunctionType* arco::GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Fu
 }
 
 llvm::Twine arco::GenFuncLinkName(FuncDecl* Func, bool IsMainFunc) {
-    llvm::Twine LLFuncName = !Func->NativeName.empty() ? Func->NativeName : Func->Name.Text;
+    llvm::Twine LLFuncName = !Func->LinkageName.empty() ? Func->LinkageName : Func->Name.Text;
     llvm::Twine LLFullFuncName = (IsMainFunc || (Func->Mods & ModKinds::NATIVE))
                                ? LLFuncName
                                : LLFuncName.concat(".arco");
@@ -383,14 +383,16 @@ void arco::IRGenerator::GenGlobalVar(VarDecl* Global) {
 
     GenGlobalVarDecl(Global);
 
-    llvm::GlobalVariable* LLGVar =
-        llvm::cast<llvm::GlobalVariable>(Global->LLAddress);
-    auto [NoFurtherInit, InitValue] = GenGlobalVarInitializeValue(Global);
+    if (!(Global->Mods & ModKinds::NATIVE)) {
+        llvm::GlobalVariable* LLGVar =
+            llvm::cast<llvm::GlobalVariable>(Global->LLAddress);
+        auto [NoFurtherInit, InitValue] = GenGlobalVarInitializeValue(Global);
 
-    LLGVar->setInitializer(InitValue);
+        LLGVar->setInitializer(InitValue);
 
-    if (!NoFurtherInit) {
-        Context.GlobalPostponedAssignments.push_back(Global);
+        if (!NoFurtherInit) {
+            Context.GlobalPostponedAssignments.push_back(Global);
+        }
     }
 }
 
@@ -470,8 +472,8 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, boo
 
     if (Func->Mods & ModKinds::NATIVE) {
         Identifier Name = Func->Name;
-        if (!Func->NativeName.empty()) {
-            Name = Identifier(Func->NativeName);
+        if (!Func->LinkageName.empty()) {
+            Name = Identifier(Func->LinkageName);
         }
 
         auto Itr = Context.LLVMIntrinsicsTable.find(Name);
@@ -493,19 +495,22 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, boo
         LLModule
     );
 
+    if (!Func->CallingConv.IsNull()) {
+        LLFunc->setCallingConv(Context.CallConventions[Func->CallingConv]);
+    }
+
+    if (Func->Mods & ModKinds::DLLIMPORT) {
+        LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+    }
+
     if (Func->Mods & ModKinds::NATIVE) {
 #ifdef _WIN32
-        if (!Func->CallingConv.IsNull()) {
-            LLFunc->setCallingConv(Context.CallConventions[Func->CallingConv]);
-        } else {
-            LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
+        if (Func->CallingConv.IsNull()) {
+            // Default to stdcall on windows.
             LLFunc->setCallingConv(llvm::CallingConv::X86_StdCall);
         }
-        if (Func->Mods & ModKinds::DLLIMPORT) {
-            LLFunc->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
-        }
 #endif
-    } else {
+    } else if (!(Func->Mods & ModKinds::DLLIMPORT)) {
         // Will resolve the symbol within the same compilation unit.
         LLFunc->setDSOLocal(true);
     }
@@ -852,12 +857,10 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
     if (Global->LLAddress) return; // Do not generate it twice
 
     std::string Name;
-    if (Global->Mods & ModKinds::NATIVE) {
-        if (!Global->NativeName.empty()) {
-            Name = Global->NativeName.str();
-        } else {
-            Name = Global->Name.Text.str();
-        }
+    if (!Global->NativeName.empty()) {
+        Name = Global->NativeName.str();
+    } else if (Global->Mods & ModKinds::NATIVE) {
+        Name = Global->Name.Text.str();
     } else {
         Name = "__global." + Global->Name.Text.str();
         Name += "." + std::to_string(Context.NumGeneratedGlobalVars++);
@@ -870,12 +873,12 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
         Context.GlobalsNeedingDestruction.push_back(Global);
     }
 
-    if (Global->Mods & ModKinds::NATIVE) {
-#ifdef _WIN32
-        LLGVar->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
-#endif
-    } else {
+    if (!(Global->Mods & ModKinds::NATIVE)) {
         LLGVar->setDSOLocal(true);
+    }
+
+    if (Global->Mods & ModKinds::DLLIMPORT) {
+        LLGVar->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
     }
 
     if (Global->Ty->GetKind() == TypeKind::Array &&

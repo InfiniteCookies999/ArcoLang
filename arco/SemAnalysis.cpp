@@ -432,8 +432,8 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         }
 
         Identifier Name = Func->Name;
-        if (!Func->NativeName.empty()) {
-            Name = Identifier(Func->NativeName);
+        if (!Func->LinkageName.empty()) {
+            Name = Identifier(Func->LinkageName);
         }
 
         auto Itr = Context.LLVMIntrinsicsTable.find(Name);
@@ -1311,6 +1311,15 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var, bool PartOfErrorDecomposition
 
     if (Var->IsField()) {
         CField = Var;
+    }
+
+    if (Var->Mods & ModKinds::NATIVE) {
+        if (!Var->IsGlobal) {
+            Error(Var, "Only global variables can be marked as native");
+        }
+        if (Var->Assignment) {
+            Error(Var, "Variables marked native cannot have assignment");
+        }
     }
 
     if (!Var->ExplicitlyMarkedConst) {
@@ -3053,10 +3062,6 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
                                         Type*& RetTy,
                                         const BindableList* QualifiedTypes) {
 
-    // TODO: This seems to be missing casts for named arguments!
-    // TODO: Deal with complications involving generics already having bound types
-    // such that the qualification doesn't match the argument.
-
     ulen NumGenerics = Selected->IsGeneric() ? Selected->GenData->GenTys.size() : 0;
 
     if (!Selected->IsVariadic) {
@@ -3091,6 +3096,15 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
                     CreateCast(Arg, VarArgTy->UnboxGeneric());
                 }
             }
+        }
+    }
+
+    for (NamedValue& NamedValue : NamedArgs) {
+        VarDecl* Param = NamedValue.VarRef;
+        if (Param->Ty->ContainsGenerics) {
+            CreateCast(NamedValue.AssignValue, (*QualifiedTypes)[NumGenerics + Param->GenericIdx]);
+        } else {
+            CreateCast(NamedValue.AssignValue, Param->Ty->UnboxGeneric());
         }
     }
 }

@@ -159,7 +159,7 @@ fn swap(a T^, b T^) {
  */
 generics<T>
 fn exchange(value T^, new_value T) T {
-    old_value := *value;
+    old_value := moveobj(*value);
     *value     = moveobj(new_value);
     return old_value;
 }
