@@ -90,7 +90,9 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     Context.StandAlone    = StandAlone;
 
     if (!StandAlone) {
-        if (auto StdLibPath = GetStdLibPath()) {
+        if (!TestsStdLibPath.empty()) {
+            Sources.push_back(Source{ false, "std", TestsStdLibPath });
+        } else if (auto StdLibPath = GetStdLibPath()) {
             Sources.push_back(Source{ false, "std", StdLibPath });
         } else {
             Logger::GlobalError(llvm::errs(),
@@ -510,7 +512,9 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);
     Context.StdEnumTypeStruct    = FindStdLibStruct(ReflectNamespace, Context.EnumTypeIdentifier);
     Context.StdErrorInterface    = FindStdLibInterface(StdModule->DefaultNamespace, Context.ErrorInterfaceIdentifier);
-    Context.AnyType              = StructType::Create(Context.StdAnyStruct, Context);
+    if (Context.StdAnyStruct) {
+        Context.AnyType = StructType::Create(Context.StdAnyStruct, Context);
+    }
     
     if (Context.StdErrorInterface) {
         StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);

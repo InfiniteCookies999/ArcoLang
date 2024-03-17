@@ -1,5 +1,6 @@
 // -- Test to make sure that 'break' and 'continue'
 //    statements work.
+import std;
 
 fn main() {
     loop i int = 0; i < 100; i = i + 1 {
@@ -9,7 +10,7 @@ fn main() {
         if i % 2 == 0 {
             continue;
         }
-        print(i);
-        print(" ", 1);
+        std.print(i);
+        std.print(" ", 1);
     }
 }

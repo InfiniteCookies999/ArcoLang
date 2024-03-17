@@ -1,13 +1,14 @@
+import std;
 
 A struct {
     A copyobj(a A*) {
-        print("Called!", 7);
+        std.print("Called!", 7);
     }
 }
 
 fn main() {
-    print("Begin ", 6);
+    std.print("Begin ", 6);
     a A = A{};
-    print("a created ", 10);
+    std.print("a created ", 10);
     b A = a;
 }

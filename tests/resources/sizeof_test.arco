@@ -1,12 +1,13 @@
+import std;
 
 fn main() {
-    print(sizeof(int8));
-    print(" ", 1);
-    print(sizeof(int16));
-    print(" ", 1);
-    print(sizeof(int32));
-    print(" ", 1);
-    print(sizeof(int64));
-    print(" ", 1);
-    print(sizeof(char));
+    std.print(sizeof(int8));
+    std.print(" ", 1);
+    std.print(sizeof(int16));
+    std.print(" ", 1);
+    std.print(sizeof(int32));
+    std.print(" ", 1);
+    std.print(sizeof(int64));
+    std.print(" ", 1);
+    std.print(sizeof(char));
 }

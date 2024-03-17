@@ -1,11 +1,12 @@
+import std;
 
 A struct {
     ~A() {
-        print("Destroyed! ", 11);
+        std.print("Destroyed! ", 11);
     }
 }
 
 fn main() {
-    print("Begin ", 6);
+    std.print("Begin ", 6);
     arr A[5];
 }

@@ -1,8 +1,9 @@
+import std;
 
 A struct {
     generics<T>
     fn foo(a T) {
-        print(a);
+        std.print(a);
     }
 }
 

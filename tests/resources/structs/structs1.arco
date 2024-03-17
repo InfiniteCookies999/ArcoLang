@@ -1,5 +1,6 @@
 // -- Test to make sure that struct declaration and
 //    field accessing works.
+import std;
 
 Data struct {
     a int;
@@ -11,7 +12,7 @@ fn main() {
     data.a = 55;
     data.b = 44;
 
-    print(data.a);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a);
+    std.print(" ", 1);
+    std.print(data.b);
 }

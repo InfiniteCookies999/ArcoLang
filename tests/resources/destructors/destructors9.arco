@@ -1,10 +1,11 @@
+import std;
 
 A struct {
     v int;
 
     ~A() {
-        print("Destroyed!", 10);
-        print(v);
+        std.print("Destroyed!", 10);
+        std.print(v);
     }
 }
 

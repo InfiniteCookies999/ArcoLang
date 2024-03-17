@@ -1,5 +1,6 @@
 // -- Test to make sure that the 'this' keyword
 //    works within member functions.
+import std;
 
 A struct {
     v int;
@@ -16,5 +17,5 @@ A struct {
 fn main() {
     a A;
     a.setv(1234);
-    print(a.getv());
+    std.print(a.getv());
 }

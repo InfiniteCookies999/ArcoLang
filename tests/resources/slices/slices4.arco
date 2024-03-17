@@ -1,8 +1,9 @@
+import std;
 
 fn foo(s int[*]) {
     loop i int = 0; i < s.length; i++ {
-        print(s[i]);
-        print(" ", 1);
+        std.print(s[i]);
+        std.print(" ", 1);
     }
 }
 

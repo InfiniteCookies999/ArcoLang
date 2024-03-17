@@ -1,7 +1,8 @@
+import std;
 
 fn main() {
     loop i int : 0..=5 {
-        print(i);
-        print(" ", 1);
+        std.print(i);
+        std.print(" ", 1);
     }
 }

@@ -1,6 +1,7 @@
 // -- Test to make sure struct declaration and
 //    default initialization works for global
 //    variables.
+import std;
 
 Data struct {
     a int = 22;
@@ -10,7 +11,7 @@ Data struct {
 data Data;
 
 fn main() {
-    print(data.a);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a);
+    std.print(" ", 1);
+    std.print(data.b);
 }

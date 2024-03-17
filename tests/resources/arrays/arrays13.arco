@@ -1,6 +1,7 @@
 // -- Test to make sure that default
 //    initialization of arrays of struct
 //    objects works.
+import std;
 
 Data struct {
     a int = 25;
@@ -11,10 +12,10 @@ fn main() {
     arr Data[5][5];
     loop i int = 0; i < 5; i = i + 1 {
         loop j int = 0; j < 5; j = j + 1 {
-            print(arr[i][j].a);
-            print(" ", 1);
-            print(arr[i][j].b);
-            print(" ", 1);
+            std.print(arr[i][j].a);
+            std.print(" ", 1);
+            std.print(arr[i][j].b);
+            std.print(" ", 1);
         }
     }
 }

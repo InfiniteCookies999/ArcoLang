@@ -1,11 +1,12 @@
 // -- Test to make sure varargs functions
 //    can call other varargs functions with
 //    the varargs parameter.
+import std;
 
 fn foo1(args int...) {
-    print(args[0]);
-    print(" ", 1);
-    print(args[1]);
+    std.print(args[0]);
+    std.print(" ", 1);
+    std.print(args[1]);
 }
 
 fn foo(args int...) {

@@ -1,6 +1,7 @@
 // -- Test to make sure that the implicit parameter
 //    of the member function's 'this' variable is 
 //    compatible with the implicit return parameter.
+import std;
 
 B struct {
     val1 int;
@@ -24,5 +25,5 @@ A struct {
 fn main() {
     a A;
     a.setv(B{ 22 });
-    print(a.getv().val1);
+    std.print(a.getv().val1);
 }

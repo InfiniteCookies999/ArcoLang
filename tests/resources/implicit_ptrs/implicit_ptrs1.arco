@@ -1,3 +1,4 @@
+import std;
 
 fn foo(a int^) {
     *a = 55;
@@ -6,5 +7,5 @@ fn foo(a int^) {
 fn main() {
     a int = 7;
     foo(a);
-    print(a);
+    std.print(a);
 }

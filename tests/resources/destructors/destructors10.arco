@@ -1,15 +1,16 @@
+import std;
 
 A struct {
     y int;
 
     ~A() {
-        print("Destroyed!", 10);
+        std.print("Destroyed!", 10);
     }
 }
 
 a A;
 
 fn main() {
-    print("Begin ", 6);
+    std.print("Begin ", 6);
     a.y = 44; // Setting a variable so the global gets generated.
 }

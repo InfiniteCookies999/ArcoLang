@@ -1,0 +1,12 @@
+import std;
+import std.TestError;
+
+fn foo() raises TestError {
+    raise TestError{};
+}
+
+fn main() {
+    foo() catch err {
+        std.print(err.get_message());
+    };
+}

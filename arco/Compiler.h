@@ -66,6 +66,7 @@ namespace arco {
         } Stage = Stages::PARSE_SEMCHECK_COMPILE_AND_LINK;
 
         ArcoContext& Context;
+        std::string TestsStdLibPath;
 
         Compiler();
 

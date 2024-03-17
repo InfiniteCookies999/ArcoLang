@@ -1,5 +1,6 @@
 // -- Test to make sure that arrays can
 //    have no elements.
+import std;
 
 fn main() {
     a int[3] = [];

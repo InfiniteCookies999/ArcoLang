@@ -1,0 +1,29 @@
+namespace reflect;
+
+TypeId enum {
+
+}
+
+Type struct {
+
+}
+
+ArrayType struct {
+
+}
+
+Struct struct {
+
+}
+
+Field struct {
+
+}
+
+Enum struct {
+
+}
+
+Any struct {
+    
+}

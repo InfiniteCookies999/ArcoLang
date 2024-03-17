@@ -92,7 +92,7 @@ private fn handle_uncaught_exception_handler(ptrs EXCEPTION_POINTERS*) int32 {
     return 0;
 }
 
-fn raise_unwind_error(err Error*) {
+private fn raise_unwind_error(err Error*) {
     
     payload uint64[1] = [
         cast(uint64) err
@@ -103,7 +103,7 @@ fn raise_unwind_error(err Error*) {
     win32.RaiseException(ARCO_WIN32_EXCEPTION_CODE, dwExceptionFlags=1, nNumberOfArguments=1, lpArguments=payload);
 }
 
-fn initialize_error_handling() {
+private fn initialize_error_handling() {
     win32.SetUnhandledExceptionFilter(&handle_uncaught_exception_handler);
 }
 
@@ -112,6 +112,7 @@ fn initialize_error_handling() {
  * stream and terminates the application.
  */
 fn panic(msg cstr) {
+    // TODO: come back to
     eprintln(msg);
     exit(1);
 }
@@ -121,11 +122,11 @@ fn panic(msg cstr) {
  * error stream and terminates the application.
  */
 fn panic(msg cstr, args Any...) {
+    // TOOD: come back to.
     eprintln(msg, args);
     exit(1);
 }
 
 fn panic(err Error^) {
-    eprintln(err.get_message());
-    exit(1);
+    raise_unwind_error(err);
 }

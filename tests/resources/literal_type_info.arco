@@ -1,34 +1,35 @@
+import std;
 
 fn foo(a int8) {
-    print("int8 ", 5);
+    std.print("int8 ", 5);
 }
 
 fn foo(a int16) {
-    print("int16 ", 6);
+    std.print("int16 ", 6);
 }
 
 fn foo(a int32) {
-    print("int32 ", 6);
+    std.print("int32 ", 6);
 }
 
 fn foo(a int64) {
-    print("int64 ", 6);
+    std.print("int64 ", 6);
 }
 
 fn foo(a uint8) {
-    print("uint8 ", 6);
+    std.print("uint8 ", 6);
 }
 
 fn foo(a uint16) {
-    print("uint16 ", 7);
+    std.print("uint16 ", 7);
 }
 
 fn foo(a uint32) {
-    print("uint32 ", 7);
+    std.print("uint32 ", 7);
 }
 
 fn foo(a uint64) {
-    print("uint64 ", 7);
+    std.print("uint64 ", 7);
 }
 
 fn main() {

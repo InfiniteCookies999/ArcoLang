@@ -1,3 +1,4 @@
+import std;
 
 native fn memcpy(dest void*, src const void*, count int) void;
 
@@ -27,46 +28,46 @@ fn main() {
     {
         buffer char[6];
         memcpy(buffer, "hello ", 6);
-        print(buffer, 6);
+        std.print(buffer, 6);
     }
     {
         buffer char[6];
         foo1(buffer);
-        print(buffer, 6);
+        std.print(buffer, 6);
     }
     {
         buffer char[6];
         foo1_pass(buffer);
-        print(buffer, 6);
+        std.print(buffer, 6);
     }
     {
         buffer char[6][6];
         foo2(buffer);
-        print(buffer[0], 6);
+        std.print(buffer[0], 6);
     }
     {
         buffer char[6][6];
         foo2_pass(buffer);
-        print(buffer[0], 6);
+        std.print(buffer[0], 6);
     }
     {
         buffer char[6][6][6];
         foo3(buffer);
-        print(buffer[0][0], 6);
+        std.print(buffer[0][0], 6);
     }
     {
         buffer char[6][6];
         memcpy(buffer, "hello ", 6);
-        print(buffer[0], 6);
+        std.print(buffer[0], 6);
     }
     {
         buffer char[6][6][6];
         memcpy(buffer, "hello ", 6);
-        print(buffer[0][0], 6);
+        std.print(buffer[0][0], 6);
     }
     {
         buffer char[6][6][6];
         foo3_pass(buffer);
-        print(buffer[0][0], 6);
+        std.print(buffer[0][0], 6);
     }
 }

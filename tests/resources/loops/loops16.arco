@@ -1,7 +1,8 @@
+import std;
 
 fn main() {
     sum int = 0;
     loop i int = 0; i < 5; i = i + 1
         sum = sum + i;
-    print(sum);
+    std.print(sum);
 }

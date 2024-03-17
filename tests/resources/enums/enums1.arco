@@ -1,3 +1,4 @@
+import std;
 
 Day enum {
     MONDAY;
@@ -10,17 +11,17 @@ Day enum {
 }
 
 fn main() {
-    print(Day.MONDAY);
-    print(" ", 1);
-    print(Day.TUESDAY);
-    print(" ", 1);
-    print(Day.WEDNESDAY);
-    print(" ", 1);
-    print(Day.THURSDAY);
-    print(" ", 1);
-    print(Day.FRIDAY);
-    print(" ", 1);
-    print(Day.SATURDAY);
-    print(" ", 1);
-    print(Day.SUNDAY);
+    std.print(Day.MONDAY);
+    std.print(" ", 1);
+    std.print(Day.TUESDAY);
+    std.print(" ", 1);
+    std.print(Day.WEDNESDAY);
+    std.print(" ", 1);
+    std.print(Day.THURSDAY);
+    std.print(" ", 1);
+    std.print(Day.FRIDAY);
+    std.print(" ", 1);
+    std.print(Day.SATURDAY);
+    std.print(" ", 1);
+    std.print(Day.SUNDAY);
 }

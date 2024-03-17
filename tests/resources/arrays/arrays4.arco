@@ -1,10 +1,11 @@
 // -- Test to make sure that the .length
 //    operator works on arrays.
+import std;
 
 fn main() {
     a int[5] = [ 214, 452, 12, 32, 11 ];
     loop i int = 0; i < a.length; i = i + 1 {
-        print(a[i]);
-        print(" ", 1);
+        std.print(a[i]);
+        std.print(" ", 1);
     }
 }

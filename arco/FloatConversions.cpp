@@ -579,6 +579,12 @@ namespace FD {
 
 
     void InitializeCache() {
+        static bool CacheInitialized = false;
+        if (CacheInitialized) {
+            return;
+        }
+        CacheInitialized = true;
+
         // TODO: This is copying the memory this should be calling std::move!!!
         for (ulen i = 0; i < POW5_TABLE_SIZE; i++) {
             BigIntFD BigPow5;

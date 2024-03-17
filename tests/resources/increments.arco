@@ -1,22 +1,24 @@
+import std;
+
 fn main() {
     a int = 0;
     a++;
     ++a;
-    print(a);
-    print(" ", 1);
+    std.print(a);
+    std.print(" ", 1);
     a--;
     --a;
-    print(a);
-    print(" ", 1);
-    print(a++);
-    print(" ", 1);
-    print(a);
-    print(" ", 1);
-    print(a--);
-    print(" ", 1);
-    print(a);
-    print(" ", 1);
-    print(++a);
-    print(" ", 1);
-    print(--a);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(a++);
+    std.print(" ", 1);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(a--);
+    std.print(" ", 1);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(++a);
+    std.print(" ", 1);
+    std.print(--a);
 }

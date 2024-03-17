@@ -1,8 +1,9 @@
 // -- Test to make sure that simple global
 //    declaration and access works.
+import std;
 
 a int = 44;
 
 fn main() {
-    print(a);
+    std.print(a);
 }

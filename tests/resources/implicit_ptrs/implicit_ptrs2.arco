@@ -1,3 +1,4 @@
+import std;
 
 Bar struct {
     a int;
@@ -5,9 +6,9 @@ Bar struct {
 }
 
 fn foo(bar Bar^) {
-    print(bar.a);
-    print(" ", 1);
-    print(bar.b);
+    std.print(bar.a);
+    std.print(" ", 1);
+    std.print(bar.b);
 }
 
 fn main() {

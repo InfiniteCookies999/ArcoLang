@@ -1,5 +1,6 @@
 // -- Test to make sure that default field initialization 
 //    works when one field uses another.
+import std;
 
 Data struct {
     a int = 55;
@@ -8,7 +9,7 @@ Data struct {
 
 fn main() {
     data Data;
-    print(data.a);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a);
+    std.print(" ", 1);
+    std.print(data.b);
 }

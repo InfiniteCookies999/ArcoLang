@@ -1,9 +1,11 @@
+import std;
+
 fn main() {
-    print(0b01110101101);           // 941
-    print(" ", 1);
-    print(0b111111111111111);       // 32767
-    print(" ", 1);
-    print(0b0);                     // 0
-    print(" ", 1);
-    print(0b101010110110101010011); // 1404243
+    std.print(0b01110101101);           // 941
+    std.print(" ", 1);
+    std.print(0b111111111111111);       // 32767
+    std.print(" ", 1);
+    std.print(0b0);                     // 0
+    std.print(" ", 1);
+    std.print(0b101010110110101010011); // 1404243
 }

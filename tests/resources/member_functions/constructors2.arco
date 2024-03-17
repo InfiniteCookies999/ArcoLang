@@ -1,6 +1,7 @@
 // -- Test to make sure that default constructor is called
 //    when a variable is declared with a type that has a default
 //    constructor.
+import std;
 
 MyStruct struct {
     a int;
@@ -11,5 +12,5 @@ MyStruct struct {
 
 fn main() {
     s MyStruct;
-    print(s.a);
+    std.print(s.a);
 }

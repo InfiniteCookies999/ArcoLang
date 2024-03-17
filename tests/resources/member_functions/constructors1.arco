@@ -1,4 +1,5 @@
 // -- Test to make sure that constructor calling works.
+import std;
 
 A struct {
     v int;
@@ -10,5 +11,5 @@ A struct {
 
 fn main() {
     a A = A{ 53 };
-    print(a.v);
+    std.print(a.v);
 }

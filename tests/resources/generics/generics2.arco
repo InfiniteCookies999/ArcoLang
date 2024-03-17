@@ -1,9 +1,10 @@
+import std;
 
 generics<T>
 fn foo(a T, b T) {
-    print(a);
-    print(" ", 1);
-    print(b);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(b);
 }
 
 fn main() {

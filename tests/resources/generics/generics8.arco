@@ -1,3 +1,4 @@
+import std;
 
 Message enum {
     FIRST  :: "Programming is fun";
@@ -8,11 +9,11 @@ generics<T>
 fn foo(message T, length int) {
     the_message Message = message;
     the_message_value cstr = the_message;
-    print(the_message_value, length);
+    std.print(the_message_value, length);
 }
 
 fn main() {
     foo(Message.FIRST, 18);
-    print(" ", 1);
+    std.print(" ", 1);
     foo(Message.SECOND, 12);
 }

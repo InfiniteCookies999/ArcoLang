@@ -1,5 +1,6 @@
 // -- Test to make sure that nested struct default
 //    initialization works.
+import std;
 
 A struct {
     f1 int = 124;
@@ -14,9 +15,9 @@ Data struct {
 fn main() {
     data Data;
     
-    print(data.a.f1);
-    print(" ", 1);
-    print(data.a.f2);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a.f1);
+    std.print(" ", 1);
+    std.print(data.a.f2);
+    std.print(" ", 1);
+    std.print(data.b);
 }

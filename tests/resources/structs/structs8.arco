@@ -1,18 +1,19 @@
 // -- Test to make sure that structs can be created
 //    inline and accessed inline.
+import std;
 
 A struct {
     val int;
 }
 
 fn foo(a A) {
-    print(a.val);
+    std.print(a.val);
 }
 
 fn main() {
-    print(A{ 55 }.val);
-    print(" ", 1);
-    print((A{ 55 }).val);
-    print(" ", 1);
+    std.print(A{ 55 }.val);
+    std.print(" ", 1);
+    std.print((A{ 55 }).val);
+    std.print(" ", 1);
     foo(A{ 55 });
 }

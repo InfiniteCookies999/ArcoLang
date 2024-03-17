@@ -1,4 +1,6 @@
+import std;
+
 fn main() {
     message cstr = "Hello World!";
-    print(message, 12);
+    std.print(message, 12);
 }

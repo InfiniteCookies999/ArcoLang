@@ -1,0 +1,21 @@
+import std;
+import std.TestError;
+
+fn foo(cond bool) int raises TestError {
+    if cond {
+        raise TestError{};
+    }
+    return 55;
+}
+
+fn main() {    
+    foo(true) catch err {
+        std.print(err.get_message());
+    };
+    v := foo(false) catch err {
+        std.print(err.get_message());
+        return;
+    };
+    std.print(" ", 1);
+    std.print(v);
+}

@@ -1,3 +1,4 @@
+import std;
 
 A interface {
     fn foo(a int);
@@ -7,10 +8,10 @@ A interface {
 
 B struct : A {
     fn foo(a int) {
-        print(a);
+        std.print(a);
     }
     fn bar(b int) {
-        print(b);
+        std.print(b);
     }
 }
 
@@ -18,6 +19,6 @@ fn main() {
     b B;
     a A* = &b;
     a.foo(42);
-    print(" ", 1);
+    std.print(" ", 1);
     a.bar(341);
 }

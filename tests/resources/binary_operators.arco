@@ -1,8 +1,10 @@
+import std;
+
 fn main() {
     a int = 32522;
     a >>= 2;
     a ^= 54;
     a &= 124;
     a <<= 2;
-    print(a);
+    std.print(a);
 }

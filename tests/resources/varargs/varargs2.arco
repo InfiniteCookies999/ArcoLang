@@ -1,12 +1,13 @@
 // -- Test to make sure multiple arguments can
 //    be passed to varargs functions.
+import std;
 
 fn foo(args int...) {
-    print(args.length);
-    print(" ", 1);
-    print(args[0]);
-    print(" ", 1);
-    print(args[1]);
+    std.print(args.length);
+    std.print(" ", 1);
+    std.print(args[0]);
+    std.print(" ", 1);
+    std.print(args[1]);
 }
 
 fn main() {

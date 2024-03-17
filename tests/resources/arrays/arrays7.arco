@@ -1,11 +1,12 @@
 // -- Test to make sure that arrays can
 //    be passed to functions without having
 //    to create a variable.
+import std;
 
 fn func(a int[5]) {
     loop i int = 0; i < 5; i = i + 1 {
-        print(a[i]);
-        print(" ", 1);
+        std.print(a[i]);
+        std.print(" ", 1);
     }
 }
 

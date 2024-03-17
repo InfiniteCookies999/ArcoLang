@@ -1,5 +1,6 @@
 // -- Test to make sure that data can be allocated onto the heap
 //    with the use of 'new' keyword.
+import std;
 
 A struct {
     f1 int = 341;
@@ -16,28 +17,28 @@ fn main() {
 
     v3 A* = new A[2][2];
 
-    print(*v1);
-    print(" ", 1);
-    print(v2.f1);
-    print(" ", 1);
-    print(v2.f2);
-    print(" ", 1);
+    std.print(*v1);
+    std.print(" ", 1);
+    std.print(v2.f1);
+    std.print(" ", 1);
+    std.print(v2.f2);
+    std.print(" ", 1);
 
-    print(v3[0].f1);
-    print(" ", 1);
-    print(v3[0].f2);
-    print(" ", 1);
-    print(v3[1].f1);
-    print(" ", 1);
-    print(v3[1].f2);
-    print(" ", 1);
-    print(v3[2].f1);
-    print(" ", 1);
-    print(v3[2].f2);
-    print(" ", 1);
-    print(v3[3].f1);
-    print(" ", 1);
-    print(v3[3].f2);
+    std.print(v3[0].f1);
+    std.print(" ", 1);
+    std.print(v3[0].f2);
+    std.print(" ", 1);
+    std.print(v3[1].f1);
+    std.print(" ", 1);
+    std.print(v3[1].f2);
+    std.print(" ", 1);
+    std.print(v3[2].f1);
+    std.print(" ", 1);
+    std.print(v3[2].f2);
+    std.print(" ", 1);
+    std.print(v3[3].f1);
+    std.print(" ", 1);
+    std.print(v3[3].f2);
 
     delete v1;
     delete v2;

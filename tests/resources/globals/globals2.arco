@@ -1,11 +1,12 @@
 // -- Test to make sure that non-foldable
 //    global initialization works.
+import std;
 
 a int = 32;
 b int = a + 154;
 
 fn main() {
-    print(a);
-    print(" ", 1);
-    print(b);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(b);
 }

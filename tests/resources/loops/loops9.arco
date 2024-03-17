@@ -1,6 +1,7 @@
+import std;
 
 fn main() {
     loop 0..=5 {
-        print("go!", 3);
+        std.print("go!", 3);
     }
 }

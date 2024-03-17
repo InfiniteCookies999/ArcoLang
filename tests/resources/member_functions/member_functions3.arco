@@ -1,3 +1,5 @@
+import std;
+
 A struct {
     fn foo1(msg cstr) {
         bar(msg);
@@ -8,7 +10,7 @@ A struct {
     }
 
     fn bar(msg cstr) {
-        print(msg, 4);
+        std.print(msg, 4);
     }
 }
 

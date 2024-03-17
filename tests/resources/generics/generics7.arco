@@ -1,3 +1,4 @@
+import std;
 
 generics<T>
 fn foo(func fn(T) void, value T) {
@@ -5,7 +6,7 @@ fn foo(func fn(T) void, value T) {
 }
 
 fn takes_value(value int) {
-    print(value);
+    std.print(value);
 }
 
 fn main() {

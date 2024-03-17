@@ -1,14 +1,15 @@
+import std;
 
 fn foo(a int, b int, c int, d int, e int) {
-    print(a);
-    print(" ", 1);
-    print(b);
-    print(" ", 1);
-    print(c);
-    print(" ", 1);
-    print(d);
-    print(" ", 1);
-    print(e);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(b);
+    std.print(" ", 1);
+    std.print(c);
+    std.print(" ", 1);
+    std.print(d);
+    std.print(" ", 1);
+    std.print(e);
 }
 
 fn main() {

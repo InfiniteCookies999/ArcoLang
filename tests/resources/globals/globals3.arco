@@ -1,5 +1,6 @@
 // -- Test to make sure struct declaration and
 //    initialization works for global variables.
+import std;
 
 Data struct {
     a int;
@@ -9,7 +10,7 @@ Data struct {
 data Data = Data{ 34, 66 };
 
 fn main() {
-    print(data.a);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a);
+    std.print(" ", 1);
+    std.print(data.b);
 }

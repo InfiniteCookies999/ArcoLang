@@ -1,6 +1,7 @@
 // -- Test to make sure that copy elision and returns
 //    by integer optimizations work for directly returning
 //    struct types.
+import std;
 
 A struct {
     val int32;
@@ -23,8 +24,8 @@ fn func2() B {
 
 fn main() {
     a A = func1();
-    print(cast(int) a.val);
-    print(" ", 1);
+    std.print(cast(int) a.val);
+    std.print(" ", 1);
     b B = func2();
-    print(cast(int) b.val1);
+    std.print(cast(int) b.val1);
 }

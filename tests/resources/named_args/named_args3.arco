@@ -1,8 +1,9 @@
+import std;
 
 fn foo(a int, b int) {
-    print(a);
-    print(" ", 1);
-    print(b);
+    std.print(a);
+    std.print(" ", 1);
+    std.print(b);
 }
 
 fn main() {

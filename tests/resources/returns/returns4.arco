@@ -1,3 +1,5 @@
+import std;
+
 A struct {
     val int32;
 }
@@ -27,8 +29,8 @@ fn func22(b B) B {
 
 fn main() {
     a A = func11(func1());
-    print(a.val);
-    print(" ", 1);
+    std.print(a.val);
+    std.print(" ", 1);
     b B = func22(func2());
-    print(b.val1);
+    std.print(b.val1);
 }

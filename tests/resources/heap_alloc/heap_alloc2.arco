@@ -1,3 +1,4 @@
+import std;
 
 Foo1 struct {
     a int;
@@ -14,37 +15,37 @@ Foo2 struct {
 
 fn main() {
     a int* = new int{ 4 };
-    print(*a);
-    print(" ", 1);
+    std.print(*a);
+    std.print(" ", 1);
     
     foo1 Foo1* = new Foo1{ 52, 9 };
-    print(foo1.a);
-    print(" ", 1);
-    print(foo1.b);
-    print(" ", 1);
+    std.print(foo1.a);
+    std.print(" ", 1);
+    std.print(foo1.b);
+    std.print(" ", 1);
     
     foo2 Foo2* = new Foo2{ 7 };
-    print(foo2.z);
-    print(" ", 1);
+    std.print(foo2.z);
+    std.print(" ", 1);
     
     arr int* = new int[4]{ [ 5, 23, 1, 5 ] };
-    print(arr[0]);
-    print(" ", 1);
-    print(arr[1]);
-    print(" ", 1);
-    print(arr[2]);
-    print(" ", 1);
-    print(arr[3]);
-    print(" ", 1);
+    std.print(arr[0]);
+    std.print(" ", 1);
+    std.print(arr[1]);
+    std.print(" ", 1);
+    std.print(arr[2]);
+    std.print(" ", 1);
+    std.print(arr[3]);
+    std.print(" ", 1);
 
     foos Foo1* = new Foo1[2]{ [ Foo1{ 5, 2 }, Foo1{ 6, 11 } ] };
-    print(foos[0].a);
-    print(" ", 1);
-    print(foos[0].b);
-    print(" ", 1);
-    print(foos[1].a);
-    print(" ", 1);
-    print(foos[1].b);
+    std.print(foos[0].a);
+    std.print(" ", 1);
+    std.print(foos[0].b);
+    std.print(" ", 1);
+    std.print(foos[1].a);
+    std.print(" ", 1);
+    std.print(foos[1].b);
 
     delete a;
     delete foo1;

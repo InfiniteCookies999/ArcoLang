@@ -1,0 +1,23 @@
+import std;
+import std.Error;
+import std.TestError;
+
+TestError2 struct : Error {
+    fn get_message() cstr {
+        return "test message 2";
+    }
+}
+
+fn foo() int raises TestError, TestError2 {
+    raise TestError2{};
+}
+
+fn bar() raises TestError2 {
+    foo() catch _ {};
+}
+
+fn main() {    
+    bar() catch err {
+        std.print(err.get_message());
+    };
+}

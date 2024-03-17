@@ -1,3 +1,4 @@
+import std;
 
 Message enum {
     FIRST  :: "Programming is fun";
@@ -5,7 +6,7 @@ Message enum {
 }
 
 fn main() {
-    print(Message.FIRST, 18);
-    print(" ", 1);
-    print(Message.SECOND, 12);
+    std.print(Message.FIRST, 18);
+    std.print(" ", 1);
+    std.print(Message.SECOND, 12);
 }

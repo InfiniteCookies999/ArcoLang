@@ -1,12 +1,13 @@
 // -- Test to make sure that the .length operator works
 //    on sub-arrays.
+import std;
 
 fn main() {
     a int[7][3] = [ [ 253, 23 ], [ 13 ] ];
     loop i int = 0; i < a.length; i = i + 1 {
         loop j int = 0; j < a[i].length; j = j + 1 {
-            print(a[i][j]);
-            print(" ", 1);
+            std.print(a[i][j]);
+            std.print(" ", 1);
         }
     }
 }

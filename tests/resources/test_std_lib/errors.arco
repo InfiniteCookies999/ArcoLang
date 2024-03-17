@@ -1,0 +1,14 @@
+
+Error interface {
+    fn get_message() cstr;
+}
+
+TestError struct : Error {
+    fn get_message() cstr {
+        return "test message";
+    }
+}
+
+fn panic(err Error^) {
+    print(err.get_message());
+}

@@ -1,3 +1,4 @@
+import std;
 
 i int;
 
@@ -8,5 +9,5 @@ fn foo() {
 fn main() {
     sum int = 0;
     loop ; i < 5;   foo();
-    print(i);
+    std.print(i);
 }

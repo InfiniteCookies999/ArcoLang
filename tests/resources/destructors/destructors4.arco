@@ -1,13 +1,15 @@
+import std;
+
 A struct {
     ~A() {
-        print("Destroyed!", 10);
+        std.print("Destroyed!", 10);
     }
 }
 
 fn main() {
-    print("Begin ", 6);
+    std.print("Begin ", 6);
     {
         a A;
     }
-    print(" End", 4);
+    std.print(" End", 4);
 }

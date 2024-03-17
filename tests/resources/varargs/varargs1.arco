@@ -1,8 +1,9 @@
 // -- Test to make sure no arguments can be passed to
 //    varargs function and the length is 0.
+import std;
 
 fn foo(args int...) {
-    print(args.length);
+    std.print(args.length);
 }
 
 fn main() {

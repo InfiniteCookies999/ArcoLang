@@ -1,13 +1,14 @@
 // -- Test to make sure that foldable
 //    array initialization works for
 //    global const pointers.
+import std;
 
 arr const int* = [ 4, 6, 3 ];
 
 fn main() {
-    print(arr[0]);
-    print(" ", 1);
-    print(arr[1]);
-    print(" ", 1);
-    print(arr[2]);
+    std.print(arr[0]);
+    std.print(" ", 1);
+    std.print(arr[1]);
+    std.print(" ", 1);
+    std.print(arr[2]);
 }

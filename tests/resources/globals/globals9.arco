@@ -1,14 +1,15 @@
 // -- Test to make sure that npn-foldable
 //    array initialization works for
 //    global pointers.
+import std;
 
 x0 int = 4;
 arr int* = [ x0, 6, 3 ];
 
 fn main() {
-    print(arr[0]);
-    print(" ", 1);
-    print(arr[1]);
-    print(" ", 1);
-    print(arr[2]);
+    std.print(arr[0]);
+    std.print(" ", 1);
+    std.print(arr[1]);
+    std.print(" ", 1);
+    std.print(arr[2]);
 }

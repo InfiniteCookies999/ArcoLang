@@ -1,12 +1,13 @@
+import std;
 
 running bool = true;
 
 fn foo() {
-    print("foo called", 10);
+    std.print("foo called", 10);
     running = false;
 }
 
 fn main() {
     loop running  foo();
-    print(" finished", 9);
+    std.print(" finished", 9);
 }

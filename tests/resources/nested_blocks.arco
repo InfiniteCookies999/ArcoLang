@@ -1,12 +1,13 @@
+import std;
 
 fn main() {
     a int = 5;
     {
         b int = 8;
-        print(a);
-        print(" ", 1);
-        print(b);
-        print(" ", 1);
+        std.print(a);
+        std.print(" ", 1);
+        std.print(b);
+        std.print(" ", 1);
     }
-    print(a);
+    std.print(a);
 }

@@ -1,3 +1,4 @@
+import std;
 
 Day enum {
     MONDAY;
@@ -11,7 +12,7 @@ Day enum {
 
 fn main() {
     loop i Day : Day.MONDAY ..= Day.SUNDAY {
-        print(i);
-        print(" ", 1);
+        std.print(i);
+        std.print(" ", 1);
     }
 }

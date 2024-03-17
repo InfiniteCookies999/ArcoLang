@@ -2,6 +2,7 @@
 //    correctly creates an object when accesing
 //    the field directly from a return value of
 //    a function.
+import std;
 
 A struct {
     val int32;
@@ -24,8 +25,8 @@ fn func2() B {
 
 fn main() {
     a int32 = func1().val;
-    print(a);
-    print(" ", 1);
+    std.print(a);
+    std.print(" ", 1);
     b int32 = func2().val1;
-    print(b);
+    std.print(b);
 }

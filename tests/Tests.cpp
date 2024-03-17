@@ -33,11 +33,10 @@ void RunTest(const char* TestSource, const std::string& ExpectedOutput) {
     RanTests.insert(TestSource);
 
     llvm::SmallVector<arco::Source> Sources;
-    Sources.push_back(arco::Source{ true, "default.program.module", SRC("test_utils.arco") });
     Sources.push_back(arco::Source{ true, "default.program.module", TestSource });
 
     arco::Compiler Compiler;
-    Compiler.StandAlone = true;
+    Compiler.TestsStdLibPath = SRC("test_std_lib");
     Compiler.Compile(Sources);
 
     if (!arco::FoundCompileError) {
@@ -250,6 +249,11 @@ int main() {
     RunTest(SRC("generics/generics7.arco"), "6524");
     RunTest(SRC("generics/generics8.arco"), "Programming is fun cool message");
     
+    RunTest(SRC("errors/errors1.arco"), "test message");
+    RunTest(SRC("errors/errors2.arco"), "test message");
+    RunTest(SRC("errors/errors3.arco"), "test message 55");
+    RunTest(SRC("errors/errors4.arco"), "test message 2");
+
     //RunTest(SRC("lots_of_errors.arco"), "");
 
     if (Succeeded + Failed > 0) {

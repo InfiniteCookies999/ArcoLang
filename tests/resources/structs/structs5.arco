@@ -1,5 +1,6 @@
 // -- Test to make sure that nested struct initialization
 //    works.
+import std;
 
 A struct {
     f1 int;
@@ -20,9 +21,9 @@ fn main() {
         25
     };
     
-    print(data.a.f1);
-    print(" ", 1);
-    print(data.a.f2);
-    print(" ", 1);
-    print(data.b);
+    std.print(data.a.f1);
+    std.print(" ", 1);
+    std.print(data.a.f2);
+    std.print(" ", 1);
+    std.print(data.b);
 }
