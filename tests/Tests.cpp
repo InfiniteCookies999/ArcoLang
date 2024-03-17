@@ -249,7 +249,7 @@ int main() {
     RunTest(SRC("generics/generics6.arco"), "52 some message");
     RunTest(SRC("generics/generics7.arco"), "6524");
     RunTest(SRC("generics/generics8.arco"), "Programming is fun cool message");
-
+    
     //RunTest(SRC("lots_of_errors.arco"), "");
 
     if (Succeeded + Failed > 0) {

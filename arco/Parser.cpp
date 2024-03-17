@@ -622,12 +622,12 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     }
     if (!Var->HasConstAddress && CTok.Is(TokenKind::COL_EQ)) {
         NextToken(); // Consuming ':=' token.
-        Var->Assignment = ParseExpr();
+        Var->Assignment = ParseExprAndCatch();
         Var->Ty = Context.ErrorType;
         Var->TyIsInfered = true;
     } else if (!Var->HasConstAddress && CTok.Is(TokenKind::COL_COL)) {
         NextToken(); // Consuming '::' token.
-        Var->Assignment = ParseExpr();
+        Var->Assignment = ParseExprAndCatch();
         Var->Ty = Context.ErrorType;
         Var->TyIsInfered = true;
         Var->HasConstAddress = true;
@@ -641,7 +641,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
                 NextToken(); // Consuming '---' token.
                 Var->LeaveUninitialized = true;
             } else {
-                Var->Assignment = ParseExpr();
+                Var->Assignment = ParseExprAndCatch();
             }
         }
     }
@@ -719,7 +719,7 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
                     NextToken(); // Consuming '---' token.
                     List->Decls[Count]->LeaveUninitialized = true;
                 } else {
-                    List->Decls[Count]->Assignment = ParseExpr();
+                    List->Decls[Count]->Assignment = ParseExprAndCatch();
                 }
                 
                 if (NumErrs != TotalAccumulatedErrors) {
@@ -1041,7 +1041,7 @@ arco::ReturnStmt* arco::Parser::ParseReturn() {
     }
 
     if (CTok.IsNot(';')) {
-        Ret->Value = ParseExpr();
+        Ret->Value = ParseExprAndCatch();
     }
 
     return Ret;
@@ -1631,7 +1631,7 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
 //===-------------------------------===//
 
 arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
-    Expr* LHS = ParseExpr();
+    Expr* LHS = ParseExprAndCatch();
     switch (CTok.Kind) {
     case '=':
     case TokenKind::PLUS_EQ:
@@ -1646,12 +1646,33 @@ arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
     case TokenKind::GT_GT_EQ: {
         Token OpTok = CTok;
         NextToken(); // Consuming assignment operator token
-        Expr* E = ParseExpr();
+        Expr* E = ParseExprAndCatch();
         return NewBinaryOp(OpTok, LHS, E);
     }
     default:
         return ParseBinaryExpr(LHS);
     }
+}
+
+arco::Expr* arco::Parser::ParseExprAndCatch() {
+    Expr* E = ParseExpr();
+    if (CTok.Is(TokenKind::KW_CATCH)) {
+        CatchError* Catch = NewNode<CatchError>(CTok);
+        NextToken();
+        PUSH_SCOPE();
+        Identifier ErrorName = ParseIdentifier("Expected identifier for caught error variable");
+        
+        if (!ErrorName.IsNull()) {
+            Catch->ErrorVar = CreateVarDecl(CTok, ErrorName, 0);
+            FinishVarDecl(Catch->ErrorVar);
+        }
+        
+        ParseScopeStmts(Catch->Scope);
+        POP_SCOPE();
+        Catch->CaughtExpr = E;
+        return Catch;
+    }
+    return E;
 }
 
 arco::Expr* arco::Parser::ParseExpr() {

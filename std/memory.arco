@@ -18,8 +18,11 @@ native fn memset(dest void*, c int8, n int) void*;
  * Compares two blocks of memory lhs and rhs.
  *
  * @count  the number of bytes to compare.
- * @return 0 if equal, >0 if (unsigned) byte in lhs is greater
-           than (unsigned) byte in rhs, and <0 if the reverse.
+ * @return 0   if equal.
+ *         >0  if the (unsigned) byte in lhs is greater than the
+ *             (unsigned) byte in rhs.
+ *         <0  if the (unsigned) byte in rhs is greater than the
+ *             (unsigned) in lhs.
  */
 fn memcmp(lhs const void*, rhs const void*, count int) int {
     if count <= 0 {
@@ -40,10 +43,11 @@ fn memeq(lhs const void*, rhs const void*, count int) bool {
 }
 
 /*
- * Compares to c-strings which are null-terminated.
+ * Compares two c-strings which are null-terminated.
  *
- * @return 0 if equal, >0 if str1 is greater than str2 (in ascii),
- *         and <0 if the reserve.
+ * @return 0   if equal.
+ *         >0  if str1 is greater than str2 (in ascii).
+ *         <0  if str2 is greater than str1 (in ascii).
  */
 fn strcmp(str1 cstr, str2 cstr) int {
     return cast(int) _strcmp(str1, str2);
@@ -52,7 +56,7 @@ fn strcmp(str1 cstr, str2 cstr) int {
 native("strcmp") fn(cdecl) _strcmp(str1 cstr, str2 cstr) int32;
 
 /*
- * Compares to c-strings which are null-terminated.
+ * Compares two c-strings which are null-terminated.
  *
  * @return true if all characters in str1 match all characters in
  *         str2 until the null-terminator.

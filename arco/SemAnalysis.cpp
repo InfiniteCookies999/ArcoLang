@@ -676,12 +676,6 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
                     continue;
                 }
 
-                if (!ErrorStruct->Constructors.empty() && !ErrorStruct->DefaultConstructor) {
-                    Error(RaisedError.ErrorLoc, "There is no default constructor to initialize the raised error");
-                } else if (ErrorStruct->DefaultConstructor) {
-                    Context.RequestGen(ErrorStruct->DefaultConstructor);
-                }
-
                 bool ImplementsErrorInterface = false;
                 for (InterfaceDecl* Interface : ErrorStruct->Interfaces) {
                     if (Interface == Context.StdErrorInterface) {
@@ -728,12 +722,16 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::RAISE:
         CheckRaiseStmt(static_cast<RaiseStmt*>(Node));
         break;
-    case AstKind::IF:
-        CheckIf(static_cast<IfStmt*>(Node));
+    case AstKind::IF: {
+        bool Ignore1, Ignore2;
+        CheckIf(static_cast<IfStmt*>(Node), Ignore1, Ignore2);
         break;
-    case AstKind::NESTED_SCOPE:
-        CheckNestedScope(static_cast<NestedScopeStmt*>(Node));
+    }
+    case AstKind::NESTED_SCOPE: {
+        bool Ignore1, Ignore2;
+        CheckNestedScope(static_cast<NestedScopeStmt*>(Node), Ignore1, Ignore2);
         break;
+    }
     case AstKind::BINARY_OP:
         CheckBinaryOp(static_cast<BinaryOp*>(Node));
         break;
@@ -787,6 +785,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         break;
     case AstKind::TRY_ERROR:
         CheckTryError(static_cast<TryError*>(Node));
+        break;
+    case AstKind::CATCH_ERROR:
+        CheckCatchError(static_cast<CatchError*>(Node), nullptr);
         break;
     case AstKind::NUMBER_LITERAL:
     case AstKind::STRING_LITERAL:
@@ -1236,6 +1237,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
         case AstKind::VAR_DECL_LIST:
         case AstKind::RAISE:
         case AstKind::TRY_ERROR:
+        case AstKind::CATCH_ERROR:
             break;
         case AstKind::BINARY_OP:
             switch (static_cast<BinaryOp*>(Stmt)->Op) {
@@ -1288,7 +1290,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
     LocScope = LocScope->Parent;
 }
 
-void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var, bool PartOfErrorDecomposition) {
+void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
     if (Var->HasBeenChecked) {
         // TODO: Once structs have generics then IsField will need additional checks.
         if (Var->IsField() || Var->IsGlobal) {
@@ -1342,44 +1344,13 @@ return;
     }
 
     if (Var->Assignment) {
-        if (!PartOfErrorDecomposition) {
-            // TODO: Doesn't this need to check heap allocation and struct initialization cases
-            //       as well.
-            if (Var->Assignment->Is(AstKind::FUNC_CALL)) {
-                FuncCall* Call = static_cast<FuncCall*>(Var->Assignment);
-                CheckFuncCall(Call, true);
-                if (Var->Assignment->Ty == Context.ErrorType) {
-                    VAR_YIELD(, true);
-                }
-
-                if (Call->CalledFunc && !Call->CalledFunc->RaisedErrors.empty()) {
-                    if (Call->Ty->GetKind() == TypeKind::Void) {
-                        // The variable is actually an error.
-
-                        if (!Var->TyIsInfered) {
-                            if (!Var->Ty->Equals(Context.ErrorInterfacePtrType)) {
-                                Error(Var, "Expected variable to be of type '%s' to capture the raised error",
-                                    Context.ErrorInterfacePtrType);
-                            }
-                        }
-
-                        if (Var->IsGlobal) {
-                            Error(Var, "Cannot declare errors as being global variables");
-                        }
-
-                        Var->IsErrorDecl = true;
-                        Var->Ty = Context.ErrorInterfacePtrType;
-                        VAR_YIELD(, false);
-                    } else {
-                        CheckIfErrorsAreCaptures(Call->Loc, Call->CalledFunc);
-                    }
-                }
-            } else if (Var->Assignment->Is(AstKind::HEAP_ALLOC)) {
-                CheckHeapAlloc(static_cast<HeapAlloc*>(Var->Assignment), Var->Ty);
-            } else {
-                CheckNode(Var->Assignment);
-            }
+        if (Var->Assignment->Is(AstKind::CATCH_ERROR)) {
+            CatchError* Catch = static_cast<CatchError*>(Var->Assignment);
+            CheckCatchError(Catch, Var);
+        } else {
+            CheckNode(Var->Assignment);
         }
+        
         if (Var->Assignment->Ty == Context.ErrorType) {
             VAR_YIELD(, true);
         }
@@ -1568,7 +1539,8 @@ return;
 void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
     LocScope->FoundTerminal  = true;
     LocScope->AllPathsReturn = true;
-    
+    LocScope->AllPathsBranch = true;
+
     if (Return->Value) {
         CheckNode(Return->Value);
         YIELD_IF_ERROR(Return->Value);
@@ -1612,7 +1584,8 @@ void arco::SemAnalyzer::CheckReturn(ReturnStmt* Return) {
 
 void arco::SemAnalyzer::CheckLoopControl(LoopControlStmt* LoopControl) {
     LocScope->FoundTerminal = true;
-    
+    LocScope->AllPathsBranch = true;
+
     if (LoopDepth == 0) {
         if (LoopControl->Kind == AstKind::BREAK) {
             Error(LoopControl, "break statements may only be used inside of loops");
@@ -1729,33 +1702,41 @@ void arco::SemAnalyzer::CheckDeleteStmt(DeleteStmt* Delete) {
     }
 }
 
-bool arco::SemAnalyzer::CheckIf(IfStmt* If) {
+void arco::SemAnalyzer::CheckIf(IfStmt* If, bool& AllPathsReturn, bool& AllPathsBranch) {
 
     CheckCondition(If->Cond, "If");
 
     Scope IfBodyScope;
     CheckScopeStmts(If->Scope, IfBodyScope);
-    bool AllPathsReturn = If->Else && IfBodyScope.AllPathsReturn;
+    AllPathsReturn = If->Else && IfBodyScope.AllPathsReturn;
+    AllPathsBranch = If->Else && IfBodyScope.AllPathsBranch;
 
     if (If->Else) {
         if (If->Else->Is(AstKind::IF)) {
             // This is an else if case.
-            AllPathsReturn &= CheckIf(static_cast<IfStmt*>(If->Else));
+            bool AllPathsReturn2, AllPathsBranch2;
+            CheckIf(static_cast<IfStmt*>(If->Else), AllPathsReturn2, AllPathsBranch2);
+            AllPathsReturn &= AllPathsReturn2;
+            AllPathsBranch &= AllPathsBranch2;
         } else {
-            AllPathsReturn &= CheckNestedScope(static_cast<NestedScopeStmt*>(If->Else));
+            bool AllPathsReturn2, AllPathsBranch2;
+            CheckNestedScope(static_cast<NestedScopeStmt*>(If->Else), AllPathsReturn2, AllPathsBranch2);
+            AllPathsReturn &= AllPathsReturn2;
+            AllPathsBranch &= AllPathsBranch2;
         }
     }
 
+    LocScope->AllPathsBranch = AllPathsBranch;
     LocScope->AllPathsReturn = AllPathsReturn;
     LocScope->FoundTerminal |= AllPathsReturn;
 
-    return AllPathsReturn;
 }
 
-bool arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope) {
+void arco::SemAnalyzer::CheckNestedScope(NestedScopeStmt* NestedScope, bool& AllPathsReturn, bool& AllPathsBranch) {
     Scope NewScope;
     CheckScopeStmts(NestedScope->Scope, NewScope);
-    return NewScope.AllPathsReturn;
+    AllPathsReturn = NewScope.AllPathsReturn;
+    AllPathsBranch = NewScope.AllPathsBranch;
 }
 
 void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
@@ -1770,7 +1751,9 @@ void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
         return;
     }
 
-    StructDecl* Struct = Raise->StructInit->Ty->AsStructType()->GetStruct();
+    StructInitializer* StructInit = static_cast<StructInitializer*>(Raise->StructInit);
+    StructDecl* Struct = StructInit->Ty->AsStructType()->GetStruct();
+    
     bool ImplementsErrorInterface = false;
     for (InterfaceDecl* Interface : Struct->Interfaces) {
         if (Interface == Context.StdErrorInterface) {
@@ -1787,6 +1770,7 @@ void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
             Struct->Name);
         return;
     }
+    
 
     bool FuncRaisesError = false;
     for (const auto& RaisedError : CFunc->RaisedErrors) {
@@ -2780,7 +2764,7 @@ void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
     This->Ty = PointerType::Create(StructType::Create(CStruct, Context), Context);
 }
 
-void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
+void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     
     bool ArgHasError = false;
     for (auto& Arg : Call->Args) {
@@ -2889,8 +2873,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call, bool CapturesErrors) {
                                             Call->NamedArgs,
                                             VarArgsPassAlong,
                                             Binding,
-                                            RetTy,
-                                            CapturesErrors);
+                                            RetTy);
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
@@ -2917,8 +2900,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong,
                                                         GenericBinding*& Binding,
-                                                        Type*& RetTy,
-                                                        bool CapturesErrors) {
+                                                        Type*& RetTy) {
 
     // TODO:  Performance this may be more efficient to just do total stack allocation
     // by limited the number of overloaded functions/parameter allowed.
@@ -3017,8 +2999,8 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
     }
     CreateCallCasts(Selected, Args, NamedArgs, VarArgsPassAlong, RetTy, QualifiedTypes);
 
-    if (!CapturesErrors && !Selected->RaisedErrors.empty()) {
-        CheckIfErrorsAreCaptures(ErrorLoc, Selected);
+    if (!CatchingErrors && !Selected->RaisedErrors.empty()) {
+        CheckIfErrorsAreCaptured(ErrorLoc, Selected);
     }
     
     if (!Selected->Interface) {
@@ -4026,7 +4008,7 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     return MismatchInfo;
 }
 
-void arco::SemAnalyzer::CheckIfErrorsAreCaptures(SourceLoc ErrorLoc, FuncDecl* CalledFunc) {
+void arco::SemAnalyzer::CheckIfErrorsAreCaptured(SourceLoc ErrorLoc, FuncDecl* CalledFunc) {
     bool HasRaises = true;
     if (CFunc) {
         for (const auto& RaisedError : CalledFunc->RaisedErrors) {
@@ -4091,9 +4073,13 @@ void arco::SemAnalyzer::CheckTryError(TryError* Try) {
 
     if (Try->Value->Is(AstKind::FUNC_CALL)) {
     
+        CatchingErrors = true;
+
         FuncCall* Call = static_cast<FuncCall*>(Try->Value);
-        CheckFuncCall(Call, true);
+        CheckFuncCall(Call);
         YIELD_ERROR_WHEN(Try, Try->Value);
+
+        CatchingErrors = false;
 
         Try->Ty = Try->Value->Ty;
         Try->IsFoldable = false;
@@ -4259,7 +4245,7 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
     }
 }
 
-void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit, bool CapturesErrors) {
+void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
     StructType* StructTy = StructInit->Ty->AsStructType();
     if (!FixupStructType(StructTy)) {
         YIELD_ERROR(StructInit);
@@ -4276,8 +4262,7 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit, bo
                                                         StructInit->Loc,
                                                         StructInit->Args,
                                                         StructInit->NamedArgs,
-                                                        StructInit->VarArgsPassAlong,
-                                                        CapturesErrors);
+                                                        StructInit->VarArgsPassAlong);
 
 }
 
@@ -4285,8 +4270,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                                                        SourceLoc ErrorLoc,
                                                        llvm::SmallVector<NonNamedValue>& Args,
                                                        llvm::SmallVector<NamedValue>& NamedArgs,
-                                                       bool& VarArgPassAlong,
-                                                       bool CapturesErrors) {
+                                                       bool& VarArgPassAlong) {
 
     bool ArgsHaveErrors = false;
     for (ulen i = 0; i < Args.size(); i++) {
@@ -4320,8 +4304,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 NamedArgs,
                 VarArgPassAlong,
                 Binding,
-                RetTy,
-                CapturesErrors);
+                RetTy);
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
@@ -4398,7 +4381,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
     return nullptr;
 }
 
-void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType, bool CapturesErrors) {
+void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType) {
     Alloc->IsFoldable = false;
 
     Type* TypeToAlloc = Alloc->TypeToAlloc;
@@ -4414,8 +4397,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType, boo
                                                        Alloc->Loc,
                                                        Alloc->Values,
                                                        Alloc->NamedValues,
-                                                       Alloc->VarArgsPassAlong,
-                                                       CapturesErrors);
+                                                       Alloc->VarArgsPassAlong);
     } else if (!Alloc->Values.empty()) {
         if (Alloc->Values.size() > 1) {
             Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc);
@@ -4589,62 +4571,6 @@ void arco::SemAnalyzer::CheckTernary(Ternary* Tern) {
 }
 
 void arco::SemAnalyzer::CheckVarDeclList(VarDeclList* List) {
-    
-    Expr* CallNode = List->Decls[0]->Assignment;
-    if (List->Decls.size() > 1 && CallNode &&
-        (CallNode->Is(AstKind::FUNC_CALL)          ||
-         CallNode->Is(AstKind::STRUCT_INITIALIZER) ||
-         CallNode->Is(AstKind::HEAP_ALLOC)
-            )
-        ) {
-        
-        // Checking for decomposition of errors.
-        
-        FuncDecl* CalledFunc;
-        if (CallNode->Is(AstKind::FUNC_CALL)) {
-            FuncCall* Call = static_cast<FuncCall*>(CallNode);
-            CheckFuncCall(Call, true);
-            CalledFunc = Call->CalledFunc;
-        } else if (CallNode->Is(AstKind::STRUCT_INITIALIZER)) {
-            StructInitializer* StructInit = static_cast<StructInitializer*>(CallNode);
-            CheckStructInitializer(StructInit, true);
-            CalledFunc = StructInit->CalledConstructor;
-        } else {
-            HeapAlloc* Alloc = static_cast<HeapAlloc*>(CallNode);
-            CheckHeapAlloc(Alloc, List->Decls[0]->Ty, true);
-            CalledFunc = Alloc->CalledConstructor;
-        }
-
-        if (CallNode->Ty == Context.ErrorType) {
-            return;
-        }
-        // TODO: Deal with calling variables.
-        if (CalledFunc) {
-            if (!CalledFunc->RaisedErrors.empty()) {
-                if (List->Decls.size() != 2) {
-                    // TODO: Better error? Explain?
-                    Error(List->Decls[2],
-                        "Cannot decompose from a function call that raises an error with more than 2 variable declarations");
-                    return;
-                } else {
-                    CheckVarDecl(List->Decls[0], true);
-                    
-                    VarDecl* ErrorDecl = List->Decls[1];
-                    if (ErrorDecl->IsGlobal) {
-                        Error(ErrorDecl, "Cannot declare errors as being global variables");
-                    }
-                    List->DecomposesError = true;
-                    ErrorDecl->Ty = Context.ErrorInterfacePtrType;
-                    return;
-                }
-            }
-        }
-    }
-
-    CheckVarDeclListNonComposition(List);
-}
-
-void arco::SemAnalyzer::CheckVarDeclListNonComposition(VarDeclList* List) {
     bool HasErrors = false;
     for (VarDecl* Var : List->Decls) {
         CheckVarDecl(Var);
@@ -4655,6 +4581,29 @@ void arco::SemAnalyzer::CheckVarDeclListNonComposition(VarDeclList* List) {
     if (HasErrors) {
         //YIELD_ERROR(List);
     }
+}
+
+void arco::SemAnalyzer::CheckCatchError(CatchError* Catch, VarDecl* CaptureVar) {
+
+    CatchingErrors = true;
+
+    Catch->ErrorVar->Ty = Context.ErrorInterfacePtrType;
+
+    CheckNode(Catch->CaughtExpr);
+    YIELD_IF_ERROR(Catch->CaughtExpr);
+    Catch->Ty = Catch->CaughtExpr->Ty;
+    
+    Scope NewScope;
+    CheckScopeStmts(Catch->Scope, NewScope);
+
+    if (!NewScope.AllPathsBranch) {
+        if (CaptureVar) {
+            Error(CaptureVar, "Cannot assign to variable from caught expression because not all caught paths branch");
+        }
+    }
+
+    CatchingErrors = false;
+
 }
 
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {

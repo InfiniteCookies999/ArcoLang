@@ -120,6 +120,7 @@ namespace arco {
         //===-------------------------------===//
 
         Expr* ParseAssignmentAndExprs();
+        Expr* ParseExprAndCatch();
         Expr* ParseExpr();
         Expr* ParseBinaryExpr(Expr* LHS);
         Expr* ParsePrimaryAndPostfixUnaryExpr();

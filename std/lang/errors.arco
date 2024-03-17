@@ -16,18 +16,12 @@ IOError struct : Error {
 
     message String;
 
-    IOError() {}
-
     IOError(message String)
         : message(*message.append_front("IOError: ")) {
     }
 
     IOError(fmt cstr, args Any...)
         : message(*format(fmt, args).append_front("IOError: ")) {
-    }
-
-    IOError(e IOError^)
-        : message(e.message) {
     }
 
     fn get_message() cstr {
@@ -39,18 +33,12 @@ ValueParseError struct : Error {
     
     message String;
 
-    ValueParseError() {}
-
     ValueParseError(message String)
         : message(*message.append_front("ValueParseError: ")) {
     }
 
     ValueParseError(fmt cstr, args Any...)
         : message(*format(fmt, args).append_front("ValueParseError: ")) {
-    }
-
-    ValueParseError(e ValueParseError^)
-        : message(e.message) {
     }
 
     fn get_message() cstr {

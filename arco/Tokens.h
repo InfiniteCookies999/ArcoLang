@@ -65,6 +65,7 @@ namespace arco {
         KW_INTERFACE,
         KW_RAISE,
         KW_RAISES,
+        KW_CATCH,
         KW_CAST,
         KW_BITCAST,
         KW_GENERICS,

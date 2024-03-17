@@ -62,10 +62,16 @@ namespace arco {
         // The restart points of the next loop iteration
         llvm::SmallVector<llvm::BasicBlock*, 4> LoopContinueStack;
 
+        // When within a context which may raise an error this points
+        // to the address of an error which captures a raised error.
+        llvm::Value* LLCatchErrorAddr = nullptr;
+        // Where to redirect to if there is an error!
+        llvm::BasicBlock* LLErrorCatchBlock;
+
         struct DestroyObject {
-            Type* Ty;
+            Type*        Ty;
             llvm::Value* LLAddr;
-            llvm::Value* LLCondAddr = nullptr;
+            bool         PastErrorInit = true;
         };
 
         // Objects which have destructors and need to be destroyed
@@ -83,6 +89,9 @@ namespace arco {
         // This common return can then manage the cleanup of all of these
         // objects.
         llvm::SmallVector<DestroyObject> AlwaysInitializedDestroyedObjects;
+
+        // Current raised errors within the context of a catch.
+        llvm::SmallVector<StructDecl*> CurrentCaughtErrors;
 
         // If the function returns a locally defined variable it's set here once
         // it has been initialized.
@@ -102,6 +111,8 @@ namespace arco {
             llvm::SmallVector<DestroyObject> ObjectsNeedingDestroyed;
 
         }* LocScope = nullptr;
+
+        llvm::SmallVector<DestroyObject> CurrentErrorBoundNeedingDestroyed;
 
         bool EncounteredReturn = false;
 
@@ -150,15 +161,13 @@ namespace arco {
         llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
         llvm::Constant* GenComptimeValue(VarDecl* Var);
         llvm::Value* GenFuncCall(FuncCall* Call,
-                                 llvm::Value* LLAddr,
-                                 const ErrorAddrList& LLErrorAddrs = {});
+                                 llvm::Value* LLAddr);
         llvm::Value* GenFuncCallGeneral(Expr* CallNode,
                                         FuncDecl* CalledFunc,
                                         llvm::SmallVector<NonNamedValue>& Args,
                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                         llvm::Value* LLAddr,
-                                        bool VarArgsPassAlong,
-                                        const ErrorAddrList& LLErrorAddrs);
+                                        bool VarArgsPassAlong);
         llvm::Value* GenCallArg(Expr* Arg, bool ImplictPtr);
         llvm::Value* GenArray(Array* Arr, llvm::Value* LLAddr, bool IsConstDest);
         ArrayType* GetGenArrayDestType(Array* Arr);
@@ -168,13 +177,12 @@ namespace arco {
         llvm::Value* GenTypeCast(TypeCast* Cast);
         llvm::Value* GenTypeBitCast(TypeBitCast* Cast);
         llvm::Value* GenStructInitializer(StructInitializer* StructInit,
-                                          llvm::Value* LLAddr,
-                                          const ErrorAddrList& LLErrorAddrs = {});
+                                          llvm::Value* LLAddr);
         void GenStructInitArgs(llvm::Value* LLAddr,
                                StructDecl* Struct,
                                llvm::SmallVector<NonNamedValue>& Args,
                                llvm::SmallVector<NamedValue>& NamedArgs);
-        llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr, const ErrorAddrList& LLErrorAddrs = {});
+        llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr);
         llvm::Value* GenTypeOf(TypeOf* TOf);
         llvm::GlobalVariable* GenTypeOfGlobal(Type* GetTy);
         llvm::Constant* GenTypeOfType(Type* GetTy);
@@ -183,8 +191,12 @@ namespace arco {
         llvm::GlobalVariable* GenTypeOfEnumTypeGlobal(EnumDecl* Enum);
         llvm::Value* GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded);
         llvm::Value* GenVarDeclList(VarDeclList* List);
-        ErrorAddrList GenErrorAddrs(FuncDecl* CalledFunc, llvm::Value* LLErrorInterfaceAddr);
         llvm::Value* GenTryError(TryError* Try, llvm::Value* LLAddr);
+        llvm::Value* GenCatchError(CatchError* Catch);
+        llvm::BasicBlock* GenCatchErrorPrelude(CatchError* Catch);
+        llvm::BasicBlock* GenTryErrorPrelude(TryError* Try);
+        void GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* LLCatchEndBlock);
+        void GenTryErrorBody(TryError* Try, llvm::BasicBlock* LLCatchEndBlock);
 
         llvm::Value* GenAdd(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
         llvm::Value* GenSub(llvm::Value* LLLHS, llvm::Value* LLRHS, Type* Ty);
@@ -255,11 +267,11 @@ namespace arco {
 
         std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 
-        void AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCondAddr = nullptr);
-        void AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCondAddr);
+        void AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr);
+        void AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr);
 
         void CallDestructors(llvm::SmallVector<DestroyObject>& Objects);
-        void CallDestructors(Type* Ty, llvm::Value* LLAddr, llvm::Value* LLCond);
+        void CallDestructors(Type* Ty, llvm::Value* LLAddr);
         void GenCompilerDestructorAndCall(StructDecl* Struct, llvm::Value* LLAddr);
 
         void DestroyLocScopeInitializedObjects();
@@ -298,8 +310,7 @@ namespace arco {
             Type* AddrTy,
             Expr* Value,
             bool IsConstAddress,
-            bool DestroyIfNeeded = false,
-            const ErrorAddrList& LLErrorAddrs = {});
+            bool DestroyIfNeeded = false);
         void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
 
         void GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment);
@@ -310,9 +321,9 @@ namespace arco {
         llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name, bool IsErrCond = false);
 
         llvm::Value* GetElisionRetSlotAddr(FuncDecl* Func);
-        llvm::Value* GetErrorRetAddr(ulen Idx);
+        llvm::Value* GetErrorRetAddr(FuncDecl* Func);
 
-        void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr, const ErrorAddrList& LLErrorAddrs = {});
+        void GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* LLAddr);
 
         llvm::Value* GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                           FuncDecl* CalledFunc,

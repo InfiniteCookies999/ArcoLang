@@ -445,7 +445,7 @@ OutStream struct : Writeable {
 
     ~OutStream() {
         if flushable {
-            _ := flushable.flush();
+            flushable.flush() catch _ {};
         }
     }
 }

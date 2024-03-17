@@ -1,8 +1,7 @@
 namespace reflect;
 
 /*
- * A catagory to which a type belongs in arco
- * belongs.
+ * A catagory to which a type belongs in arco.
  */
 TypeId enum {
     

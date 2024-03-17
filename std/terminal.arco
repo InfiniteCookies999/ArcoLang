@@ -94,11 +94,16 @@ fn println(fmt cstr, args Any...) {
 }
 
 // Functions for writing to std err.
+//
+// Ignore errors since panicing requires the error
+// stream and would result likely result in a
+// stack overflow.
+//
 //----------------------------------------------
 
 generics<T>
 fn eprint(value T) {
-    _ := err.write(value);
+    err.write(value) catch _ {};
 }
 
 /*
@@ -106,12 +111,12 @@ fn eprint(value T) {
  * options supported when printing. 
  */
 fn eprint(fmt cstr, args Any...) {
-    _ := err.write(fmt, args);
+    err.write(fmt, args) catch _ {};
 }
 
 generics<T>
 fn eprintln(value T) {
-    _ := err.writeln(value);
+    err.writeln(value) catch _ {};
 }
 
 /*
@@ -119,54 +124,55 @@ fn eprintln(value T) {
  * options supported when printing. 
  */
 fn eprintln(fmt cstr, args Any...) {
-    _ := err.writeln(fmt, args);
+    err.writeln(fmt, args) catch _ {};
 }
 
 fn eprintln() {
-    _ := err.writeln();
+    err.writeln() catch _ {};
 }
 
 // Reading from terminal
 //----------------------------------------------
 
 fn read_line() String {
-    line, e := in.read_line();
+    line := in.read_line() catch _ {
+        return String{};
+    };
     return line;
 }
 
 fn read_string() String {
-    s, e := in.read_string();
+    s := in.read_string() catch _ {
+        return String{};
+    };
     return s;
 }
 
 fn read_int() int raises ValueParseError {
-    v, e := in.read_int();
-    if e == ValueParseError {
-        raise ValueParseError{ cast(ValueParseError*) e };
-    }
+    v := in.read_int() catch _ {
+        return 0;
+    };
     return v;
 }
 
+// TODO: Why does this take the base but not the other one?
 fn read_int(base int) int raises ValueParseError {
-    v, e := in.read_int32(base);
-    if e == ValueParseError {
-        raise ValueParseError{ cast(ValueParseError*) e };
-    }
+    v := in.read_int32(base) catch _ {
+        return 0;
+    };
     return v;
 }
 
 fn read_bool() bool raises ValueParseError {
-    v, e := in.read_bool();
-    if e == ValueParseError {
-        raise ValueParseError{ cast(ValueParseError*) e };
-    }
+    v := in.read_bool() catch _ {
+        return false;
+    };
     return v;
 }
 
 fn read_char() char raises ValueParseError {
-    v, e := in.read_char();
-    if e == ValueParseError {
-        raise ValueParseError{ cast(ValueParseError*) e };
-    }
+    v := in.read_char() catch _ {
+        return '\0';
+    };
     return v;
 }

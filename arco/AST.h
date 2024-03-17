@@ -87,7 +87,8 @@ namespace arco {
         MOVEOBJ,
         RANGE,
         TERNARY,
-        TRY_ERROR
+        TRY_ERROR,
+        CATCH_ERROR
 
     };
 
@@ -427,9 +428,6 @@ namespace arco {
         // If this is set to try then the memory will not be initialized
         // to a default value.
         bool LeaveUninitialized    = false;
-        // If true the variable is a declaration of an error captured from the
-        // raised error of a function.
-        bool IsErrorDecl           = false;
         // Needed because generic type information might override if the
         // variable had a const address or not.
         bool ExplicitlyMarkedConst = false;
@@ -560,7 +558,7 @@ namespace arco {
         //                       ^      ^ this is index 1
         //                       |
         //                       \-this is index 0
-        ulen RaisedIdx = 0;
+        ulen               RaisedIdx = 0;
         StructInitializer* StructInit;
 
     };
@@ -893,6 +891,15 @@ namespace arco {
 
         Expr* Value;
 
+    };
+
+    struct CatchError : Expr {
+        CatchError() : Expr(AstKind::CATCH_ERROR) {}
+
+        VarDecl* ErrorVar;
+        Expr* CaughtExpr;
+        
+        LexScope Scope;
     };
 }
 

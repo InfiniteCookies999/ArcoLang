@@ -58,6 +58,8 @@ private StringFormatBuffer struct : Writeable {
 fn format(fmt cstr, args Any...) String {
     fmt_buffer StringFormatBuffer;
     stream := OutStream{ &fmt_buffer };
-    _ := stream.write(fmt, args);
+    stream.write(fmt, args) catch _ {
+        // It cannot even produce an error.
+    };
     return fmt_buffer.to_string();
 }

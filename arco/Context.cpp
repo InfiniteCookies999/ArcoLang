@@ -185,6 +185,7 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "writeonly", TokenKind::KW_WRITEONLY });
     TokenKeywordMap.insert({ "dllimport", TokenKind::KW_DLLIMPORT });
     TokenKeywordMap.insert({ "linkname" , TokenKind::KW_LINKNAME  });
+    TokenKeywordMap.insert({ "catch"    , TokenKind::KW_CATCH     });
 
 
     for (const auto& [Text, Kind] : TokenKeywordMap) {
