@@ -42,8 +42,7 @@ LocScope = &NewScope;
 #define POP_SCOPE() \
 LocScope = LocScope->Parent;
 
-
-#define TYPE_KW_START_CASES \
+#define TYPE_KW_START_CASES_BUT_FN \
      TokenKind::KW_INT:     \
 case TokenKind::KW_PTRSIZE: \
 case TokenKind::KW_INT8:    \
@@ -59,7 +58,10 @@ case TokenKind::KW_FLOAT64: \
 case TokenKind::KW_VOID:    \
 case TokenKind::KW_CHAR:    \
 case TokenKind::KW_BOOL:    \
-case TokenKind::KW_CSTR:    \
+case TokenKind::KW_CSTR     \
+
+#define TYPE_KW_START_CASES \
+TYPE_KW_START_CASES_BUT_FN: \
 case TokenKind::KW_FN
 
 // P - Parsing code.
@@ -350,12 +352,26 @@ arco::AstNode* arco::Parser::ParseStmt() {
 
         switch (PeekToken(1).Kind) {
         case IDENT:
-        case TYPE_KW_START_CASES:
+        case TYPE_KW_START_CASES_BUT_FN:
         case TokenKind::KW_CONST:
         case TokenKind::COL_EQ:
         case TokenKind::COL_COL: {
             Stmt = ParseVarDecl(0);
             Match(';');
+            break;
+        }
+        case TokenKind::KW_FN: {
+            // Specifically dealing with error recovery for stuff like:
+            // abc fn foo(a int) {}
+
+            if (PeekToken(2).Kind == TokenKind::IDENT) {
+                Error(CTok, "Unexpected identifier");
+                NextToken(); // Skipping bad identifier token.
+                Stmt = ParseFuncDecl(0, GenTys);
+            } else {
+                Stmt = ParseVarDecl(0);
+                Match(';');
+            }
             break;
         }
         case TokenKind::KW_STRUCT:
@@ -511,6 +527,8 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
 
 void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
     
+    RecoveryStrat PrevStrat = RecStrat;
+    RecStrat = RecoveryStrat::Params;
     Match('(');
     if (CTok.IsNot(')')) {
         bool MoreParams = false;
@@ -518,23 +536,29 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
         ulen ParamCount = 0;
         do {
             VarDecl* Param = ParseVarDecl(0);
-            if (Param->Ty && CTok.Is('^')) {
-                // TODO: Use of GetRealKind() might cause problems for enums!
-                if (Param->Ty->GetRealKind() != TypeKind::Array) {
-                    NextToken(); // Implicit pointer type.
-                    Param->Ty = PointerType::Create(Param->Ty, Context);
-                    Param->ImplicitPtr = true;
+            if (Param) {
+                if (Param->Ty && CTok.Is('^')) {
+                    // TODO: Use of GetRealKind() might cause problems for enums!
+                    if (Param->Ty->GetRealKind() != TypeKind::Array) {
+                        NextToken(); // Implicit pointer type.
+                        Param->Ty = PointerType::Create(Param->Ty, Context);
+                        Param->ImplicitPtr = true;
+                    }
                 }
+                Param->ParamIdx = ParamCount++;
+                Func->Params.push_back(Param);
+            } else {
+                // Something went wrong during parsing.
             }
-            Param->ParamIdx = ParamCount++;
-            Func->Params.push_back(Param);
-
+            
             MoreParams = CTok.Is(',');
             if (MoreParams) {
                 NextToken(); // Consuming ',' token
             }
         } while (MoreParams);
     }
+    RecStrat = PrevStrat;
+
     if (CTok.Is(TokenKind::DOT_DOT)) {
         Error(CTok, "Did you mean to type ... for variadic arguments?");
         NextToken();
@@ -605,6 +629,13 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     // of arguments.
     Token NameTok = CTok;
     Identifier Name = ParseIdentifier("Expected identifier for variable declaration");
+    if (Name.IsNull()) {
+        if (RecStrat == RecoveryStrat::Params) {
+            SkipRecovery();
+        }
+        return nullptr;
+    }
+
     VarDecl* Var = CreateVarDecl(NameTok, Name, Mods);
     if (CTok.Is(TokenKind::KW_CONST)) {
         NextToken(); // Consuming 'const' token.
@@ -949,9 +980,10 @@ arco::InterfaceDecl* arco::Parser::ParseInterfaceDecl(Modifiers Mods) {
 
     Match('{');
     if (CTok.IsNot('}')) {
-        // TODO: Provide better error handling.
         while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
 
+            // TODO: This should probably just parse any type of statement
+            // and then just verify the statement makes sense in the end.
             if (CTok.Is(TokenKind::KW_FN)) {
 
                 NextToken(); // Consuming 'fn' token.
@@ -1395,9 +1427,9 @@ arco::Modifiers arco::Parser::ParseModifiers() {
     }
 }
 
-arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType) {
+arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType, bool ForRetTy) {
 
-    arco::Type* Ty = CTok.Is(TokenKind::KW_FN) ? ParseFunctionType() : ParseBasicType();
+    arco::Type* Ty = CTok.Is(TokenKind::KW_FN) ? ParseFunctionType() : ParseBasicType(ForRetTy);
     if (Ty == Context.ErrorType) {
         return Ty;
     }
@@ -1511,12 +1543,18 @@ arco::Type* arco::Parser::ParseFunctionType() {
                 }
                 Ty = ParseType(false);
             }
+            if (Ty == Context.ErrorType) {
+                SkipRecovery({ ',', ')' });
+            }
 
             ParamTypes.push_back(TypeInfo{ Ty, HasConstAddress });
 
             MoreParamTypes = CTok.Is(',');
             if (MoreParamTypes) {
                 NextToken(); // Consuming ','.
+            } else if (CTok.IsNot(')')) {
+                Error(CTok, "Unexpected token when parsing function type parameter types");
+                SkipRecovery({ ')' });
             }
         } while (MoreParamTypes);
     }
@@ -1528,12 +1566,12 @@ arco::Type* arco::Parser::ParseFunctionType() {
     }
     
     // TODO: allow the return type to be optional and default to void?
-    Type* RetTy = ParseType(false);
+    Type* RetTy = ParseType(false, true);
 
     return FunctionType::Create(TypeInfo{ RetTy, ReturnsConstAddress }, std::move(ParamTypes), Context);
 }
 
-arco::Type* arco::Parser::ParseBasicType() {
+arco::Type* arco::Parser::ParseBasicType(bool ForRetTy) {
     arco::Type* Ty = nullptr;
     switch (CTok.Kind) {
     case TokenKind::KW_INT:      Ty = Context.IntType;     NextToken(); break;
@@ -1577,7 +1615,11 @@ arco::Type* arco::Parser::ParseBasicType() {
         break;
     }
     default:
-        Error(CTok, "Expected valid type");
+        if (!ForRetTy) {
+            Error(CTok, "Expected valid type");
+        } else {
+            Error(CTok, "function type requires return type");
+        }
         Ty = Context.ErrorType;
         break;
     }
@@ -1996,7 +2038,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         if (AllowStructInitializer && CTok.Is('{')) {
             NextToken(); // Consumign '{'.
             if (CTok.IsNot('}')) {
-                ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, '}', true);
+                ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, RecoveryStrat::StructInitArgs);
             }
             Match('}', "for struct initializer");
         }
@@ -2033,7 +2075,6 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
     default:
         Error(CTok.Loc, "Expected an expression");
         ErrorNode* Err = NewNode<ErrorNode>(CTok);
-        NextToken(); // Shouldn't be needed but helps prevent endless looping.
         SkipRecovery();
         return Err;
     }
@@ -2421,7 +2462,7 @@ arco::FuncCall* arco::Parser::ParseFuncCall(Expr* Site) {
     NextToken(); // Consuming '(' token
 
     if (CTok.IsNot(')')) {
-        ParseAggregatedValues(Call->Args, Call->NamedArgs, ')', false);
+        ParseAggregatedValues(Call->Args, Call->NamedArgs, RecoveryStrat::CallArgs);
     }
 
     Match(')', "for function call");
@@ -2440,7 +2481,7 @@ arco::StructInitializer* arco::Parser::ParseStructInitializer() {
     StructInit->Ty = Ty;
 
     if (CTok.IsNot('}')) {
-        ParseAggregatedValues(StructInit->Args, StructInit->NamedArgs, '}', true);
+        ParseAggregatedValues(StructInit->Args, StructInit->NamedArgs, RecoveryStrat::StructInitArgs);
     }
 
     Match('}', "for struct initializer");
@@ -2471,6 +2512,8 @@ arco::Array* arco::Parser::ParseArray() {
 
     ++ArrayDepthCount;
     if (CTok.IsNot(']')) {
+        RecoveryStrat PrevStrat = RecStrat;
+        RecStrat = RecoveryStrat::Array;
         bool MoreElements = false;
         do {
 
@@ -2484,6 +2527,7 @@ arco::Array* arco::Parser::ParseArray() {
                 break; // Allow for extra ',' token at the end
             }
         } while (MoreElements);
+        RecStrat = PrevStrat;
     }
     --ArrayDepthCount;
 
@@ -2523,8 +2567,13 @@ void arco::Parser::SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth) 
 
 void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
                                          llvm::SmallVector<NamedValue>& NamedValues,
-                                         u16 EndDelimTok,
-                                         bool AllowTrailingComma) {
+                                         RecoveryStrat Strat) {
+    u16 EndDelimTok = Strat == RecoveryStrat::CallArgs ? ')' : '}';
+    bool AllowTrailingComma = Strat != RecoveryStrat::CallArgs;
+
+    RecoveryStrat PrevStrat = RecStrat;
+    RecStrat = Strat;
+
     bool MoreValues = false;
     bool AlreadyReportedErrAboutNamedValuesOrder = false;
     do {
@@ -2575,12 +2624,14 @@ void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Value
         } else if (CTok.Is(EndDelimTok)) {
             MoreValues = false;
         } else {
-            Error(CTok, "Unexpected token when parsing values");
+            Error(CTok,
+                  "Unexpected token when parsing values for %s",
+                   Strat == RecoveryStrat::CallArgs ? "function call" : "struct initializer");
             SkipRecovery();
             MoreValues = false;
         }
     } while (MoreValues);
-
+    RecStrat = PrevStrat;
 }
 
 template<typename T>
@@ -2949,7 +3000,32 @@ void arco::Parser::Match(u16 Kind, const char* Purpose) {
         Purpose ? " " : "", Purpose);
 }
 
-void arco::Parser::SkipRecovery() {
+void arco::Parser::SkipRecovery(llvm::DenseSet<u16> IncludeSet) {
+    bool IncludeVarDeclAndAssign = true;
+    switch (RecStrat) {
+    case RecoveryStrat::Params:
+        IncludeSet.insert(',');
+        IncludeSet.insert(')');
+        break;
+    case RecoveryStrat::CallArgs:
+        IncludeSet.insert(',');
+        IncludeSet.insert(')');
+        // In case the user forgot to type 'fn' keyword and meant for
+        // the call to actually be a function declaration.
+        IncludeVarDeclAndAssign = false;
+        break;
+    case RecoveryStrat::StructInitArgs:
+        IncludeSet.insert(',');
+        // Note: } is already considered.
+        break;
+    case RecoveryStrat::Array:
+        IncludeSet.insert(',');
+        IncludeSet.insert(']');
+        break;
+    default:
+        break;
+    }
+    
     while (true) {
     switch (CTok.Kind) {
     // Statements
@@ -2971,6 +3047,12 @@ void arco::Parser::SkipRecovery() {
     case TokenKind::TK_EOF:
         return;
     case TokenKind::IDENT:
+        if (!IncludeVarDeclAndAssign) {
+            // Skip and continue
+            NextToken();
+            break;
+        }
+
         switch (PeekToken(1).Kind) {
         case TYPE_KW_START_CASES:
         case TokenKind::IDENT:
@@ -2985,6 +3067,10 @@ void arco::Parser::SkipRecovery() {
         NextToken();
         break;
     default:
+        if (IncludeSet.contains(CTok.Kind)) {
+            return;
+        }
+
         // Skip and continue
         NextToken();
         break;

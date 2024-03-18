@@ -124,7 +124,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
     // -- DEBUG
-    llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
+    // llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
 
     if (FoundCompileError) {
         return 1;

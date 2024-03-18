@@ -4,6 +4,7 @@
 #include "Lexer.h"
 #include "AST.h"
 #include "Logger.h"
+#include <llvm/ADT/DenseSet.h>
 
 namespace arco {
 
@@ -77,6 +78,14 @@ namespace arco {
         // a given depth is while parsing.
         ulen LargestArrayLengthAtDepth[MAX_ARRAY_DEPTH] = { 0 };
 
+        enum class RecoveryStrat {
+            Normal,
+            Params,
+            CallArgs,
+            StructInitArgs,
+            Array
+        } RecStrat = RecoveryStrat::Normal;
+
         void ParseImport();
 
         //===-------------------------------===//
@@ -110,9 +119,9 @@ namespace arco {
         RaiseStmt* ParseRaise();
 
         Modifiers ParseModifiers();
-        Type* ParseType(bool AllowImplicitArrayType);
+        Type* ParseType(bool AllowImplicitArrayType, bool ForRetTy = false);
         Type* ParseFunctionType();
-        Type* ParseBasicType();
+        Type* ParseBasicType(bool ForRetTy = false);
         llvm::SmallVector<GenericType*> ParseGenerics();
 
         //===-------------------------------===//
@@ -148,8 +157,7 @@ namespace arco {
 
         void ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
                                    llvm::SmallVector<NamedValue>& NamedValues,
-                                   u16 EndDelimTok,
-                                   bool AllowTrailingComma);
+                                   RecoveryStrat Strat);
 
         template<typename T>
         T FoldInt(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
@@ -179,7 +187,7 @@ namespace arco {
 
         /// Skips tokens until it can find a valid place to
         /// start parsing again.
-        void SkipRecovery();
+        void SkipRecovery(llvm::DenseSet<u16> IncludeSet = {});
 
         Identifier ParseIdentifier(const char* ErrorMessage);
 

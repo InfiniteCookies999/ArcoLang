@@ -58,6 +58,33 @@ native dllimport fn RemoveDirectoryA(lpPathName cstr) int32;
 
 native dllimport fn GetCurrentDirectoryA(nBufferLength uint32, lpBuffer char*) int32;
 
+native dllimport fn RtlCaptureStackBackTrace(FramesToSkip    uint32,
+                                             FramesToCapture uint32,
+                                             BackTrace       void*,
+                                             BackTraceHash   uint32*) uint16;
+
+// ------------------------------------------------
+// Win32: dbghelp.h
+
+MAX_SYM_NAME :: 2000'u32;
+
+// TODO: c-alignment
+IMAGEHLP_SYMBOL64 struct {
+    SizeOfStruct  uint32;
+    Address       uint64;
+    Size          uint32;
+    Flags         uint32;
+    MaxNameLength uint32;
+    Name          char[1];
+};
+
+native dllimport fn SymGetSymFromAddr64(hProcess        void*,
+                                        qwAddr          uint64,
+                                        pdwDisplacement uint64*,
+                                        Symbol          IMAGEHLP_SYMBOL64*) bool;
+
+native dllimport fn SymInitialize(hProcess void*, UserSearchPath cstr*, fInvadeProcess int32);
+
 // ------------------------------------------------
 // Win32: minwinbase.h
 
@@ -171,3 +198,8 @@ native dllimport fn CloseHandle(hObject void*) int32;
 
 native dllimport fn QueryPerformanceFrequency(lpFrequency int64*) bool;
 native dllimport fn QueryPerformanceCounter(lpPerformanceCount int64*) bool;
+
+// ------------------------------------------------
+// Processthreadsapi.h
+
+native dllimport fn GetCurrentProcess() void*;

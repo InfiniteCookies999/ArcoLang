@@ -8,8 +8,12 @@
 
 #define SRC(x) ARCO_TEST_SOURCE_DIR x
 
+#include <Windows.h>
+#include <DbgHelp.h>
+
 int main() {
     
+  
     llvm::SmallVector<arco::Source> Sources;
     Sources.push_back(arco::Source{ true, "default.program.module", SRC("workpad") });
     

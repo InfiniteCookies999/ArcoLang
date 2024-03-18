@@ -1,6 +1,7 @@
 import reflect.Any;
 import win32;
 import win32.EXCEPTION_POINTERS;
+import win32.IMAGEHLP_SYMBOL64;
 
 /*
  * This interface is required to be implemented for all
@@ -124,6 +125,10 @@ DivideByZeroErrror struct : Error {
     }
 }
 
+private StackTrace struct {
+
+}
+
 private fn process_uncaught_error(err Error*) {
     eprintln(err.get_message());
     // TODO: Deal with complication of deleting throwing more errors!  delete err;
@@ -154,6 +159,41 @@ private fn handle_uncaught_exception_handler(ptrs EXCEPTION_POINTERS*) int32 {
 
 private fn raise_unwind_error(err Error*) {
     
+    // TODO: come back to!   Getting the symbol information only works when there is debug
+    //                       information. Would like to have support for the trace information
+    //                       even if not in debug mode but that means knowing which addresses
+    //                       are mapped to which functions, something not viable at the moment
+    //                       unless we wrote our own linker.
+    //
+    /*println("Capturing backtrace");
+    stack void*[62] = ---;
+    trace_size int = cast(int) win32.RtlCaptureStackBackTrace(0, 62, stack, null);
+    
+    process := win32.GetCurrentProcess();
+    win32.SymInitialize(process, null, 1);
+
+    loop i : 0..<trace_size {
+        address := stack[i];
+        
+        SYMBOL_ALLOC_SIZE :: sizeof(IMAGEHLP_SYMBOL64) + cast(int)win32.MAX_SYM_NAME + 1;
+        
+        symbol := cast(IMAGEHLP_SYMBOL64*) new char[SYMBOL_ALLOC_SIZE];
+        symbol.MaxNameLength = win32.MAX_SYM_NAME;
+        symbol.SizeOfStruct  = cast(uint32) sizeof(IMAGEHLP_SYMBOL64);
+
+        displacement uint64;
+        if win32.SymGetSymFromAddr64(process, cast(uint64) address, &displacement, symbol) {
+            name cstr = symbol.Name;
+            //c := *symbol.Name;
+            println("name: %s", name);
+        } else {
+            println("failed to get symbol?");
+        }
+        delete symbol;
+        //win32.SymFromAddr()
+    }
+    println("capture finished");*/
+
     payload uint64[1] = [
         cast(uint64) err
     ];
@@ -163,9 +203,7 @@ private fn raise_unwind_error(err Error*) {
     win32.RaiseException(ARCO_WIN32_EXCEPTION_CODE, dwExceptionFlags=1, nNumberOfArguments=1, lpArguments=payload);
 }
 
-// NOTE: This cannot be private at the moment because otherwise the compiler gets confused
-//       looking for it's definition.
-fn initialize_error_handling() {
+private fn initialize_error_handling() {
     win32.SetUnhandledExceptionFilter(&handle_uncaught_exception_handler);
 }
 
