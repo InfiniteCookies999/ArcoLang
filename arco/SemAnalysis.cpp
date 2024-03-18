@@ -2463,15 +2463,6 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 }
             }
             
-            // Search for private functions.
-            if (LocalNamespace) {
-                if (FuncsList* Funcs = FScope->FindFuncsList(IRef->Ident)) {
-                    IRef->Funcs   = Funcs;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
-                }
-            }
-
             // Searching for functions in static imports.
             if (LocalNamespace) {
                 for (auto& Import : FScope->StaticImports) {
@@ -3177,7 +3168,8 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
     ulen LeastConflicts             = std::numeric_limits<ulen>::max(),
          LeastEnumImplicitConflicts = std::numeric_limits<ulen>::max(),
          LeastSignConflicts         = std::numeric_limits<ulen>::max(),
-         HasGenerics = true;
+         HasGenerics = true,
+         BestIsPrivate = false;
     for (ulen i = 0; i < Canidates->size(); i++) {
         FuncDecl* Canidate = (*Canidates)[i];
         BindableList* BindableTypes = nullptr;
@@ -3198,6 +3190,15 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
 
         ulen NumConflicts = 0, EnumImplicitConflicts = 0, NumSignConflicts = 0;
         bool VarArgsPassAlong = false;
+        bool IsPrivate = false;
+        if (Canidate->Mods & ModKinds::PRIVATE) {
+            if (Canidate->FScope == FScope) {
+                IsPrivate = true;
+            } else {
+                // Is it private but we are not within the correct file so cannot access.
+                continue;
+            }
+        }
         if (!CompareAsCanidate(Canidate,
                                Args,
                                NamedArgs,
@@ -3210,11 +3211,12 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
         }
 
 #define SET_BEST                                    \
- Selection                  = Canidate;             \
+ Selection                 = Canidate;              \
 LeastConflicts             = NumConflicts;          \
 LeastEnumImplicitConflicts = EnumImplicitConflicts; \
 LeastSignConflicts         = NumSignConflicts;      \
 SelectedVarArgsPassAlong   = VarArgsPassAlong;      \
+BestIsPrivate              = IsPrivate;             \
 HasGenerics = Canidate->IsGeneric()
 
         // TODO: What will be the performance on all this?
@@ -3229,6 +3231,8 @@ HasGenerics = Canidate->IsGeneric()
         } else if (NumConflicts == LeastConflicts &&
                    NumSignConflicts == LeastSignConflicts && // TODO: do we care about num sign over enum in this case?
                    EnumImplicitConflicts < LeastEnumImplicitConflicts) {
+            SET_BEST;
+        } else if (!BestIsPrivate && IsPrivate) {
             SET_BEST;
         }
     }
@@ -3832,6 +3836,12 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
                                                    ulen NumGenerics,
                                                    ulen NumQualifications,
                                                    FuncDecl* Canidate) {
+
+    if (Canidate->Mods & ModKinds::PRIVATE) {
+        if (Canidate->FScope != FScope) {
+            return "- Function not visible, it is private";
+        }
+    }
 
     if (IsVariadic && !NamedArgs.empty()) {
         return "- Cannot call variadic " + std::string(CallType) + " with named arguments";
@@ -5292,10 +5302,17 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
     // TODO: Deal with checking for duplicate generic functions somehow.
     for (const FuncDecl* Func1 : FuncList) {
         if (Func1->IsGeneric()) continue;
+        bool IsPrivate = Func1->Mods & ModKinds::PRIVATE;
 
         for (const FuncDecl* Func2 : FuncList) {
             if (Func2->IsGeneric()) continue;
-            
+            if (IsPrivate) {
+                // Only care about conflicts if they belong to the same file.
+                if (Func2->FScope != Func1->FScope) continue;
+            } else if (Func2->Mods & ModKinds::PRIVATE) {
+                continue;
+            }
+
             if (Func1 == Func2) continue;
             if (Func1->Name != Func2->Name) continue;
             if (Func1->Params.size() != Func2->Params.size()) continue;
@@ -5308,9 +5325,11 @@ void arco::SemAnalyzer::CheckForDuplicateFuncs(const FuncsList& FuncList) {
                 FileScope* FScope = Func1->FScope;
                 Logger Log(FScope, FScope->Buffer);
                 Log.BeginError(Func1->Loc, 
-                    "Duplicate declaration of %s '%s'",
+                    "Duplicate declaration of %s '%s'. First declared at: %s:%s",
                     Func1->IsConstructor ? "constructor" : "function",
-                    Func1->Name);
+                    Func1->Name,
+                    Func2->FScope->Path,
+                    Func2->Loc.LineNumber);
                 Log.EndError();
             }
         }

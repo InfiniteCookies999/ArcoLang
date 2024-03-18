@@ -5,8 +5,6 @@ import win32.EXCEPTION_POINTERS;
 /*
  * This interface is required to be implemented for all
  * errors.
- *
- * All errors structs must include:  STRUCT_NAME :: "";
  */
 Error interface {
 

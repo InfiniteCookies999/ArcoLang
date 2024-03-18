@@ -43,17 +43,6 @@ const arco::EnumDecl::EnumValue* arco::EnumDecl::FindValue(Identifier Name) cons
     return Itr;
 }
 
-arco::FuncsList* arco::FileScope::FindFuncsList(Identifier Name) {
-    auto Itr = std::find_if(PrivateFuncs.begin(), PrivateFuncs.end(),
-        [=](const FuncsList& List) {
-            return List[0]->Name == Name;
-        });
-    if (Itr == PrivateFuncs.end()) {
-        return nullptr;
-    }
-    return Itr;
-}
-
 arco::Decl* arco::FileScope::FindDecl(Identifier Name) {
     auto Itr = std::find_if(PrivateDecls.begin(), PrivateDecls.end(),
         [=](Decl* Dec) {

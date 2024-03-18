@@ -163,10 +163,8 @@ namespace arco {
 
         // TODO: May be better for performance to just store them in the default namespace
         // and to instead have a linked list to the next declaration.
-        llvm::SmallVector<FuncsList> PrivateFuncs;
-        llvm::SmallVector<Decl*>     PrivateDecls;
+        llvm::SmallVector<Decl*> PrivateDecls;
 
-        FuncsList* FindFuncsList(Identifier Name);
         Decl* FindDecl(Identifier Name);
 
         FileScope(std::string Path, std::string FullPath, SourceBuf Buffer)

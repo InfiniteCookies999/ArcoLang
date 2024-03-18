@@ -168,18 +168,7 @@ void arco::Parser::Parse() {
                     }
                 }
                 
-                // TODO: There should not be a seperate list for private functions because
-                // then it will mess up finding the correct overloaded function.
-                if (Func->Mods & ModKinds::PRIVATE) {
-                    FuncsList* List = FScope->FindFuncsList(Func->Name);
-                    if (List) {
-                        List->push_back(Func);
-                    } else {
-                        FScope->PrivateFuncs.push_back({ Func });
-                    }
-                } else {
-                    NSpace->Funcs[Func->Name].push_back(Func);
-                }
+                NSpace->Funcs[Func->Name].push_back(Func);
             }
         } else if (Stmt->Is(AstKind::STRUCT_DECL) || Stmt->Is(AstKind::ENUM_DECL) || Stmt->Is(AstKind::INTERFACE_DECL)) {
             Decl* Dec = static_cast<Decl*>(Stmt);
