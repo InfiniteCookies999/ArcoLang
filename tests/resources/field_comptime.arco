@@ -1,0 +1,11 @@
+import std;
+
+A struct {
+    VAL :: 55;
+    a int = 5;
+}
+
+fn main() {
+    a A;
+    std.print(a.VAL);
+}

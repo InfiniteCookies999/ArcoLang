@@ -110,6 +110,7 @@ int main() {
     RunTest(SRC("constructor_initializers.arco"), "77 32");
     RunTest(SRC("copy_constructors.arco"), "Begin a created Called!");
     RunTest(SRC("move_constructors.arco"), "Begin a created Called!Called!");
+    RunTest(SRC("field_comptime.arco"), "55");
      
     RunTest(SRC("loops/loops1.arco"), "10");
     RunTest(SRC("loops/loops2.arco"), "10");
@@ -253,6 +254,7 @@ int main() {
     RunTest(SRC("errors/errors2.arco"), "test message");
     RunTest(SRC("errors/errors3.arco"), "test message 55");
     RunTest(SRC("errors/errors4.arco"), "test message 2");
+    RunTest(SRC("errors/errors5.arco"), "test message");
 
     //RunTest(SRC("lots_of_errors.arco"), "");
 

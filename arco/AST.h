@@ -251,7 +251,11 @@ namespace arco {
         // destructor or if the structure contains another
         // structure which needs destruction.
         bool NeedsDestruction = false;
-        
+        // If the struct implements the Error interface and this
+        // is set to false then the error may be raised without the
+        // function having the error as one of its raised errors.
+        bool MustForceRaise = true;
+
         bool ImplementsInterface(InterfaceDecl* Interface);
 
         VarDecl* FindField(Identifier Name);
@@ -336,6 +340,7 @@ namespace arco {
         bool IsCopyConstructor     = false;
         bool IsMoveConstructor     = false;
         bool IsVariadic            = false;
+        bool HasRaiseStmt          = false;
 
         // When this is not -1 it indicates the index number of
         // the function in an interface.
@@ -454,7 +459,8 @@ namespace arco {
         Expr* Assignment = nullptr;
 
         inline bool IsComptime() const {
-            return Ty->IsNumber() && HasConstAddress && ParamIdx == -1;
+            return (Ty->IsNumber() || Ty->GetKind() == TypeKind::Bool) &&
+                    HasConstAddress && ParamIdx == -1;
         }
 
         inline bool IsParam() const {

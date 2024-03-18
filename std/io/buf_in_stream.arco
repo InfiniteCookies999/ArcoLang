@@ -17,7 +17,7 @@ BufferedInStream struct : Readable{
     BufferedInStream(handle Readable*, buffer_size := 8192)
         : handle(handle) {
         if buffer_size < 0 {
-            panic("buffer_size < 0");
+            raise BadArgumentError{ "buffer_size < 0" };
         }
         this.buffer_size = buffer_size;
         buffer = new char[buffer_size];

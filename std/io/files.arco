@@ -83,7 +83,7 @@ FileHandle struct : Writeable, Readable {
         
         number_of_bytes_read uint32;
         if win32.ReadFile(handle, buffer, cast(uint32) length, &number_of_bytes_read, null) == 0 {
-            panic("failed to read from file handle");
+            raise IOError{ "failed to read from file handle" };
         }
         return cast(int) number_of_bytes_read;
     }
@@ -92,7 +92,7 @@ FileHandle struct : Writeable, Readable {
         
         number_of_bytes_written uint32;
         if win32.WriteFile(handle, buffer, cast(uint32) length, &number_of_bytes_written, null) == 0 {
-            panic("failed to write to file handle");
+            raise IOError{ "failed to write to file handle" };
         }
         return cast(int) number_of_bytes_written;
     }

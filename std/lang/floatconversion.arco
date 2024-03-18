@@ -518,7 +518,7 @@ private BigIntFD struct {
             multiply_this_by10();
             return 0;
         } else if this.length > divisor.length {
-            panic("!!! divisor was smaller !!!");
+            raise BadStateError{ "Divisor was smaller" };
         }
         // Estimate by computing the last block division.
         quotient uint64 = cast(uint64)blocks[this.length - 1] / cast(uint64)divisor.blocks[divisor.length - 1];

@@ -1,0 +1,19 @@
+import std;
+import std.Error;
+
+TestError2 struct : Error {
+    
+    FORCES_RAISE :: false;
+
+    fn get_message() cstr {
+        return "test message";
+    }
+}
+
+fn foo() {
+    raise TestError2{};
+}
+
+fn main() {
+    foo();
+}

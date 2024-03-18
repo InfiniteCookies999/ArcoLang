@@ -12,12 +12,14 @@ int main() {
     
     llvm::SmallVector<arco::Source> Sources;
     //Sources.push_back(arco::Source{ true, "default.program.module", SRC("workpad") });
+    Sources.push_back(arco::Source{ true, "default.program.module", "C:\\Users\\maddie\\projects\\ArcoLang\\out\\build\\x64-Debug\\driver\\ukaba\\src" });
     
     arco::Compiler Compiler;
     //Compiler.StandAlone = true;
     //Compiler.EmitDebugInfo = true;
     //Compiler.DisplayLLVMIR = true;
     //Compiler.SetOutputDirectory("abc");
+    //Compiler.TestsStdLibPath = SRC("test_std_lib");
     Compiler.DisplayTimes = true;
     Compiler.Compile(Sources);
     

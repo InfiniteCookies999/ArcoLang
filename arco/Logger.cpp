@@ -112,7 +112,7 @@ void arco::Logger::EndError() {
     OS << "\n";
 
     if (!NoteLines.empty()) {
-        SetTerminalColor(TerminalColorYellow);
+        SetTerminalColor(TerminalColorBrightYellow);
         OS << LNPad << "  Help: ";
         SetTerminalColor(TerminalColorDefault);
         NoteLines[0](OS);

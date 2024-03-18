@@ -13,6 +13,7 @@ arco::ArcoContext::ArcoContext()
     StdcallIdentifier(Identifier("stdcall")),
     CdeclIdentifier(Identifier("cdecl")),
     FastcallIdentifier(Identifier("fastcall")),
+    ForcesRaiseIdentifier(Identifier("FORCES_RAISE")),
     StringIdentifier(Identifier("String")),
     AnyIdentifier(Identifier("Any")),
     TypeIdentifier(Identifier("Type")),

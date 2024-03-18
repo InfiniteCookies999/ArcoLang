@@ -88,6 +88,7 @@ namespace arco {
         Identifier StdcallIdentifier;
         Identifier CdeclIdentifier;
         Identifier FastcallIdentifier;
+        Identifier ForcesRaiseIdentifier;
         llvm::DenseMap<Identifier, llvm::CallingConv::ID> CallConventions;
 
         u32 UniqueTypeIdCounter = 1;
@@ -109,6 +110,7 @@ namespace arco {
         StructDecl* StdEnumTypeStruct    = nullptr;
         InterfaceDecl* StdErrorInterface = nullptr;
         FuncDecl* StdErrorPanicFunc = nullptr;
+        FuncDecl* InitializeErrorHandlingFunc = nullptr;
 
         Type* IntType;
         Type* PtrsizeType;

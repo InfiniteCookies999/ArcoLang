@@ -124,7 +124,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
     // -- DEBUG
-    // llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
+    llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
 
     if (FoundCompileError) {
         return 1;
@@ -519,6 +519,18 @@ bool arco::Compiler::FindStdLibStructs() {
     if (Context.StdErrorInterface) {
         StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
         Context.ErrorInterfacePtrType = PointerType::Create(ErrorInterfaceTy, Context);
+    }
+
+    auto Itr = StdModule->DefaultNamespace->Funcs.find(Identifier("initialize_error_handling"));
+    if (Itr == StdModule->DefaultNamespace->Funcs.end()) {
+        Logger::GlobalError(llvm::errs(), "Standard library is missing 'initialize_error_handling' function");
+    } else {
+        FuncsList& Funcs = Itr->second;
+        if (Funcs.size() > 1) {
+            Logger::GlobalError(llvm::errs(), "Standard library cannot have more than one initialize_error_handling function");
+        }
+        Context.InitializeErrorHandlingFunc = Funcs[0];
+        Context.RequestGen(Context.InitializeErrorHandlingFunc);
     }
 
     return NumErrs == TotalAccumulatedErrors;

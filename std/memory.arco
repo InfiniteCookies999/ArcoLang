@@ -26,7 +26,7 @@ native fn memset(dest void*, c int8, n int) void*;
  */
 fn memcmp(lhs const void*, rhs const void*, count int) int {
     if count <= 0 {
-        panic("count <= 0");
+        raise BadArgumentError{ "count <= 0" };
     }
     return cast(int) _memcmp(lhs, rhs, cast(ptrsize) count);
 }

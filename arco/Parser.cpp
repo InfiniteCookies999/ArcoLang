@@ -168,6 +168,8 @@ void arco::Parser::Parse() {
                     }
                 }
                 
+                // TODO: There should not be a seperate list for private functions because
+                // then it will mess up finding the correct overloaded function.
                 if (Func->Mods & ModKinds::PRIVATE) {
                     FuncsList* List = FScope->FindFuncsList(Func->Name);
                     if (List) {
@@ -1306,6 +1308,9 @@ arco::RaiseStmt* arco::Parser::ParseRaise() {
     RaiseStmt* Raise = NewNode<RaiseStmt>(CTok);
     NextToken(); // Consuming 'raise' token.
     Raise->StructInit = ParseStructInitializer();
+    if (CFunc) {
+        CFunc->HasRaiseStmt = true;
+    }
     return Raise;
 }
 

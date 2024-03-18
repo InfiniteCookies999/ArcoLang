@@ -310,7 +310,11 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
     if (Func->ParsingError) return;
     
     // -- DEBUG
-    // llvm::outs() << "Checking function: " << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "") << Func->Name << "\n";
+    //llvm::outs() << "Checking function: "
+    //             << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "")
+    //             << Func->Name
+    //             << " : " << Func->FScope->Path
+    //             << "\n";
 
     CheckFuncParams(Func);
 
@@ -496,12 +500,15 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
     ulen LLFieldIdx = Struct->InterfaceHooks.size();  //   Struct->Interfaces.size();  -- this struct is not filled out yet!
     for (VarDecl* Field : Struct->Fields) {
         CheckVarDecl(Field);
-        if (Field->Assignment) {
-            Struct->FieldsHaveAssignment = true;
+        
+        if (!Field->IsComptime()) {
+            if (Field->Assignment) {
+                Struct->FieldsHaveAssignment = true;
+            }
+            
+            Field->LLFieldIdx = LLFieldIdx;
+            ++LLFieldIdx;
         }
-
-        Field->LLFieldIdx = LLFieldIdx;
-        ++LLFieldIdx;
         
         // TODO: Does the field need to be checked for a complete type here?
         if (Field->Ty->GetKind() == TypeKind::Struct) {
@@ -552,18 +559,6 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         A.CheckFuncParams(Struct->MoveConstructor);
         Context.RequestGen(Struct->MoveConstructor);
     }
-
-
-    /*if (Context.EmitDebugInfo) {
-        // Terrible but when emitting debug information the type information for the member functions needs to be known
-        // in order to be able to generate proper information for member variables so every single function has to
-        // be generated to not get link errors.
-        for (auto& [Name, FuncList] : Struct->Funcs) {
-            for (FuncDecl* Func : FuncList) {
-                Context.RequestGen(Func);
-            }
-        }
-    }*/
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) {
@@ -830,6 +825,36 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
     InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
     SemAnalyzer A(Context, Interface);
     A.CheckInterfaceDecl(Interface);
+
+    if (Interface == Context.StdErrorInterface) {
+        for (VarDecl* Field : Struct->Fields) {
+            
+            if (Field->Name != Context.ForcesRaiseIdentifier) continue;
+            if (!Field->IsComptime()) {
+                Error(Field, "Expected field '%s' to but compile time computable",
+                    Context.ForcesRaiseIdentifier);
+                break;
+            }
+            if (!Field->Ty->Equals(Context.BoolType)) {
+                Error(Field, "Expected field '%s' to be of type bool",
+                    Context.ForcesRaiseIdentifier);
+                break;
+            }
+            if (!Field->Assignment) {
+                Error(Field, "Expected field '%s' to have assignment",
+                    Context.ForcesRaiseIdentifier);
+                break;
+            }
+
+            llvm::Value* LLBool = GenFoldable(Field->Assignment->Loc, Field->Assignment);
+            if (LLBool) {
+                llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLBool);
+                Struct->MustForceRaise = LLInt->getZExtValue() != 0;
+            }
+            
+            break;
+        }
+    }
 
     Struct->Interfaces.push_back(Interface);
     // Finding the matching functions for the interface.
@@ -1297,6 +1322,7 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
             return;
         }
     }
+    
     Var->HasBeenChecked = true;
     if (Var->IsGlobal) {
         Context.UncheckedDecls.erase(Var);
@@ -1522,13 +1548,6 @@ return;
     // on dependency order.
     if (Var->IsGlobal) {
         Context.RequestGen(Var);
-    }
-
-    // TODO: Would really like to get rid of this requirement but as it currently
-    // stands fields being comptime adds another difficult layer of complexity due
-    // to checking struct fields mapping to named/non-named args.
-    if (Var->IsField() && Var->IsComptime()) {
-        Error(Var, "Compile time variables cannot be fields");
     }
 
     VAR_YIELD(, false);
@@ -1771,30 +1790,33 @@ void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
         return;
     }
     
-
-    bool FuncRaisesError = false;
-    for (const auto& RaisedError : CFunc->RaisedErrors) {
-        if (RaisedError.ErrorStruct == Struct) {
-            FuncRaisesError = true;
-            break;
+    if (Struct->MustForceRaise) {
+        bool FuncRaisesError = false;
+        for (const auto& RaisedError : CFunc->RaisedErrors) {
+            if (RaisedError.ErrorStruct == Struct) {
+                FuncRaisesError = true;
+                break;
+            }
+            
         }
-        ++Raise->RaisedIdx;
-    }
 
-    if (!FuncRaisesError) {
-        Log.BeginError(Raise->Loc, "Cannot raise error '%s' because the function signature does not raise that error",
-            Struct->Name);
-        Log.AddNoteLine([=](llvm::raw_ostream& OS) {
-            OS << "Your function needs to be declared as:  "
-                << GetFuncDefForError(ParamsToTypeInfo(CFunc), CFunc)
-                << " raises ";
+        if (!FuncRaisesError) {
+            Log.BeginError(Raise->Loc, "Cannot raise error '%s' because the function signature does not raise that error",
+                Struct->Name);
+            Log.AddNoteLine([=](llvm::raw_ostream& OS) {
+                OS << "Your function needs to be declared as:  "
+                    << GetFuncDefForError(ParamsToTypeInfo(CFunc), CFunc)
+                    << " raises ";
                 for (ulen i = 0; i < CFunc->RaisedErrors.size(); i++) {
                     const auto& RaisedError = CFunc->RaisedErrors[i];
                     OS << RaisedError.Name << ", ";
                 }
                 OS << Struct->Name;
-            });
-        Log.EndError();
+                });
+            Log.EndError();
+        }
+    } else {
+        CheckStdPanicFuncExists();
     }
 }
 
@@ -2401,6 +2423,17 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 IRef->RefKind = IdentRef::RK::Funcs;
             }
         } else {
+
+            // Check local namespace first since it has higher priority than the default namespace.
+            if (LocalNamespace && FScope->UniqueNSpace) {
+                // File marked with a namespace need to search the namespace the file belongs to as well.
+                auto Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
+                if (Itr != FScope->UniqueNSpace->Funcs.end()) {
+                    IRef->Funcs = &Itr->second;
+                    IRef->RefKind = IdentRef::RK::Funcs;
+                    return;
+                }
+            }
             
             if (!LocalNamespace) {
                 auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
@@ -2434,16 +2467,6 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             if (LocalNamespace) {
                 if (FuncsList* Funcs = FScope->FindFuncsList(IRef->Ident)) {
                     IRef->Funcs   = Funcs;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
-                }
-            }
-
-            if (LocalNamespace && FScope->UniqueNSpace) {
-                // File marked with a namespace need to search the namespace the file belongs to as well.
-                auto Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
-                if (Itr != FScope->UniqueNSpace->Funcs.end()) {
-                    IRef->Funcs   = &Itr->second;
                     IRef->RefKind = IdentRef::RK::Funcs;
                     return;
                 }
@@ -2495,6 +2518,13 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             }
         } else {
             
+            if (LocalNamespace && FScope->UniqueNSpace) {
+                // File marked with a namespace need to search the namespace the file belongs to as well.
+                if (SearchNamespace(FScope->UniqueNSpace)) {
+                    return;
+                }
+            }
+
             if (LocalNamespace) {
                 if (SearchNamespace(Mod->DefaultNamespace)) {
                     return;
@@ -2521,13 +2551,6 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                         IRef->RefKind = IdentRef::RK::Enum;
                         return;
                     }
-                }
-            }
-
-            if (LocalNamespace && FScope->UniqueNSpace) {
-                // File marked with a namespace need to search the namespace the file belongs to as well.
-                if (SearchNamespace(FScope->UniqueNSpace)) {
-                    return;
                 }
             }
 
@@ -4039,36 +4062,8 @@ void arco::SemAnalyzer::CheckTryError(TryError* Try) {
         YIELD_ERROR(Try);
     }
 
-    if (!Context.StdErrorPanicFunc) {
-        Module* StdModule = Context.ModNamesToMods.find("std")->second;
-        auto Itr = StdModule->DefaultNamespace->Funcs.find(Identifier("panic"));
-        if (Itr == StdModule->DefaultNamespace->Funcs.end()) {
-            Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
-        } else {
-            FuncsList& List = Itr->second;
-            bool Found = false;
-
-            for (FuncDecl* Func : List) {
-
-                SemAnalyzer A(Context, Func);
-                A.CheckFuncDecl(Func);
-                if (Func->Params.size() != 1) {
-                    continue;
-                }
-
-                if (!Func->Params[0]->Ty->Equals(Context.ErrorInterfacePtrType)) {
-                    continue;
-                }
-                Context.StdErrorPanicFunc = Func;
-                Found = true;
-                break;
-            }
-            if (!Found) {
-                Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
-                YIELD_ERROR(Try);
-            }
-        }
-        Context.RequestGen(Context.StdErrorPanicFunc);
+    if (!CheckStdPanicFuncExists()) {
+        YIELD_ERROR(Try);
     }
 
     if (Try->Value->Is(AstKind::FUNC_CALL)) {
@@ -4093,6 +4088,41 @@ void arco::SemAnalyzer::CheckTryError(TryError* Try) {
         Error(Try, "Expected try to handle errors from function call");
         YIELD_ERROR(Try);
     }
+}
+
+bool arco::SemAnalyzer::CheckStdPanicFuncExists() {
+    if (Context.StdErrorPanicFunc) return true;
+
+    Module* StdModule = Context.ModNamesToMods.find("std")->second;
+    auto Itr = StdModule->DefaultNamespace->Funcs.find(Identifier("panic"));
+    if (Itr == StdModule->DefaultNamespace->Funcs.end()) {
+        Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
+    } else {
+        FuncsList& List = Itr->second;
+        bool Found = false;
+
+        for (FuncDecl* Func : List) {
+
+            SemAnalyzer A(Context, Func);
+            A.CheckFuncDecl(Func);
+            if (Func->Params.size() != 1) {
+                continue;
+            }
+
+            if (!Func->Params[0]->Ty->Equals(Context.ErrorInterfacePtrType)) {
+                continue;
+            }
+            Context.StdErrorPanicFunc = Func;
+            Found = true;
+            break;
+        }
+        if (!Found) {
+            Logger::GlobalError(llvm::errs(), "Standard library is missing 'panic' function");
+            return false;
+        }
+    }
+    Context.RequestGen(Context.StdErrorPanicFunc);
+    return true;
 }
 
 void arco::SemAnalyzer::CheckArray(Array* Arr) {
@@ -4590,9 +4620,9 @@ void arco::SemAnalyzer::CheckCatchError(CatchError* Catch, VarDecl* CaptureVar) 
     Catch->ErrorVar->Ty = Context.ErrorInterfacePtrType;
 
     CheckNode(Catch->CaughtExpr);
-    YIELD_IF_ERROR(Catch->CaughtExpr);
+    YIELD_ERROR_WHEN(Catch, Catch->CaughtExpr);
     Catch->Ty = Catch->CaughtExpr->Ty;
-    
+
     Scope NewScope;
     CheckScopeStmts(Catch->Scope, NewScope);
 

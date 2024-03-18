@@ -175,6 +175,7 @@ namespace arco {
                                         FuncDecl* Canidate);
         void CheckIfErrorsAreCaptured(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
         void CheckTryError(TryError* Try);
+        bool CheckStdPanicFuncExists();
 
         void CheckArray(Array* Arr);
         void CheckArrayAccess(ArrayAccess* Access);

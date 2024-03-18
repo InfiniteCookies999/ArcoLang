@@ -45,7 +45,7 @@ String struct {
      */
     String(buffer cstr, length int) {
         if length < 0 {
-            panic("String length length < 0");
+            raise BadArgumentError{ "length < 0" };
         }
 
         this.length = length;
@@ -70,7 +70,7 @@ String struct {
      */
     String(buffer char*, length int, copy_buffer := true) {
         if length < 0 {
-            panic("String length length < 0");
+            raise BadArgumentError{ "string length < 0" };
         }
         
         this.length = length;
@@ -88,7 +88,7 @@ String struct {
     */
     String(c char, count int) {
         if count < 0 {
-            panic("String count < 0");
+            raise BadArgumentError{ "count < 0" };
         }
 
         this.length = count;
@@ -122,10 +122,16 @@ String struct {
      * from the begin_index until the end_index - 1.
      */
     fn substr(begin_idx int, end_idx int) String {
-        // TODO: proper error handling.
-        if begin_idx < 0 || end_idx > length || end_idx < begin_idx {
-            panic("substr out of bounds");
+        if begin_idx < 0 {
+            raise OutOfBoundsError{ "begin index < 0 for substr" };
         }
+        if end_idx > length {
+            raise OutOfBoundsError{ "end_idx > length for substr. end_idx=%s", end_idx };
+        }
+        if end_idx < begin_idx {
+            raise BadArgumentError{ "end_idx < begin_idx for substr" };
+        }
+
         sublength := end_idx - begin_idx;
         if sublength == 0 {
             return String{};
@@ -187,10 +193,10 @@ String struct {
     private fn replace(sub_str     cstr, sub_length     int,
                        replace_str cstr, replace_length int) String* {
         if sub_length <= 0 {
-            panic("sub_length <= 0");
+            raise BadArgumentError{ "sub_length <= 0" };
         }
         if replace_length < 0 {
-            panic("replace_length < 0");
+            raise BadArgumentError{ "replace_length < 0" };
         }
 
         if sub_length == 1 && replace_length == 1 {
@@ -853,8 +859,7 @@ private fn any_to_string(value void*, type const Type*) String {
         string.append(" }");
         return string;
     } else {
-        panic("do not know how to parse type!");
-        return String{ "" };
+        raise BadArgumentError{ "Do not know how to parse type!" };
     }
 }
 
@@ -899,7 +904,7 @@ fn concat(s1 String^, s2 String^) String {
 
 fn find_first_of(s cstr, s_length int, sub cstr, sub_length int) int {
     if sub_length <= 0 {
-        panic("sub_length <= 0");
+        raise BadArgumentError{ "sub_length <= 0" };
     }
     if s_length == 0 {
         return -1;
@@ -937,7 +942,7 @@ fn find_first_of(s cstr, s_length int, sub cstr, sub_length int) int {
 
 fn find_first_of(s cstr, s_length int, c char) int {
     if s_length < 0 {
-        panic("s_length < 0");
+        raise BadArgumentError{ "s_length < 0" };
     }
     loop i : 0..<s_length {
         if s[i] == c {

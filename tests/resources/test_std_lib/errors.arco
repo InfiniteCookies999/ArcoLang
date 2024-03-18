@@ -12,3 +12,7 @@ TestError struct : Error {
 fn panic(err Error^) {
     print(err.get_message());
 }
+
+fn initialize_error_handling() {
+
+}

@@ -224,10 +224,12 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
 
 llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) {
     assert(!Struct->Is(AstKind::ENUM_DECL) && "Wrong gen type for enum");
-
     if (Struct->LLStructTy) {
         return Struct->LLStructTy;
     }
+    // -- DEBUG
+    // llvm::outs() << "Generating struct type: " << Struct->Name << "\n";
+
     llvm::StructType* LLStructTy = llvm::StructType::create(Context.LLContext);
     Struct->LLStructTy = LLStructTy; // Set early to prevent endless recursive
 
@@ -238,7 +240,9 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
     }
     // Count the fields which are not compile time generated.
     for (VarDecl* Field : Struct->Fields) {
-        ++NumFields;
+        if (!Field->IsComptime()) {
+            ++NumFields;
+        }
     }
     LLStructFieldTypes.resize(NumFields);
     for (ulen i = 0; i < Struct->Interfaces.size(); i++) {
@@ -251,10 +255,11 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
         }
     }
 
-    if (Struct->Fields.empty()) {
+    if (NumFields == 0) {
         LLStructFieldTypes.push_back(llvm::Type::getInt8Ty(Context.LLContext));
     } else {
         for (VarDecl* Field : Struct->Fields) {
+            if (Field->IsComptime()) continue;
             LLStructFieldTypes[Field->LLFieldIdx] = GenType(Context, Field->Ty);
         }
     }
@@ -264,7 +269,13 @@ llvm::StructType* arco::GenStructType(ArcoContext& Context, StructDecl* Struct) 
     if (!Struct->Interfaces.empty()) {
         const llvm::StructLayout* LLLayout = Context.LLArcoModule.getDataLayout().getStructLayout(LLStructTy);
         // Obtains offset past virtual data.
-        Struct->VirtualOffset = LLLayout->getElementOffset(Struct->Interfaces.size());
+        ulen NumInterfaces = Struct->Interfaces.size();
+        if (NumFields == NumInterfaces) {
+            // There are no fields except interface pointers.
+            Struct->VirtualOffset = LLLayout->getElementOffset(NumInterfaces - 1);
+        } else {
+            Struct->VirtualOffset = LLLayout->getElementOffset(NumInterfaces);
+        }
     }
 
     return LLStructTy;
@@ -404,6 +415,8 @@ void arco::IRGenerator::GenImplicitDefaultConstructorBody(StructDecl* Struct) {
         GenCallToInitVTableFunc(LLThis, Struct);
     }
     for (VarDecl* Field : Struct->Fields) {
+        if (Field->IsComptime()) continue;
+        
         llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
         if (Field->Assignment) {
             GenAssignment(LLFieldAddr, Field->Ty, Field->Assignment, Field->HasConstAddress);
@@ -558,7 +571,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
                    !Func->UsesParamRetSlot) {
             LLRetAddr = Builder.CreateAlloca(GenType(Func->RetTy), nullptr, "ret.val");
         }
-    } else if (Func->NumReturns == 1 && !Func->RaisedErrors.empty()) {
+    } else if (Func->NumReturns == 1 && Func->HasRaiseStmt) {
         // The really is still more than one return value need to create a return address.
         LLFuncEndBB = llvm::BasicBlock::Create(LLContext, "func.return");
         if (Func == Context.MainEntryFunc) {
@@ -664,6 +677,10 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (Func == Context.MainEntryFunc) {
         Context.LLInitGlobalFunc = GenGlobalInitFuncDecl();
         Builder.CreateCall(Context.LLInitGlobalFunc);
+        if (!Context.StandAlone) {
+            GenFuncDecl(Context.InitializeErrorHandlingFunc);
+            Builder.CreateCall(Context.InitializeErrorHandlingFunc->GetLLFunction());
+        }
     }
 
     // Generating the statements of the function.
@@ -1569,19 +1586,46 @@ llvm::Value* arco::IRGenerator::GenRaise(RaiseStmt* Raise) {
 
     StructType* RaisedStructTy = Raise->StructInit->Ty->AsStructType();
     StructDecl* RaisedStruct   = RaisedStructTy->GetStruct();
-    llvm::Value* LLErrorPtr     = GenMalloc(GenType(RaisedStructTy), nullptr);
 
+    bool FuncRaisesError = false;
+    if (!RaisedStruct->MustForceRaise) {
+        // The error has the option to paniced immediately instead.
+        for (const auto& RaisedError : CFunc->RaisedErrors) {
+            if (RaisedError.ErrorStruct == RaisedStruct) {
+                FuncRaisesError = true;
+                break;
+            }
+        }
+    } else {
+        FuncRaisesError = true;
+    }
+
+    llvm::Value* LLErrorPtr = GenMalloc(GenType(RaisedStructTy), nullptr);
     GenStructInitializer(Raise->StructInit, LLErrorPtr);
 
-    llvm::Value* LLErrorAddr = GetErrorRetAddr(CFunc);
+    llvm::Value* LLErrorAddr;
+    llvm::Type* LLInterfacePtrType;
+    if (FuncRaisesError) {
+        LLErrorAddr = GetErrorRetAddr(CFunc);
+        LLInterfacePtrType = LLErrorAddr->getType()->getPointerElementType();
+    } else {
+        LLErrorAddr = LLErrorPtr;
+        LLInterfacePtrType = GenType(Context.ErrorInterfacePtrType);
+    }
     llvm::Value* LLInterfacePtr = GenCastToInterface(Context.ErrorInterfacePtrType,
                                                      RaisedStruct,
                                                      LLErrorPtr,
-                                                     LLErrorAddr->getType()->getPointerElementType());
+                                                     LLInterfacePtrType);
 
-    Builder.CreateStore(LLInterfacePtr, LLErrorAddr);
-
-    GenRaiseReturnZeroedValue();
+    if (FuncRaisesError) {
+        Builder.CreateStore(LLInterfacePtr, LLErrorAddr);
+        GenRaiseReturnZeroedValue();
+    } else {
+        GenFuncDecl(Context.StdErrorPanicFunc);
+        Builder.CreateCall(Context.StdErrorPanicFunc->GetLLFunction(), { LLInterfacePtr });
+        // Prevent issues with possible lack of terminator.
+        GenRaiseReturnZeroedValue();
+    }
 
     return nullptr;
 }
@@ -3140,12 +3184,14 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
     for (i = 0; i < Args.size(); i++) {
         NonNamedValue Value = Args[i];
         VarDecl* Field = Struct->Fields[i];
+        if (Field->IsComptime()) continue;
         
         llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
         GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
     }
     for (NamedValue& Arg : NamedArgs) {
         VarDecl* Field = Arg.VarRef;
+        if (Field->IsComptime()) continue;
 
         llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
         GenAssignment(LLFieldAddr, Field->Ty, Arg.AssignValue, Field->HasConstAddress);
@@ -3153,6 +3199,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
     if (NamedArgs.empty()) {
         for (; i < Struct->Fields.size(); i++) {
             VarDecl* Field = Struct->Fields[i];
+            if (Field->IsComptime()) continue;
 
             llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
             if (Field->Assignment) {
@@ -3166,6 +3213,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
         // covered by the named arguments.
         for (; i < Struct->Fields.size(); i++) {
             VarDecl* Field = Struct->Fields[i];
+            if (Field->IsComptime()) continue;
             
             auto Itr = std::find_if(NamedArgs.begin(), NamedArgs.end(),
                 [Field](const NamedValue& A) {
@@ -3354,7 +3402,12 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* S
     llvm::StructType* LLStructType = GenStructType(StructTy);
     const llvm::StructLayout* LLStructLayout = LLModule.getDataLayout().getStructLayout(LLStructType);
     for (VarDecl* Field : Struct->Fields) {
-        
+        // TODO: It would still be nice to provide information about
+        // the compile time generated field but then because it does
+        // not actually exist in memory there would be a way to indicate
+        // that it is compile time folded.
+        if (Field->IsComptime()) continue;
+
         Identifier FieldName = Field->Name;
         ulen FieldOffset = LLStructLayout->getElementOffset(Field->LLFieldIdx);
         llvm::SmallVector<llvm::Constant*, 2> LLFieldElements = {
@@ -3499,6 +3552,8 @@ llvm::BasicBlock* arco::IRGenerator::GenTryErrorPrelude(TryError* Try) {
 
 void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* LLCatchEndBlock) {
     
+    // TODO: This will need to free up memory of raised error!
+
     CallDestructors(CurrentErrorBoundNeedingDestroyed);
     CurrentErrorBoundNeedingDestroyed.clear();
 
@@ -3564,6 +3619,9 @@ void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* L
 }
 
 void arco::IRGenerator::GenTryErrorBody(TryError* Try, llvm::BasicBlock* LLCatchEndBlock) {
+
+    // TODO: This will need to free up memory of raised error!
+    
     // End of catched expressions need to jump to the end block since no error was
     // encountered.
     Builder.CreateBr(LLCatchEndBlock);
@@ -4292,6 +4350,8 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
     }
     FieldInitializingIdx = 0;
     for (VarDecl* Field : Struct->Fields) {
+        if (Field->IsComptime()) continue;
+
         llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
         if (Expr* InitValue = Func->GetInitializerValue(Field)) {
             GenAssignment(LLFieldAddr, Field->Ty, InitValue, Field->HasConstAddress);

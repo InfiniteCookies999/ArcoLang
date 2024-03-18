@@ -14,7 +14,7 @@ BufferedOutStream struct : Writeable, Flushable {
     BufferedOutStream(handle Writeable*, buffer_size := 8192)
         : handle(handle) {
         if buffer_size < 0 {
-            panic("buffer_size < 0");
+            raise BadArgumentError{ "buffer_size < 0" };
         }
         handle.set_flushable(this);
         this.buffer_size = buffer_size;

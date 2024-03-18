@@ -5,6 +5,8 @@ import win32.EXCEPTION_POINTERS;
 /*
  * This interface is required to be implemented for all
  * errors.
+ *
+ * All errors structs must include:  STRUCT_NAME :: "";
  */
 Error interface {
 
@@ -30,7 +32,7 @@ IOError struct : Error {
 }
 
 ValueParseError struct : Error {
-    
+
     message String;
 
     ValueParseError(message String)
@@ -46,7 +48,67 @@ ValueParseError struct : Error {
     }
 }
 
+BadArgumentError struct : Error {
+
+    FORCES_RAISE :: false;
+
+    message String;
+
+    BadArgumentError(message String)
+        : message(*message.append_front("BadArgumentError: ")) {
+    }
+
+    BadArgumentError(fmt cstr, args Any...)
+        : message(*format(fmt, args).append_front("BadArgumentError: ")) {
+    }
+
+    fn get_message() cstr {
+        return message.buffer;
+    }
+}
+
+OutOfBoundsError struct : Error {
+
+    FORCES_RAISE :: false;
+
+    message String;
+
+    OutOfBoundsError(message String)
+        : message(*message.append_front("OutOfBoundsError: ")) {
+    }
+
+    OutOfBoundsError(fmt cstr, args Any...)
+        : message(*format(fmt, args).append_front("OutOfBoundsError: ")) {
+    }
+
+    fn get_message() cstr {
+        return message.buffer;
+    }
+}
+
+BadStateError struct : Error {
+
+    FORCES_RAISE :: false;
+
+    message String;
+
+    BadStateError(message String)
+        : message(*message.append_front("BadStateError: ")) {
+    }
+
+    BadStateError(fmt cstr, args Any...)
+        : message(*format(fmt, args).append_front("BadStateError: ")) {
+    }
+
+    fn get_message() cstr {
+        return message.buffer;
+    }
+}
+
 UnreachableError struct : Error {
+
+    FORCES_RAISE :: false;
+
     fn get_message() cstr {
         return "UnreachableError: unreachable code";
     }
@@ -103,28 +165,10 @@ private fn raise_unwind_error(err Error*) {
     win32.RaiseException(ARCO_WIN32_EXCEPTION_CODE, dwExceptionFlags=1, nNumberOfArguments=1, lpArguments=payload);
 }
 
-private fn initialize_error_handling() {
+// NOTE: This cannot be private at the moment because otherwise the compiler gets confused
+//       looking for it's definition.
+fn initialize_error_handling() {
     win32.SetUnhandledExceptionFilter(&handle_uncaught_exception_handler);
-}
-
-/*
- * Prints an error message to the standard error
- * stream and terminates the application.
- */
-fn panic(msg cstr) {
-    // TODO: come back to
-    eprintln(msg);
-    exit(1);
-}
-
-/*
- * Prints a formatted error message to the standard
- * error stream and terminates the application.
- */
-fn panic(msg cstr, args Any...) {
-    // TOOD: come back to.
-    eprintln(msg, args);
-    exit(1);
 }
 
 fn panic(err Error^) {
