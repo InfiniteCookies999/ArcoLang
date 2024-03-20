@@ -17,6 +17,7 @@ arco::ArcoContext::ArcoContext()
     StringIdentifier(Identifier("String")),
     AnyIdentifier(Identifier("Any")),
     TypeIdentifier(Identifier("Type")),
+    TypeIdIdentifier(Identifier("TypeId")),
     ArrayTypeIdentifier(Identifier("ArrayType")),
     StructTypeIdentifier(Identifier("Struct")),
     FieldTypeIdentifier(Identifier("Field")),
@@ -160,6 +161,7 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "delete"   , TokenKind::KW_DELETE    });
     TokenKeywordMap.insert({ "sizeof"   , TokenKind::KW_SIZEOF    });
     TokenKeywordMap.insert({ "typeof"   , TokenKind::KW_TYPEOF    });
+    TokenKeywordMap.insert({ "typeid"   , TokenKind::KW_TYPEID    });
     TokenKeywordMap.insert({ "copyobj"  , TokenKind::KW_COPYOBJ   });
     TokenKeywordMap.insert({ "moveobj"  , TokenKind::KW_MOVEOBJ   });
     TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });

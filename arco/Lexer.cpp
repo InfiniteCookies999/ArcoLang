@@ -51,15 +51,16 @@ restartLex:
         return NextString();
     case '\'':
         return NextChar();
-    case '(': return CreateToken('(', TokStart);
-    case ')': return CreateToken(')', TokStart);
-    case '{': return CreateToken('{', TokStart);
-    case '}': return CreateToken('}', TokStart);
-    case '[': return CreateToken('[', TokStart);
-    case ']': return CreateToken(']', TokStart);
-    case ';': return CreateToken(';', TokStart);
-    case ',': return CreateToken(',', TokStart);
-    case '?': return CreateToken('?', TokStart);
+    case '(':  return CreateToken('(', TokStart);
+    case ')':  return CreateToken(')', TokStart);
+    case '{':  return CreateToken('{', TokStart);
+    case '}':  return CreateToken('}', TokStart);
+    case '[':  return CreateToken('[', TokStart);
+    case ']':  return CreateToken(']', TokStart);
+    case ';':  return CreateToken(';', TokStart);
+    case ',':  return CreateToken(',', TokStart);
+    case '?':  return CreateToken('?', TokStart);
+    case '\\': return CreateToken('\\', TokStart);
     case '.':
         if (*CurPtr == '.') {
             ++CurPtr;

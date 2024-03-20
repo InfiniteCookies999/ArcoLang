@@ -5,7 +5,7 @@ Message enum {
     SECOND :: "cool message";
 }
 
-generics<T>
+generics\T\
 fn foo(message T, length int) {
     the_message Message = message;
     the_message_value cstr = the_message;

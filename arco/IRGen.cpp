@@ -867,6 +867,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
             SizeOfTypeInBytesNonVirtualInclusive(static_cast<SizeOf*>(Node)->TypeToGetSizeOf));
     case AstKind::TYPEOF:
         return GenTypeOf(static_cast<TypeOf*>(Node));
+    case AstKind::TYPEID:
+        return GenTypeId(static_cast<TypeId*>(Node));
     case AstKind::MOVEOBJ:
         return GenNode(static_cast<MoveObj*>(Node)->Value);
     case AstKind::TERNARY:
@@ -2344,6 +2346,13 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
     }
     
     VarDecl* Var = IRef->Var;
+    if (Var->IsGeneric()) {
+        BindTypes(Var, IRef->FoundBinding);
+        llvm::Value* LLValue = GenComptimeValue(Var);
+        UnbindTypes(Var);
+        return LLValue;
+    }
+
     if (Var->IsComptime()) {
         return GenComptimeValue(Var);
     }
@@ -2398,7 +2407,8 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
     if (Site->Ty->GetKind() == TypeKind::Pointer &&
         Site->IsNot(AstKind::THIS_REF) && /* Reference is already loaded. */
         Site->IsNot(AstKind::FUNC_CALL) && /* no address to load */
-        Site->IsNot(AstKind::TYPE_CAST)/* type cast calls GenRValue */) {
+        Site->IsNot(AstKind::TYPE_CAST) && /* type cast calls GenRValue */
+        Site->IsNot(AstKind::TYPEOF)) {
         LLSite = CreateLoad(LLSite);
         LLSite->setName("ptr.deref");
     }
@@ -2412,8 +2422,18 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 }
 
 llvm::Constant* arco::IRGenerator::GenComptimeValue(VarDecl* Var) {
+    // TODO: This will need additional work because folding values may
+    // result in llvm's poision type which is not constant.
+    if (Var->IsGeneric()) {
+        if (Var->GenData->CurBinding->LLValue) {
+            return Var->GenData->CurBinding->LLValue;
+        }
+        Var->GenData->CurBinding->LLValue = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));
+        return Var->GenData->CurBinding->LLValue;
+    }
+    
     if (!Var->LLComptimeVal) {
-        Var->LLComptimeVal = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));	
+        Var->LLComptimeVal = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));
     }
     return Var->LLComptimeVal;
 }
@@ -3466,6 +3486,11 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfEnumTypeGlobal(EnumDecl* Enum)
     llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalTypeInfoName, LLEnumStructType);
     LLGlobal->setInitializer(llvm::ConstantStruct::get(LLEnumStructType, LLElements));
     return LLGlobal;
+}
+
+llvm::Constant* arco::IRGenerator::GenTypeId(TypeId* TId) {
+    TypeKind Kind = TId->TypeToGetTypeId->UnboxGeneric()->GetRealKind();
+    return GetSystemInt(static_cast<i64>(Kind));
 }
 
 llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded) {

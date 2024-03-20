@@ -45,6 +45,8 @@ namespace arco {
         StructDecl* CStruct = nullptr;
         // Current function being parsed.
         FuncDecl*   CFunc   = nullptr;
+        // The current variable being parsed.
+        VarDecl*    CVar    = nullptr;
 
         // Temporary storgage in case the native modifier
         // has an explicit name.
@@ -96,7 +98,7 @@ namespace arco {
         AstNode* ParseStmt();
         FuncDecl* ParseFuncDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys);
         void ParseFuncSignature(FuncDecl* Func);
-        VarDecl* ParseVarDecl(Modifiers Mods);
+        VarDecl* ParseVarDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys = {});
         VarDeclList* ParseVarDeclList(Modifiers Mods);
         VarDecl* CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods);
         void FinishVarDecl(VarDecl* Var);
@@ -153,6 +155,7 @@ namespace arco {
         // and sets the required array lengths based on the largest
         // array lengths at the given depths.
         void SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth = 0);
+        void ParseTypeBindings(llvm::SmallVector<Type*, 8>& Bindings);
 
 
         void ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,

@@ -512,6 +512,7 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdFieldTypeStruct   = FindStdLibStruct(ReflectNamespace, Context.FieldTypeIdentifier);
     Context.StdEnumTypeStruct    = FindStdLibStruct(ReflectNamespace, Context.EnumTypeIdentifier);
     Context.StdErrorInterface    = FindStdLibInterface(StdModule->DefaultNamespace, Context.ErrorInterfaceIdentifier);
+    Context.StdTypeIdEnum        = FindStdLibEnum(ReflectNamespace, Context.TypeIdIdentifier);
     if (Context.StdAnyStruct) {
         Context.AnyType = StructType::Create(Context.StdAnyStruct, Context);
     }
@@ -543,6 +544,15 @@ arco::StructDecl* arco::Compiler::FindStdLibStruct(Namespace* Namespace, Identif
         return nullptr;
     }
     return static_cast<StructDecl*>(Itr->second);
+}
+
+arco::EnumDecl* arco::Compiler::FindStdLibEnum(Namespace* Namespace, Identifier Name) {
+    auto Itr = Namespace->Decls.find(Name);
+    if (Itr == Namespace->Decls.end() || Itr->second->IsNot(AstKind::ENUM_DECL)) {
+        Logger::GlobalError(llvm::errs(), "Standard library is missing '%s' enum", Name);
+        return nullptr;
+    }
+    return static_cast<EnumDecl*>(Itr->second);
 }
 
 arco::InterfaceDecl* arco::Compiler::FindStdLibInterface(Namespace* Namespace, Identifier Name) {

@@ -249,7 +249,9 @@ int main() {
     RunTest(SRC("generics/generics6.arco"), "52 some message");
     RunTest(SRC("generics/generics7.arco"), "6524");
     RunTest(SRC("generics/generics8.arco"), "Programming is fun cool message");
-    
+    RunTest(SRC("generics/generics9.arco"), "constrait foo no constraint foo");
+    RunTest(SRC("generics/generics10.arco"), "constrait foo no constraint foo");
+
     RunTest(SRC("errors/errors1.arco"), "test message");
     RunTest(SRC("errors/errors2.arco"), "test message");
     RunTest(SRC("errors/errors3.arco"), "test message 55");

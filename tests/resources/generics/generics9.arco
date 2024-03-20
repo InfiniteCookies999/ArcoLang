@@ -1,0 +1,20 @@
+import std;
+import std.reflect.TypeId;
+
+generics\T\
+my_constraint :: typeid(T) == TypeId.INT;
+
+generics\my_constraint T\
+fn foo(a T) {
+    std.print("constrait foo");
+}
+
+fn foo(a cstr) {
+    std.print("no constraint foo");
+}
+
+fn main() {
+    foo(325);
+    std.print(" ");
+    foo("abcdef");
+}

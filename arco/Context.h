@@ -96,6 +96,7 @@ namespace arco {
         Identifier StringIdentifier;
         Identifier AnyIdentifier;
         Identifier TypeIdentifier;
+        Identifier TypeIdIdentifier;
         Identifier ArrayTypeIdentifier;
         Identifier StructTypeIdentifier;
         Identifier FieldTypeIdentifier;
@@ -108,6 +109,7 @@ namespace arco {
         StructDecl* StdStructTypeStruct  = nullptr;
         StructDecl* StdFieldTypeStruct   = nullptr;
         StructDecl* StdEnumTypeStruct    = nullptr;
+        EnumDecl*   StdTypeIdEnum      = nullptr;
         InterfaceDecl* StdErrorInterface = nullptr;
         FuncDecl* StdErrorPanicFunc = nullptr;
         FuncDecl* InitializeErrorHandlingFunc = nullptr;

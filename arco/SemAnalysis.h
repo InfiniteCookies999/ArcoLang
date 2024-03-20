@@ -63,6 +63,13 @@ namespace arco {
             bool AllPathsBranch = false;
         }  * LocScope = nullptr;
 
+        struct ArgMismatchData {
+            ulen         ArgCount; // -1 if named argument.
+            Identifier   Name;     // Set if a named argument.
+            std::string& MismatchInfo;
+            bool         FailBesidesBind = false;
+        };
+
         void CheckFuncParams(FuncDecl* Func, bool NotFullyQualified = false);
 
         void CheckNode(AstNode* Node);
@@ -99,7 +106,8 @@ namespace arco {
         void CheckIdentRef(IdentRef* IRef,
                            bool ExpectsFuncCall,
                            Namespace* NamespaceToLookup,
-                           StructDecl* StructToLookup = nullptr);
+                           StructDecl* StructToLookup = nullptr,
+                           bool ExpectsGenericConstraint = false);
         void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
         void CheckThisRef(ThisRef* This);
         void CheckFuncCall(FuncCall* Call);
@@ -118,7 +126,6 @@ namespace arco {
                              bool VarArgsPassAlong,
                              Type*& RetTy,
                              const BindableList* QualifiedTypes);
-        Type* QualifyRetType(Type* RetTy, const BindableList& BindableTypes);
 
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
@@ -134,6 +141,7 @@ namespace arco {
                                ulen& EnumImplicitConflicts,
                                ulen& NumSignConflicts,
                                bool& CanidateVarArgPassAlong,
+                               bool& HasAny,
                                BindableList* BindableTypes);
         bool CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
                           ulen& NumConflicts,
@@ -149,7 +157,12 @@ namespace arco {
                                  ulen NumGenerics,
                                  ulen GenericIdx,
                                  bool IsRoot,
-                                 bool FromPtr = false);
+                                 bool FromPtr = false,
+                                 ArgMismatchData* MismatchData = nullptr);
+        bool CheckGenericConstraint(FuncDecl* Canidate,
+                                    GenericType* GenTy,
+                                    BindableList* BindableTypes,
+                                    std::string* MismatchInfo = nullptr);
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue>& Args,
@@ -163,6 +176,8 @@ namespace arco {
             ulen NumDefaultArgs = 0,
             FuncDecl* CalledFunc = nullptr
         );
+        bool DidGenericConstraintsHaveErrors(FuncDecl* Canidate,
+                                             const BindableList& BindableTypes);
         std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
         std::string GetCallMismatchInfo(const char* CallType,
                                         llvm::SmallVector<TypeInfo>& ParamTypes,
@@ -172,7 +187,24 @@ namespace arco {
                                         bool IsVariadic,
                                         ulen NumGenerics,
                                         ulen NumQualifications,
-                                        FuncDecl* Canidate);
+                                        BindableList& BindableTypes,
+                                        FuncDecl* Canidate,
+                                        bool& PreliminaryError);
+        void GetCallMismatchInfoForArg(Type* ParamTy,
+                                       Expr* Arg,
+                                       bool AllowImplicitPtr,
+                                       bool ParamConstMemory,
+                                       BindableList& BindableTypes,
+                                       ulen NumGenerics,
+                                       ulen NumQualifications,
+                                       ulen GenericIdx,
+                                       ArgMismatchData& MismatchData);
+        void ShowMismatchInfoForBindFail(bool IsRoot,
+                                         Type* ArgTy,
+                                         Type* ParamType,
+                                         ArgMismatchData* MismatchData);
+        std::string GetGenBindCallArgHeaderInfo(ArgMismatchData& MismatchData, Type* ArgTy);
+
         void CheckIfErrorsAreCaptured(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
         void CheckTryError(TryError* Try);
         bool CheckStdPanicFuncExists();
@@ -190,6 +222,7 @@ namespace arco {
         void CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType);
         void CheckSizeOf(SizeOf* SOf);
         void CheckTypeOf(TypeOf* TOf);
+        void CheckTypeId(TypeId* TId);
         void CheckRange(Range* Rg);
         void CheckMoveObj(MoveObj* Move);
         void CheckTernary(Ternary* Tern);
@@ -211,6 +244,8 @@ namespace arco {
         bool FixupStructType(StructType* StructTy);
 
         Decl* FindStructLikeTypeByName(Identifier Name);
+
+        Type* QualifyType(Type* Ty, const BindableList& BindableTypes);
 
         void CheckModifibility(Expr* LValue);
         bool IsLValue(Expr* E);
@@ -236,10 +271,12 @@ namespace arco {
 
         void AddGenericErrorInfo() {
             if (CFunc && CFunc->IsGeneric()) {
-                Log.AddMarkMessage(
-                    CFunc->GenData->CurBinding->OriginalFile,
-                    CFunc->GenData->CurBinding->OriginalLoc,
-                    "Original bind location");
+                if (CFunc->GenData->CurBinding) {
+                    Log.AddMarkMessage(
+                        CFunc->GenData->CurBinding->OriginalFile,
+                        CFunc->GenData->CurBinding->OriginalLoc,
+                        "Original bind location");
+                }
             }
         }
 

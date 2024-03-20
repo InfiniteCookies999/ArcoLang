@@ -36,7 +36,11 @@ namespace arco {
     // TODO: May want to make this a DenseMap so to increase lookup
     //       performance.
     struct GenericBinding {
-        llvm::Function*          LLFunction = nullptr;
+        union {
+            llvm::Function* LLFunction = nullptr;
+            llvm::Constant* LLValue;
+        };
+        Type*                    QualifiedType; // Type deduced for variables after binding and checking.
         llvm::SmallVector<Type*> BindableTypes;
         FileScope*               OriginalFile;
         SourceLoc                OriginalLoc;
@@ -84,6 +88,7 @@ namespace arco {
         HEAP_ALLOC,
         SIZEOF,
         TYPEOF,
+        TYPEID,
         MOVEOBJ,
         RANGE,
         TERNARY,
@@ -189,6 +194,16 @@ namespace arco {
 
     };
 
+    struct GenericData {
+        llvm::SmallVector<GenericType*>   GenTys;
+        GenericBindings                   Bindings;
+        GenericBinding*                   CurBinding = nullptr;
+        // Stack used to restore state of whatever the previous binding
+        // was if the binding changed while it currently had a binding.
+        std::stack<GenericBinding*>       BindingStack;
+        ulen                              NumQualifications = 0;
+    };
+
     struct Decl : AstNode {
         Decl(AstKind Kind) : AstNode(Kind) {}
 
@@ -203,6 +218,12 @@ namespace arco {
 
         Modifiers  Mods;
         Identifier Name;
+
+        GenericData* GenData = nullptr;
+
+        inline bool IsGeneric() const {
+            return GenData != nullptr;
+        }
 
         inline bool IsStructLike() {
             return Kind == AstKind::STRUCT_DECL || Kind == AstKind::ENUM_DECL ||
@@ -298,16 +319,6 @@ namespace arco {
         
     };
 
-    struct GenericData {
-        llvm::SmallVector<GenericType*>   GenTys;
-        GenericBindings                   Bindings;
-        GenericBinding*                   CurBinding = nullptr;
-        // Stack used to restore state of whatever the previous binding
-        // was if the binding changed while it currently had a binding.
-        std::stack<GenericBinding*>       BindingStack;
-        ulen                              NumQualifications = 0;
-    };
-
     struct FuncDecl : Decl {
         FuncDecl() : Decl(AstKind::FUNC_DECL) {}
 
@@ -319,8 +330,6 @@ namespace arco {
         llvm::Intrinsic::ID LLVMIntrinsicID = 0;
 
         Identifier CallingConv;
-
-        GenericData* GenData = nullptr;
 
         // TODO: This should be turned into a bitset.
         bool ParamTypesChecked   = false;
@@ -378,10 +387,6 @@ namespace arco {
 
         Expr* GetInitializerValue(VarDecl* Field);
 
-        inline bool IsGeneric() const {
-            return GenData != nullptr;
-        }
-
         inline llvm::Function* GetLLFunction() {
             if (IsGeneric()) {
                 return GenData->CurBinding->LLFunction;
@@ -435,7 +440,7 @@ namespace arco {
         // variable had a const address or not.
         bool ExplicitlyMarkedConst = false;
         bool HasConstAddress       = false;
-
+        
         // One variable may depend on another variable in its
         // declaration.
         //
@@ -685,7 +690,9 @@ namespace arco {
         IdentRef() : Expr(AstKind::IDENT_REF) {}
         IdentRef(AstKind Kind) : Expr(Kind) {}
 
-        Identifier Ident;
+        Identifier                  Ident;
+        llvm::SmallVector<Type*, 8> GenBindings;
+        GenericBinding*             FoundBinding;
 
         inline bool IsFound() const {
             return RefKind != IdentRef::RK::NotFound;
@@ -861,6 +868,13 @@ namespace arco {
         TypeOf() : Expr(AstKind::TYPEOF) {}
 
         Type* TypeToGetTypeOf;
+    };
+
+    // Ex.  'typeid(int)'
+    struct TypeId : Expr {
+        TypeId() : Expr(AstKind::TYPEID) {}
+
+        Type* TypeToGetTypeId;
     };
 
     struct MoveObj : Expr {

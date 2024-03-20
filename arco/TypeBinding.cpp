@@ -1,8 +1,8 @@
 #include "TypeBinding.h"
 
-void arco::BindTypes(FuncDecl* Func, GenericBinding* Binding) {
+void arco::BindTypes(Decl* D, GenericBinding* Binding) {
     
-    auto& GenTys = Func->GenData->GenTys;
+    auto& GenTys = D->GenData->GenTys;
 
     // -- DEBUG
     //llvm::outs() << "BINDING TYPES:\n";
@@ -11,12 +11,12 @@ void arco::BindTypes(FuncDecl* Func, GenericBinding* Binding) {
     //    llvm::outs() << TyToBind->ToString() << "\n";
     //}
     //llvm::outs() << "BINDING TYPES END\n";
-
-    GenericBinding* PreviousBinding = Func->GenData->CurBinding;
+    
+    GenericBinding* PreviousBinding = D->GenData->CurBinding;
     if (PreviousBinding) {
-        Func->GenData->BindingStack.push(PreviousBinding);
+        D->GenData->BindingStack.push(PreviousBinding);
     }
-    Func->GenData->CurBinding = Binding;
+    D->GenData->CurBinding = Binding;
     for (ulen i = 0; i < GenTys.size(); i++) {
         GenericType* GenTy = GenTys[i];
         Type* TyToBind = Binding->BindableTypes[i];
@@ -24,9 +24,9 @@ void arco::BindTypes(FuncDecl* Func, GenericBinding* Binding) {
     }
 }
 
-void arco::UnbindTypes(FuncDecl* Func) {
+void arco::UnbindTypes(Decl* D) {
 
-    auto& GenTys = Func->GenData->GenTys;
+    auto& GenTys = D->GenData->GenTys;
 
     // -- DEBUG
     //llvm::outs() << "REMOVING BINDING TYPES:\n";
@@ -35,23 +35,23 @@ void arco::UnbindTypes(FuncDecl* Func) {
     //}
     //llvm::outs() << "REMOVING BINDING TYPES END\n";
 
-    Func->GenData->CurBinding = nullptr;
+    D->GenData->CurBinding = nullptr;
     for (GenericType* GenTy : GenTys) {
         GenTy->UnbindType();
     }
 
 
-    if (!Func->GenData->BindingStack.empty()) {
+    if (!D->GenData->BindingStack.empty()) {
         // Restoring previous qualification.
-        GenericBinding* PreviousBinding = Func->GenData->BindingStack.top();
-        Func->GenData->BindingStack.pop();
-        BindTypes(Func, PreviousBinding);
+        GenericBinding* PreviousBinding = D->GenData->BindingStack.top();
+        D->GenData->BindingStack.pop();
+        BindTypes(D, PreviousBinding);
     }
 }
 
-arco::GenericBinding* arco::GetExistingBinding(FuncDecl* Func, const llvm::SmallVector<Type*, 8>& BindableTypes) {
+arco::GenericBinding* arco::GetExistingBinding(Decl* D, const llvm::SmallVector<Type*, 8>& BindableTypes) {
 
-    auto* GenData = Func->GenData;
+    auto* GenData = D->GenData;
     for (GenericBinding* Binding : GenData->Bindings) {
         bool TysMatch = true;
         for (ulen i = 0; i < Binding->BindableTypes.size(); i++) {
@@ -71,19 +71,12 @@ arco::GenericBinding* arco::GetExistingBinding(FuncDecl* Func, const llvm::Small
     return nullptr;
 }
 
-arco::GenericBinding* arco::CreateNewBinding(FuncDecl* Func, llvm::SmallVector<Type*, 8> BindableTypes) {
+arco::GenericBinding* arco::CreateNewBinding(Decl* D, llvm::SmallVector<Type*, 8> BindableTypes) {
 
     // TODO: use of new
     GenericBinding* Binding = new GenericBinding;
     Binding->BindableTypes = std::move(BindableTypes);
 
-    // -- DEBUG
-    //llvm::outs() << "NEW TYPE BINDING:\n";
-    //for (Type* QualTy : Binding->BindableTypes) {
-    //    llvm::outs() << QualTy->ToString() << "\n";
-    //}
-    //llvm::outs() << "NEW TYPE BINDING END\n";
-
-    Func->GenData->Bindings.push_back(Binding);
+    D->GenData->Bindings.push_back(Binding);
     return Binding;
 }

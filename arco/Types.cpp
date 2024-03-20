@@ -175,7 +175,9 @@ arco::Type* arco::Type::Unbox() {
 arco::Type* arco::Type::UnboxGeneric() {
     if (Kind == TypeKind::Generic) {
         GenericType* GenTy = static_cast<GenericType*>(this);
-        return GenTy->GetBoundTy();
+        // Need to still unbox the generic if the generic bound another
+        // generic.
+        return GenTy->GetBoundTy()->UnboxGeneric();
     }
     return this;
 }
@@ -401,8 +403,8 @@ std::string arco::Type::ToString(bool                               ShowFullGene
     case TypeKind::UInt16:          return "uint16";
     case TypeKind::UInt32:          return "uint32";
     case TypeKind::UInt64:          return "uint64";
-    case TypeKind::Float32:         return "f32";
-    case TypeKind::Float64:         return "f64";
+    case TypeKind::Float32:         return "float32";
+    case TypeKind::Float64:         return "float64";
     case TypeKind::Char:            return "char";
     case TypeKind::Int:             return "int";
     case TypeKind::Ptrsize:         return "ptrsize";
@@ -773,12 +775,18 @@ llvm::SmallVector<u32> arco::FunctionType::GetUniqueHashKey(TypeInfo RetTy, cons
     return UniqueKey;
 }
 
-arco::GenericType* arco::GenericType::Create(Identifier Name, ulen Idx, ArcoContext& Context) {
+arco::GenericType* arco::GenericType::Create(Identifier Name,
+                                             IdentRef* ConstraintRef,
+                                             bool InvertConstraint,
+                                             ulen Idx,
+                                             ArcoContext& Context) {
     // NOTE: there is no need to cache since every instance of a created generic
     //       type is known during parsing and only exists within a local scope.
     GenericType* GenTy = new GenericType;
     GenTy->UniqueId = Context.UniqueTypeIdCounter++;
     GenTy->Name = Name;
+    GenTy->ConstraintRef = ConstraintRef;
+    GenTy->InvertConstraint = InvertConstraint;
     GenTy->ContainsGenerics = true;
     GenTy->Idx = Idx;
     return GenTy;

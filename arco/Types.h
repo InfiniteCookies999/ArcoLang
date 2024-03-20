@@ -17,6 +17,7 @@ namespace arco {
     struct Expr;
     struct StructDecl;
     struct EnumDecl;
+    struct IdentRef;
     struct InterfaceDecl;
     class ContainerType;
     class ImplPointerType;
@@ -293,7 +294,11 @@ namespace arco {
     class GenericType : public Type {
     public:
 
-        static GenericType* Create(Identifier Name, ulen Idx, ArcoContext& Context);
+        static GenericType* Create(Identifier Name,
+                                   IdentRef* ConstraintRef,
+                                   bool InvertConstraint,
+                                   ulen Idx,
+                                   ArcoContext& Context);
 
         const Identifier& GetName() const {
             return Name;
@@ -319,8 +324,18 @@ namespace arco {
             return BoundTy;
         }
 
+        inline IdentRef* GetConstraintRef() const {
+            return ConstraintRef;
+        }
+
+        inline bool ShouldInvertConstraint() const {
+            return InvertConstraint;
+        }
+
     private:
         Identifier Name;
+        IdentRef*  ConstraintRef;
+        bool       InvertConstraint;
         ulen       Idx = 0;
         Type*      BoundTy = nullptr;
 

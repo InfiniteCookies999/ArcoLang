@@ -193,12 +193,12 @@ fn tan(x float32) float32 {
     return sin(x) / cos(x);
 }
 
-generics<T>
+generics\T\
 fn min(a T, b T) T {
     return a < b ? a : b;
 }
 
-generics<T>
+generics\T\
 fn max(a T, b T) T {
     return a > b ? a : b;
 }

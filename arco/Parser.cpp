@@ -121,7 +121,9 @@ void arco::Parser::Parse() {
 
     auto ProcessGlobal = [this](VarDecl* Global) {
         Global->IsGlobal = true;
-        Context.UncheckedDecls.insert(Global);
+        if (!Global->IsGeneric()) {
+            Context.UncheckedDecls.insert(Global);
+        }
         
         if (!Global->Name.IsNull()) {
             auto Itr = NSpace->Decls.find(Global->Name);
@@ -332,7 +334,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
             } else if (PeekTok.Is(TokenKind::KW_INTERFACE)) {
                 Stmt = ParseInterfaceDecl(Mods);
             } else {
-                Stmt = ParseVarDecl(Mods);
+                Stmt = ParseVarDecl(Mods, std::move(GenTys));
                 Match(';');
             }
         } else {
@@ -527,6 +529,10 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
 
 void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
     
+    // TODO: Need to actually validate that all the generic
+    //       types actually used by parameters or or the
+    //       return type.
+
     RecoveryStrat PrevStrat = RecStrat;
     RecStrat = RecoveryStrat::Params;
     Match('(');
@@ -621,7 +627,7 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
     }
 }
 
-arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
+arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys) {
 
     ulen NumErrs = TotalAccumulatedErrors;
 
@@ -637,6 +643,13 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     }
 
     VarDecl* Var = CreateVarDecl(NameTok, Name, Mods);
+    CVar = Var;
+    if (!GenTys.empty()) {
+        // TODO: Use of call to new
+        Var->GenData = new GenericData;
+        Var->GenData->GenTys = GenTys;
+    }
+
     if (CTok.Is(TokenKind::KW_CONST)) {
         NextToken(); // Consuming 'const' token.
         Var->HasConstAddress = true;
@@ -672,6 +685,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods) {
     if (NumErrs != TotalAccumulatedErrors) {
         Var->ParsingError = true;
     }
+    CVar = nullptr;
 
     return Var;
 }
@@ -934,6 +948,9 @@ arco::EnumDecl* arco::Parser::ParseEnumDecl(Modifiers Mods) {
 
     Context.UncheckedDecls.insert(Enum);
 
+    // TODO: Better error recovery. Probably actually just want
+    // to call ParseStmt and then consider them bad statements at
+    // the particular enum scope.
     Match('{');
     bool MoreValues = false;
     while (CTok.IsNot('}') && CTok.IsNot(TokenKind::TK_EOF)) {
@@ -1592,17 +1609,29 @@ arco::Type* arco::Parser::ParseBasicType(bool ForRetTy) {
     case TokenKind::KW_BOOL:     Ty = Context.BoolType;    NextToken(); break;
     case TokenKind::IDENT: {
         
-        bool IsGeneric = false;
-        Identifier Name = Identifier(CTok.GetText());
-        if (CFunc && CFunc->IsGeneric()) {
-            // It possibly refers to a generic type.
-            auto* GenData = CFunc->GenData;
+        auto SearchForGeneric = [](Decl* D, const Identifier& Name) -> Type* {
+            auto* GenData = D->GenData;
             auto Itr = std::find_if(GenData->GenTys.begin(), GenData->GenTys.end(),
                 [&Name](const GenericType* GenTy) {
                     return GenTy->GetName() == Name;
                 });
             if (Itr != GenData->GenTys.end()) {
-                Ty = *Itr;
+                return *Itr;
+            }
+            return nullptr;
+        };
+
+        bool IsGeneric = false;
+        Identifier Name = Identifier(CTok.GetText());
+        if (CFunc && CFunc->IsGeneric()) {
+            if (Type* GenTy = SearchForGeneric(CFunc, Name)) {
+                Ty = GenTy;
+                IsGeneric = true;
+            }
+        }
+        if (!IsGeneric && CVar && CVar->IsGeneric()) {
+            if (Type* GenTy = SearchForGeneric(CVar, Name)) {
+                Ty = GenTy;
                 IsGeneric = true;
             }
         }
@@ -1633,13 +1662,37 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
     // that uses the generic types so that they may also be considered a parse error.
 
     llvm::SmallVector<GenericType*> Generics;
-    Match('<');
+    Match('\\');
     bool MoreGenerics = false;
     ulen GenericIdx = 0;
 
+    // TODO: Better error recovery.
     do {
+        Identifier Name, ConstraintName;
         Token NameTok = CTok;
-        Identifier Name = ParseIdentifier("Expected identifier for generic type");        
+        bool InvertsConstraint = false;
+        IdentRef* ConstraintRef = nullptr;
+        if (CTok.Is('!')) {
+            NextToken();
+            InvertsConstraint = true;
+            ConstraintName = ParseIdentifier("Expected identifier for generic constraint");
+            Name           = ParseIdentifier("Expected identifier for generic type");
+
+            ConstraintRef = NewNode<IdentRef>(NameTok);
+            ConstraintRef->Ident = ConstraintName;
+        } else {
+            Name = ParseIdentifier("Expected identifier for generic type");
+
+            Identifier ConstraintName;
+            if (CTok.Is(TokenKind::IDENT)) {
+                ConstraintRef = NewNode<IdentRef>(NameTok);
+                ConstraintRef->Ident = Name;
+                Name = Identifier(CTok.GetText());
+                NextToken();
+            }
+        }
+
+        // TODO: Need to check for duplicates from current function if it is a variable.
         auto Itr = std::find_if(Generics.begin(), Generics.end(),
             [&Name](const GenericType* GenTy) {
                 return GenTy->GetName() == Name;
@@ -1647,7 +1700,8 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
         if (Itr != Generics.end()) {
             Error(NameTok, "Duplicate generic by name '%s'", Name);
         } else if (!Name.IsNull()) {
-            GenericType* GenTy = GenericType::Create(Name, GenericIdx, Context);
+            
+            GenericType* GenTy = GenericType::Create(Name, ConstraintRef, InvertsConstraint, GenericIdx, Context);
             ++GenericIdx;
             Generics.push_back(GenTy);
         }
@@ -1658,7 +1712,7 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
         }
     } while (MoreGenerics);
 
-    Match('>');
+    Match('\\');
     return Generics;
 }
 
@@ -1897,6 +1951,10 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
                 }
             }
 
+            if (CTok.Is('\\')) {
+                ParseTypeBindings(IRef->GenBindings);
+            }
+
             return ParseIdentPostfix(IRef);
         }
     }
@@ -2004,7 +2062,17 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         Match('(');
         TOf->TypeToGetTypeOf = ParseType(false);
         Match(')');
-        return TOf;
+        // Need to call ParseIdentPostfix because it returns
+        // a data structure that the user can access.
+        return ParseIdentPostfix(TOf);
+    }
+    case TokenKind::KW_TYPEID: {
+        TypeId* TId = NewNode<TypeId>(CTok);
+        NextToken(); // Consuming 'typeid' token.
+        Match('(');
+        TId->TypeToGetTypeId = ParseType(false);
+        Match(')');
+        return TId;
     }
     case '[':
         return ParseArray();
@@ -2563,6 +2631,24 @@ void arco::Parser::SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth) 
             SetRequiredArrayLengthForArray(static_cast<Array*>(Elm), CArrayDepth + 1);
         }
     }
+}
+
+void arco::Parser::ParseTypeBindings(llvm::SmallVector<Type*, 8>& Bindings) {
+    NextToken(); // Consuming '\' token.
+
+    // TODO: Better error recovery!
+    bool MoreBindings = false;
+    do {
+
+        Bindings.push_back(ParseType(false));
+
+        MoreBindings = CTok.Is(',');
+        if (MoreBindings) {
+            NextToken();
+        }
+    } while (MoreBindings);
+    
+    Match('\\', "for generic type bindings");
 }
 
 void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,

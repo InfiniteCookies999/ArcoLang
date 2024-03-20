@@ -1,7 +1,49 @@
 namespace reflect;
 
 TypeId enum {
+    PTRSIZE;
+    UINT8;
+    UINT16;
+    UINT32;
+    UINT64;
 
+    INT;
+    INT8;
+    INT16;
+    INT32;
+    INT64;
+
+    CHAR;
+
+    FLOAT32;
+    FLOAT64;
+    
+    VOID;
+    BOOL;
+    CSTR;
+    POINTER;
+    SLICE;
+    ARRAY;
+    STRUCT;
+    ENUM;
+    INTERFACE;
+    FUNCTION;
+    GENERIC;
+
+    NULL;
+    ERROR;
+    // When an array is declared with no elements.
+    EMPTY_ARRAY_ELM;
+    // When an identifier is an import the type is set to this.
+    IMPORT;
+    // When referencing an identifier that refers to one or more functions.
+    FUNC_REF;
+    // When referencing an identifier that refers to a struct.
+    STRUCT_REF;
+    // When referencing an identifier that refers to an enum.
+    ENUM_REF;
+    // When referencing an identifier that refers to an interface.
+    INTERFACE_REF;
 }
 
 Type struct {

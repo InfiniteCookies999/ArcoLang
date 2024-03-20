@@ -1,5 +1,6 @@
 import win32;
 import reflect.Any;
+import reflect.TypeId;
 import files.FileHandle;
 
 private out_file_handle := FileHandle{ win32.GetStdHandle(win32.STD_OUTPUT_HANDLE), auto_close=false };
@@ -11,44 +12,41 @@ err := OutStream{ &err_file_handle };
 
 in  := TokenStream{ &in_file_handle };
 
+// TODO: since print functions are called so frequently it may
+//       be better to at some point not use generics at all.
+//
+// Used to determine if the value can be printed using
+// a generic function or if it would be better to fallback
+// on the function which uses an Any type.
+generics\T\
+private requires_any :: typeid(T) == TypeId.ARRAY ||
+                        typeid(T) == TypeId.SLICE ||
+                        typeid(T) == TypeId.ENUM  ||
+                        typeid(T) == TypeId.STRUCT;
+
 // Functions for writing to std out.
 //----------------------------------------------
 
-fn print(i int64, base := 10) {
+fn print(i int64, base int) {
     try out.write(i, base);
 }
 
-fn print(i uint64, base := 10) {
+fn print(i uint64, base int) {
     try out.write(i, base);
 }
 
-fn print(i int, base := 10) {
+fn print(i int, base int) {
     try out.write(i, base);
 }
 
-/*
-generics<T>
-private requires_any :: typeof(T).id == TypeId.ARRAY ||
-                        typeof(T).id == TypeId.SLICE ||
-                        typeof(T).id == TypeId.ENUM  ||
-                        typeof(T).id == TypeId.STRUCT;
-
-
-generics<!requies_any T>
-fn print(value T) {
-    try out.write(value);
-}*/
-
-generics<T>
+generics\!requires_any T\
 fn print(value T) {
     try out.write(value);
 }
 
-// TODO:   Cannot do this yet until we have generic constraints.
-//
-//fn print(any Any) {
-//    try out.write(any);
-//}
+fn print(any Any) {
+    try out.write(any);
+}
 
 /*
  * See OutStream for list of formatting
@@ -62,28 +60,26 @@ fn println(msg cstr) {
     try out.writeln(msg);
 }
 
-fn println(i int64, base := 10) {
+fn println(i int64, base int) {
     try out.writeln(i, base);
 }
 
-fn println(i uint64, base := 10) {
+fn println(i uint64, base int) {
     try out.writeln(i, base);
 }
 
-fn println(i int, base := 10) {
+fn println(i int, base int) {
     try out.writeln(i);
 }
 
-generics<T>
+generics\!requires_any T\
 fn println(value T) {
     try out.writeln(value);
 }
 
-//  TODO: See comment above!
-//
-//fn println(any Any) {
-//    try out.writeln(any);
-//}
+fn println(any Any) {
+    try out.writeln(any);
+}
 
 /*
  * See OutStream for list of formatting
@@ -101,7 +97,7 @@ fn println(fmt cstr, args Any...) {
 //
 //----------------------------------------------
 
-generics<T>
+generics\!requires_any T\
 fn eprint(value T) {
     err.write(value) catch _ {};
 }
@@ -114,7 +110,7 @@ fn eprint(fmt cstr, args Any...) {
     err.write(fmt, args) catch _ {};
 }
 
-generics<T>
+generics\!requires_any T\
 fn eprintln(value T) {
     err.writeln(value) catch _ {};
 }
