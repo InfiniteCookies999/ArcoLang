@@ -2957,19 +2957,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         return;
     } else if (SiteTy->GetKind() != TypeKind::FuncRef) {
         // Invalid call.
-        Log.BeginError(Call->Loc, "cannot call type '%s'", SiteTy);
-        if (SiteTy->GetKind() == TypeKind::StructRef) {
-            IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
-            StructDecl* Struct = IRef->Struct;
-            // TODO: Should this validate that there is a constructor first?
-            Log.AddNoteLine([Struct](auto& OS) {
-                OS << "Tried to call a constructor? Use: ";
-                OS << Struct->Name;
-                OS << "{ <your args> } instead.";
-            });
-        }
-        Log.EndError();
-
+        DisplayErrorForBadCallSiteType(Call);
         YIELD_ERROR(Call);
     }
 
@@ -3106,6 +3094,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         for (ulen i = 0; i < Selected->GenData->GenTys.size(); i++) {
             if ((*BindableTypes)[i] == nullptr) {
                 GenericType* GenTy = Selected->GenData->GenTys[i];
+                // TODO: Make debug message more explainable.
                 Error(ErrorLoc,
                     "Generic type '%s' did not recieve a binding type",
                     GenTy->ToString(false)
@@ -4407,6 +4396,104 @@ std::string arco::SemAnalyzer::GetGenBindCallArgHeaderInfo(ArgMismatchData& Mism
             + "' of type '" + ArgTy->ToString() + "'";
     }
     return std::string();
+}
+
+void arco::SemAnalyzer::DisplayErrorForBadCallSiteType(FuncCall* Call) {
+    Type* SiteTy = Call->Site->Ty;
+    Log.BeginError(Call->Loc, "cannot call type '%s'", SiteTy);
+    if (SiteTy->GetKind() == TypeKind::StructRef) {
+        IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
+        StructDecl* Struct = IRef->Struct;
+        // TODO: Should this validate that there is a constructor first?
+        Log.AddNoteLine([Struct, Call](auto& OS) {
+            OS << "Calling a constructor? Use: ";
+            OS << Struct->Name;
+            if (Call->Args.empty()) {
+                OS << "{}";
+            } else {
+                OS << "{ ";
+                // Cannot rely on the locations of the arguments because
+                // there are named and non named arguments. Going to
+                // traverse the text and since parens must balance otherwise
+                // there would have been a parsing error we may simply rely
+                // on the count of them to determine a stopping condition.
+                llvm::StringRef BeginText = Call->Loc.Text;
+                ulen ParamCount = 1;
+                const char* TextPtr = BeginText.data();
+
+                llvm::SmallVector<std::pair<const char*, ulen>> ArgRangePairs;
+                for (NonNamedValue& Arg : Call->Args) {
+                    SourceLoc ArgLoc = Arg.ExpandedLoc;
+                    const char* TextStart = ArgLoc.Text.data();
+                    ArgRangePairs.push_back({ TextStart, ArgLoc.Text.size() });
+                }
+                for (NamedValue& Arg : Call->NamedArgs) {
+                    SourceLoc ArgLoc = Arg.ExpandedLoc;
+                    const char* TextStart = ArgLoc.Text.data();
+                    ArgRangePairs.push_back({ TextStart, ArgLoc.Text.size() });
+                }
+
+                bool AllArgsTooLong = true;
+                bool ArgTextTooLong = false;
+                ++TextPtr; // Skip first param.
+                while (ParamCount != 0) {
+                    
+                    auto Itr = std::find_if(ArgRangePairs.begin(), ArgRangePairs.end(),
+                        [TextPtr](auto& RangePair) {
+                            return TextPtr == std::get<0>(RangePair);
+                        });
+                    if (Itr != ArgRangePairs.end()) {
+                        auto& RangePair = *Itr;
+                        // TODO: Would be nice for this to not include the trimmed space.
+                        ulen ArgTextLength = std::get<1>(RangePair);
+                        ulen TotalLength = (TextPtr + ArgTextLength) - BeginText.data() - 1;
+                        if (TotalLength > 12) {
+                            ArgTextTooLong = true;
+                            break;
+                        }
+                        AllArgsTooLong = false;
+                        TextPtr += ArgTextLength;
+                    }
+
+                    if (*TextPtr == '(') {
+                        ++ParamCount;
+                    } else if (*TextPtr == ')') {
+                        --ParamCount;
+                    }
+                    ++TextPtr;
+                }
+
+                ulen ArgTextLength = TextPtr - BeginText.begin();
+                if (!ArgTextTooLong) {
+                    ArgTextLength -= 2; // -2 skip )
+                } else {
+                    ArgTextLength -= 1;
+                }
+
+                llvm::StringRef ArgsText = llvm::StringRef(
+                    BeginText.begin() + 1, // +1 skip (
+                    ArgTextLength
+                );
+
+                ArgsText = ArgsText.trim();
+                OS << ArgsText;
+                if (ArgTextTooLong) {
+                    SetTerminalColor(TerminalColorBrightBlue);
+                    if (!AllArgsTooLong) {
+                        OS << " ";
+                    }
+                    OS << "...";
+                    SetTerminalColor(TerminalColorDefault);
+                }
+                OS << " }";
+            }
+
+            OS << " instead.";
+
+            });
+    }
+    Log.EndError();
+
 }
 
 void arco::SemAnalyzer::CheckIfErrorsAreCaptured(SourceLoc ErrorLoc, FuncDecl* CalledFunc) {

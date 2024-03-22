@@ -119,21 +119,18 @@ namespace arco {
                                        bool& VarArgsPassAlong,
                                        GenericBinding*& Binding,
                                        Type*& RetTy);
-        
         void CreateCallCasts(FuncDecl* Selected,
                              llvm::SmallVector<NonNamedValue>& Args,
                              llvm::SmallVector<NamedValue>& NamedArgs,
                              bool VarArgsPassAlong,
                              Type*& RetTy,
                              const BindableList* QualifiedTypes);
-
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
                                            llvm::SmallVector<NonNamedValue>& Args,
                                            llvm::SmallVector<NamedValue>& NamedArgs,
                                            bool& SelectedVarArgsPassAlong,
                                            llvm::SmallVector<BindableList, 8>& AllBindableTypes);
-        
         bool CompareAsCanidate(FuncDecl* Canidate,
                                llvm::SmallVector<NonNamedValue>& Args,
                                llvm::SmallVector<NamedValue>& NamedArgs,
@@ -204,6 +201,7 @@ namespace arco {
                                          Type* ParamType,
                                          ArgMismatchData* MismatchData);
         std::string GetGenBindCallArgHeaderInfo(ArgMismatchData& MismatchData, Type* ArgTy);
+        void DisplayErrorForBadCallSiteType(FuncCall* Call);
 
         void CheckIfErrorsAreCaptured(SourceLoc ErrorLoc, FuncDecl* CalledFunc);
         void CheckTryError(TryError* Try);
