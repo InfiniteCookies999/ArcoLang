@@ -4236,43 +4236,43 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
         );
     }
 
+    if (Canidate) {
+        for (const NamedValue& NamedArg : NamedArgs) {
 
-
-    for (const NamedValue& NamedArg : NamedArgs) {
-
-        auto Itr = std::find_if(Canidate->Params.begin(), Canidate->Params.end(),
-            [&NamedArg](VarDecl* Param) {
-                return Param->Name == NamedArg.Name;
-            });
-        if (Itr == Canidate->Params.end()) {
-            if (EncounteredError)  MismatchInfo += "\n";
-            MismatchInfo += "- Could not find parameter by name: '" + NamedArg.Name.Text.str() + "'.";
-            EncounteredError = true;
-            continue;
-        }
+            auto Itr = std::find_if(Canidate->Params.begin(), Canidate->Params.end(),
+                [&NamedArg](VarDecl* Param) {
+                    return Param->Name == NamedArg.Name;
+                });
+            if (Itr == Canidate->Params.end()) {
+                if (EncounteredError)  MismatchInfo += "\n";
+                MismatchInfo += "- Could not find parameter by name: '" + NamedArg.Name.Text.str() + "'.";
+                EncounteredError = true;
+                continue;
+            }
         
-        VarDecl* Param = *Itr;
+            VarDecl* Param = *Itr;
 
-        Expr* Arg = NamedArg.AssignValue;
-        bool  ParamConstMemory = Param->HasConstAddress;
-        Type* ParamTy = Param->Ty;
+            Expr* Arg = NamedArg.AssignValue;
+            bool  ParamConstMemory = Param->HasConstAddress;
+            Type* ParamTy = Param->Ty;
 
-        ArgMismatchData ArgData = {
-            -1,
-            NamedArg.Name,
-            MismatchInfo
-        };
-        GetCallMismatchInfoForArg(
-            ParamTy,
-            Arg,
-            Param->ImplicitPtr,
-            ParamConstMemory,
-            BindableTypes,
-            NumGenerics,
-            NumQualifications,
-            GenericIdx,
-            ArgData
-        );
+            ArgMismatchData ArgData = {
+                -1,
+                NamedArg.Name,
+                MismatchInfo
+            };
+            GetCallMismatchInfoForArg(
+                ParamTy,
+                Arg,
+                Param->ImplicitPtr,
+                ParamConstMemory,
+                BindableTypes,
+                NumGenerics,
+                NumQualifications,
+                GenericIdx,
+                ArgData
+            );
+        }
     }
     
     if (Canidate && Canidate->IsGeneric()) {

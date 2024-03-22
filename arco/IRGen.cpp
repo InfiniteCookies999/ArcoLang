@@ -3493,7 +3493,8 @@ llvm::Constant* arco::IRGenerator::GenTypeId(TypeId* TId) {
 
 llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded) {
     
-    if (Tern->Ty->GetKind() == TypeKind::Struct) {
+    if (Tern->Ty->GetKind() == TypeKind::Struct ||
+        Tern->Ty->GetKind() == TypeKind::Array) {
         llvm::BasicBlock* LLThenBB = llvm::BasicBlock::Create(LLContext, "tif.then", LLFunc);
         llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "tif.end", LLFunc);
         llvm::BasicBlock* LLElseBB = llvm::BasicBlock::Create(LLContext, "tif.else", LLFunc);
@@ -3520,8 +3521,6 @@ llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, b
         Builder.SetInsertPoint(LLEndBB);
 
         return LLAddr;
-    } else if (Tern->Ty->GetKind() == TypeKind::Array) {
-        // TODO
     } else {
         return Builder.CreateSelect(GenCond(Tern->Cond), GenRValue(Tern->LHS), GenRValue(Tern->RHS));
     }
