@@ -207,7 +207,7 @@ String struct {
         }
 
         // Create a temporary buffer of indices
-        tmp_buffer int[64];
+        tmp_buffer int[64] = ---;
         ext_buffer int*;
         index_count := 0;
         head := this.buffer;
@@ -280,7 +280,7 @@ String struct {
         // TODO: Replace with macro once supported!
         length_before_index := length - buffer_offset;
         if length_before_index > 0 {
-            memcpy(new_buffer   + new_buffer_offset,
+            memcpy(new_buffer  + new_buffer_offset,
                    this.buffer + buffer_offset,
                    length_before_index);
             new_buffer_offset += length_before_index;
@@ -296,6 +296,68 @@ String struct {
 
         delete ext_buffer;
         return this;
+    }
+
+    /*
+     * Removes the character c from this String.
+     */
+    fn remove(c char) String* {
+        // Just reusing the current length of the buffer so that
+        // the new buffer can just be filled while iterating over
+        // the characters.
+        new_buffer := new char[this.length + 1]; // +1 for null terminator.
+        new_length := this.length;
+        new_buffer_offset := 0;
+        
+        head := this.buffer;
+        end  := this.buffer + this.length;
+        loop head < end {
+            remaining int = cast(int) end - cast (int) head;
+            idx := std.find_first_of(head, remaining, c);
+            if idx == -1   break; // No more remaining characters to replace.
+
+            --new_length;
+
+            if idx > 0 {
+                memcpy(new_buffer + new_buffer_offset,
+                       head,
+                       idx);
+            }
+            new_buffer_offset += idx;
+            
+            head += idx + 1;
+
+        }
+
+        // Still need to add the trailing part.
+        remaining int = cast(int) end - cast (int) head;
+        if remaining > 0 {
+            memcpy(new_buffer + new_buffer_offset,
+                   head,
+                   remaining);
+        }
+
+        new_buffer[new_length] = '\0'; // null terminating!
+
+        delete this.buffer;
+        this.buffer = new_buffer;
+        this.length = new_length;
+
+        return this;
+    }
+
+    /*
+     * Removes the substring sub from this String.
+     */
+    fn remove(sub cstr) String* {
+        return replace(sub, "");
+    }
+
+    /*
+     * Removes the substring sub from this String.
+     */
+    fn remove(sub String^) String* {
+        return replace(sub, "");
     }
 
     fn find_first_of(sub cstr) int {
@@ -737,7 +799,7 @@ fn to_string(i int, base := 10) String {
 }
 
 fn to_string(b bool) String {
-    return b ? String{ "true", 4 } :
+    return b ? String{ "true" , 4 } :
                String{ "false", 5 };
 }
 
