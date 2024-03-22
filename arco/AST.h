@@ -721,8 +721,9 @@ namespace arco {
         FieldAccessor() : IdentRef(AstKind::FIELD_ACCESSOR) {}
 
         // Request for the length of an array.
-        bool IsArrayLength = false;
-        bool IsSliceLength = false;
+        bool IsArrayLength    = false;
+        bool IsSliceLength    = false;
+        bool IsSliceBufferAcc = false;
         // Something like Day.MONDAY
         const EnumDecl::EnumValue* EnumValue = nullptr;
 

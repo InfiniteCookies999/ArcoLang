@@ -10,6 +10,7 @@ arco::ArcoContext::ArcoContext()
 
     MainIdentifier(Identifier("main")),
     LengthIdentifier(Identifier("length")),
+    BufferIdentifier(Identifier("buffer")),
     StdcallIdentifier(Identifier("stdcall")),
     CdeclIdentifier(Identifier("cdecl")),
     FastcallIdentifier(Identifier("fastcall")),

@@ -2380,6 +2380,8 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
                 FieldAcc->Site->Ty->AsArrayTy()->GetLength());
     } else if (FieldAcc->IsSliceLength) {
         return CreateStructGEP(GenNode(FieldAcc->Site), 0);
+    } else if (FieldAcc->IsSliceBufferAcc) {
+        return CreateStructGEP(GenNode(FieldAcc->Site), 1);
     }
 
     if (FieldAcc->EnumValue) {
@@ -4462,11 +4464,10 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
     Type* Ty = Global->Ty;
     Expr* Assignment = Global->Assignment;
     if (Assignment) {
-        // TODO: Assigned a slice?
-
+        
         if (Assignment->Is(AstKind::ARRAY)) {
             // Is Array
-            if (Assignment->IsFoldable) {
+            if (Assignment->IsFoldable && Ty->GetKind() != TypeKind::Slice) {
                 // Creating a global constant array then decaying that
                 // array and returning the decayed pointer to the array.
                 Array*     Arr    = static_cast<Array*>(Assignment);

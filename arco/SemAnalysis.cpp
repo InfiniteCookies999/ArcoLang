@@ -2762,6 +2762,12 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
             FieldAcc->Ty = Context.IntType;
             return;
         }
+    } else if (FieldAcc->Ident == Context.BufferIdentifier) {
+        if (Site->Ty->GetKind() == TypeKind::Slice) {
+            FieldAcc->IsSliceBufferAcc = true;
+            FieldAcc->Ty = PointerType::Create(Site->Ty->AsSliceTy()->GetElementType(), Context);
+            return;
+        }
     }
 
     if (Site->Ty == Context.EnumRefType) {

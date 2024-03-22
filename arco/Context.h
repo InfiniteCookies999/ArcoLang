@@ -84,6 +84,8 @@ namespace arco {
         Identifier MainIdentifier;
         // 'length' identifier (for identifying array lengths)
         Identifier LengthIdentifier;
+        // 'buffer' identifier (for accessing slice buffers)
+        Identifier BufferIdentifier;
         // Identifiers for calling conventions
         Identifier StdcallIdentifier;
         Identifier CdeclIdentifier;
