@@ -3085,6 +3085,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         }
     }
     
+
     // Creating casts for the arguments.
     
     // TODO: Figure out a better way to obtain the the generic function index.
@@ -3098,19 +3099,30 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         }
     }
     
-    BindableList* QualifiedTypes = nullptr;
+    BindableList* BindableTypes = nullptr;
     if (Selected->IsGeneric()) {
-        QualifiedTypes = &AllBindableTypes[GenericIdx];
+        BindableTypes = &AllBindableTypes[GenericIdx];
+        // Making sure all of the generic types have bindings.
+        for (ulen i = 0; i < Selected->GenData->GenTys.size(); i++) {
+            if ((*BindableTypes)[i] == nullptr) {
+                GenericType* GenTy = Selected->GenData->GenTys[i];
+                Error(ErrorLoc,
+                    "Generic type '%s' did not recieve a binding type",
+                    GenTy->ToString(false)
+                    );
+            }
+        }
+
         if (Selected->RetTy->ContainsGenerics) {
             // TODO: optimize by storing the qualified return type.
-            RetTy = QualifyType(Selected->RetTy, *QualifiedTypes);
+            RetTy = QualifyType(Selected->RetTy, *BindableTypes);
         } else {
             RetTy = Selected->RetTy;
         }
     } else {
         RetTy = Selected->RetTy;
     }
-    CreateCallCasts(Selected, Args, NamedArgs, VarArgsPassAlong, RetTy, QualifiedTypes);
+    CreateCallCasts(Selected, Args, NamedArgs, VarArgsPassAlong, RetTy, BindableTypes);
 
     if (!CatchingErrors && !Selected->RaisedErrors.empty()) {
         CheckIfErrorsAreCaptured(ErrorLoc, Selected);
@@ -3126,13 +3138,12 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
 
             // Removing the qualification types so that all that is left is the bindable types.
             // These will be what is used to bind the generic types.
-            BindableList& BindableTypes = *QualifiedTypes;
-            BindableTypes.resize(BindableTypes.size() - Selected->GenData->NumQualifications);
-            QualifiedTypes = &BindableTypes;
+            BindableList& BindableTypesNoQuals = *BindableTypes;
+            BindableTypesNoQuals.resize(BindableTypesNoQuals.size() - Selected->GenData->NumQualifications);
 
-            Binding = GetExistingBinding(Selected, *QualifiedTypes);
+            Binding = GetExistingBinding(Selected, BindableTypesNoQuals);
             if (!Binding) {
-                Binding = CreateNewBinding(Selected, std::move(*QualifiedTypes));
+                Binding = CreateNewBinding(Selected, std::move(BindableTypesNoQuals));
                 if (CFunc && CFunc->IsGeneric()) {
                     Binding->OriginalFile = CFunc->GenData->CurBinding->OriginalFile;
                     Binding->OriginalLoc  = CFunc->GenData->CurBinding->OriginalLoc;

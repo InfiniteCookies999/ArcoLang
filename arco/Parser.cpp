@@ -530,10 +530,6 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
 
 void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
     
-    // TODO: Need to actually validate that all the generic
-    //       types actually used by parameters or or the
-    //       return type.
-
     RecoveryStrat PrevStrat = RecStrat;
     RecStrat = RecoveryStrat::Params;
     Match('(');
