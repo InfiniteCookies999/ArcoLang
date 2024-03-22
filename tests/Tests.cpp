@@ -174,6 +174,7 @@ int main() {
     RunTest(SRC("member_functions/member_functions2.arco"), "1234");
     RunTest(SRC("member_functions/member_functions3.arco"), "foo1foo2");
     RunTest(SRC("member_functions/member_functions4.arco"), "22");
+    RunTest(SRC("member_functions/member_functions5.arco"), "55");
     RunTest(SRC("member_functions/constructors1.arco"), "53");
     RunTest(SRC("member_functions/constructors2.arco"), "55");
     
@@ -257,7 +258,7 @@ int main() {
     RunTest(SRC("errors/errors3.arco"), "test message 55");
     RunTest(SRC("errors/errors4.arco"), "test message 2");
     RunTest(SRC("errors/errors5.arco"), "test message");
-
+    
     //RunTest(SRC("lots_of_errors.arco"), "");
 
     if (Succeeded + Failed > 0) {

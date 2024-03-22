@@ -1,0 +1,19 @@
+import std;
+
+A struct {
+    b int;
+    
+    fn bar(val int) {
+        b = val;
+    }
+    
+    fn foo() {
+        this.bar(55);
+    }
+}
+
+fn main() {
+    a A;
+    a.foo();
+    std.print(a.b);
+}

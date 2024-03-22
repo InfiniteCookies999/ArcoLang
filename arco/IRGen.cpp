@@ -2565,7 +2565,6 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             FuncCall* Call = static_cast<FuncCall*>(CallNode);
             llvm::Value* LLThisPass;
             if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
-                // TODO: does this.memfunc() work?
                 LLThisPass = GenNode(Call->Site);
             } else {
                 // Calling one member function from another.
