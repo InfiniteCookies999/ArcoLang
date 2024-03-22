@@ -118,7 +118,7 @@ fn read(path cstr) String raises IOError {
     
     handle := open(path, IOFlag.IN);
     size   := handle.get_size();
-    buffer := new char[size + 1];
+    buffer := new char[size + 1] ---;
     
     read_bytes := handle.read_buffer(buffer, size);
     if read_bytes != size {
@@ -284,7 +284,7 @@ fn current_dir() String raises IOError {
     if path_length == 0 {
         raise IOError{ "failed to get the length of the current directory path" };
     }
-    buffer := new char[path_length];
+    buffer := new char[path_length] ---;
 
     // TODO: recheck if the length is not long enough?
     if win32.GetCurrentDirectoryA(path_length, buffer) == 0 {

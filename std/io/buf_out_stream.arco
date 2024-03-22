@@ -18,7 +18,7 @@ BufferedOutStream struct : Writeable, Flushable {
         }
         handle.set_flushable(this);
         this.buffer_size = buffer_size;
-        buffer = new char[buffer_size];
+        buffer = new char[buffer_size] ---;
     }
 
     /*

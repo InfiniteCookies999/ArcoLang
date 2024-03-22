@@ -2132,6 +2132,9 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
                 ParseAggregatedValues(Alloc->Values, Alloc->NamedValues, RecoveryStrat::StructInitArgs);
             }
             Match('}', "for struct initializer");
+        } else if (CTok.Is(TokenKind::MINUS_MINUS_MINUS)) {
+            NextToken(); // Consuming '---'.
+            Alloc->LeaveUninitialized = true;
         }
         return Alloc;
     }

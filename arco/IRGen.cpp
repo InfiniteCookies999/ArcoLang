@@ -541,8 +541,6 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, boo
     }
     for (ulen i = 0; i < Func->Params.size(); i++) {
         LLFunc->getArg(i + ImplicitParams)->setName(llvm::Twine(Func->Params[i]->Name.Text).concat(".param"));
-        //LLFunc->getArg(i + ImplicitParams)->addAttr(llvm::Attribute::NoUndef);
-        //LLFunc->getArg(i + ImplicitParams)->setName(Func->Params[i]->Name.Text);
     }
 
     if (Func->IsGeneric() && ShouldBind) {
@@ -552,10 +550,6 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, boo
 
 void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (Func->Mods & ModKinds::NATIVE) return;
-
-    // TODO: Things are still a bit broken for the return value of main functions
-    //       when there is error catching. Doesn't seem to store the return value
-    //       at the end of the function for the non error case.
 
     CFunc  = Func;
     LLFunc = Func->GetLLFunction();
@@ -1020,7 +1014,21 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
     EMIT_DI(GetDIEmitter(Var)->EmitLocalVar(Var, Builder));
 
     if (Var->Assignment) {
-        GenAssignment(Var->LLAddress, Var->Ty, Var->Assignment, Var->HasConstAddress);
+        GenAssignment(Var->LLAddress,
+                      Var->Ty,
+                      Var->Assignment,
+                      Var->HasConstAddress,
+                      false);
+        if (EmitDebugInfo) {
+            llvm::BasicBlock* LLBB = Builder.GetInsertBlock();
+            if (!LLBB->empty()) {
+                // Sometimes functions raise errors which cause them to branch
+                // based on if the error is null. This can mean that the insert
+                // location is now an empty block and since emitting debug locations
+                // requires there to be an instruction !LLBB->empty() must be checked.
+                EmitDebugLocation(Var->Assignment);
+            }
+        }
     } else if (!Var->LeaveUninitialized) {
         GenDefaultValue(Var->Ty, Var->LLAddress);
     }
@@ -1029,20 +1037,6 @@ llvm::Value* arco::IRGenerator::GenVarDecl(VarDecl* Var) {
         AddObjectToDestroyOpt(Var->Ty, Var->LLAddress);
     }
 
-    // Emit the location for the generated assignment.
-    if (EmitDebugInfo) {
-        llvm::BasicBlock* LLBB = Builder.GetInsertBlock();
-
-        if (LLBB->empty()) {
-            // This can happen when dealing with raised errors because they generate
-            // an if implement statement and we are at the end block of that if.
-            // 
-            // TODO: Fix this!
-        } else {
-            llvm::Instruction& LLAssignmentInst = LLBB->back();
-            GetDIEmitter(CFunc)->EmitDebugLocation(&LLAssignmentInst, Var->Loc);
-        }
-    }
     return Var->LLAddress;
 }
 
@@ -1592,7 +1586,7 @@ llvm::Value* arco::IRGenerator::GenNestedScope(NestedScopeStmt* NestedScope) {
 
 llvm::Value* arco::IRGenerator::GenRaise(RaiseStmt* Raise) {
     EncounteredReturn = true; // TODO: Is this meant to be here?
-
+    
     StructType* RaisedStructTy = Raise->StructInit->Ty->AsStructType();
     StructDecl* RaisedStruct   = RaisedStructTy->GetStruct();
 
@@ -1711,8 +1705,21 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
     switch (BinOp->Op) {
     case '=': {
         llvm::Value* LLAddress = GenNode(BinOp->LHS);
-        GenAssignment(LLAddress, BinOp->LHS->Ty, BinOp->RHS, BinOp->RHS->HasConstAddress, true);
-        EMIT_DI(EmitDebugLocation(BinOp));
+        GenAssignment(LLAddress,
+                      BinOp->LHS->Ty,
+                      BinOp->RHS,
+                      BinOp->RHS->HasConstAddress,
+                      true);
+        if (EmitDebugInfo) {
+            llvm::BasicBlock* LLBB = Builder.GetInsertBlock();
+            if (!LLBB->empty()) {
+                // Sometimes functions raise errors which cause them to branch
+                // based on if the error is null. This can mean that the insert
+                // location is now an empty block and since emitting debug locations
+                // requires there to be an instruction !LLBB->empty() must be checked.
+                EmitDebugLocation(BinOp);
+            }
+        }
         return LLAddress;
     }
     //
@@ -2511,6 +2518,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    llvm::SmallVector<NamedValue>& NamedArgs,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong) {
+    
     GenericBinding* Binding;
     if (!CalledFunc->Interface) {
         if (CalledFunc->IsGeneric()) {
@@ -2696,7 +2704,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             }
         }    
     }
-    
+
     llvm::Value* LLRetValue;
     if (!CalledFunc->Interface) {
 
@@ -2786,7 +2794,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     }
 
     if (PassesError && LLCatchErrorAddr) {
-     
+
         // Need to jump to the error handling block if the function
         // returned an error.
         llvm::Value* LLError = CreateLoad(LLCatchErrorAddr);
@@ -2803,6 +2811,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         Builder.SetInsertPoint(LLNoErrorBlock);
 
     } else if (ImplicitlyReturnsErrors) {
+
         // Need to jump to the end of the function if an error happened.
         llvm::Value* LLError = CreateLoad(GetErrorRetAddr(CFunc));
         llvm::Value* LLCond = Builder.CreateIsNotNull(LLError, "err.check.cond");
@@ -3264,13 +3273,28 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
         }
 
         Type* BaseTy = ArrayTy->GetElementType();
-        llvm::Value* LLArrStartPtr = GenMalloc(GenType(BaseTy), LLTotalLinearLength);
+        llvm::Type* LLBaseTy = GenType(BaseTy);
+        llvm::Value* LLArrStartPtr = GenMalloc(LLBaseTy, LLTotalLinearLength);
         
         if (!Alloc->Values.empty()) {
             GenAssignment(LLArrStartPtr, BaseTy, Alloc->Values[0].E, false);
         } else if (BaseTy->GetKind() == TypeKind::Struct) {
             // Need to initialize fields so calling the default constructor.
-            StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
+            if (!Alloc->LeaveUninitialized) {
+                StructArrayCallDefaultConstructors(BaseTy, LLArrStartPtr, LLTotalLinearLength);
+            }
+        } else if (!Alloc->LeaveUninitialized) {
+            // NOTE: Cannot just call GenDefaultValue because it requires memsetting
+            // based on the size of a compile time known array length.
+
+            // Memset to zero.
+            llvm::Align LLAlignment = GetAlignment(LLBaseTy);
+            Builder.CreateMemSet(
+                LLArrStartPtr,
+                GetLLUInt8(0),
+                LLTotalLinearLength,
+                LLAlignment
+            );
         }
 
         if (Alloc->UsesSlice) {
@@ -3294,14 +3318,14 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
             StructDecl* Struct = StructTy->GetStruct();
             if (Alloc->CalledConstructor) {
                 GenFuncCallGeneral(Alloc,
-                                  Alloc->CalledConstructor,
-                                  Alloc->Values,
-                                  Alloc->NamedValues,
-                                  LLMalloc, Alloc->VarArgsPassAlong);
+                                   Alloc->CalledConstructor,
+                                   Alloc->Values,
+                                   Alloc->NamedValues,
+                                   LLMalloc, Alloc->VarArgsPassAlong);
             } else {
                 if (!Alloc->Values.empty()) {
                     GenStructInitArgs(LLMalloc, Struct, Alloc->Values, Alloc->NamedValues);
-                } else {
+                } else if (!Alloc->LeaveUninitialized) {
                     // Need to initialize fields so calling the default constructor.
                     CallDefaultConstructor(LLMalloc, TypeToAlloc->AsStructType());
                 }
@@ -3309,6 +3333,8 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
         } else {
             if (!Alloc->Values.empty()) {
                 GenAssignment(LLMalloc, TypeToAlloc, Alloc->Values[0].E, false);
+            } else if (!Alloc->LeaveUninitialized) {
+                GenDefaultValue(TypeToAlloc, LLMalloc);
             }
         }
         return LLMalloc;
@@ -4778,7 +4804,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
             // TODO: I think this code is wrong when errors are generated since it can call copy
             // constructors of data that is invalid from the return of a call. This needs to not
             // happen.
-
+            
             if (DestroyIfNeeded && Call->Ty->TypeNeedsDestruction()) {
                 // Memory already exists and so passing in the existing address
                 // could cause problems since it might override memory (memory

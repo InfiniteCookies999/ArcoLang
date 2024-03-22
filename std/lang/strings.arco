@@ -20,7 +20,7 @@ String struct {
      */
     String() {
         // Still want a null terminated string.
-        this.buffer = new char[1];
+        this.buffer = new char[1] ---;
         this.buffer[0] = '\0';
     }
 
@@ -30,7 +30,7 @@ String struct {
      */
     String(buffer cstr) {
         this.length = strlen(buffer);
-        this.buffer = new char[length + 1]; // +1 for null terminator.
+        this.buffer = new char[length + 1] ---; // +1 for null terminator.
         memcpy(this.buffer, buffer, length + 1);
     }
 
@@ -49,7 +49,7 @@ String struct {
         }
 
         this.length = length;
-        this.buffer = new char[length + 1]; // +1 for null terminator.
+        this.buffer = new char[length + 1] ---; // +1 for null terminator.
         memcpy(this.buffer, buffer, length);
         this.buffer[length] = '\0';
     }
@@ -75,7 +75,7 @@ String struct {
         
         this.length = length;
         if copy_buffer {
-            this.buffer = new char[length + 1]; // +1 for null terminator.
+            this.buffer = new char[length + 1] ---; // +1 for null terminator.
             memcpy(this.buffer, buffer, length);
             this.buffer[length] = '\0';
         } else {
@@ -92,14 +92,14 @@ String struct {
         }
 
         this.length = count;
-        this.buffer = new char[count + 1]; // +1 for null terminator.
+        this.buffer = new char[count + 1] ---; // +1 for null terminator.
         memset(this.buffer, c, count);
         this.buffer[count] = '\0';
     }
 
     String copyobj(string String*) {
         this.length = string.length;
-        this.buffer = new char[length + 1]; // +1 for null terminator.
+        this.buffer = new char[length + 1] ---; // +1 for null terminator.
         memcpy(this.buffer, string.buffer, length);
         this.buffer[length] = '\0';
     }
@@ -251,7 +251,7 @@ String struct {
         }
 
         new_string_length := this.length + (replace_length*index_count) - (sub_length*index_count);
-        new_buffer := new char[new_string_length + 1]; // +1 for null termination.
+        new_buffer := new char[new_string_length + 1] ---; // +1 for null termination.
 
 
         new_buffer_offset, buffer_offset := 0, 0;
@@ -305,7 +305,7 @@ String struct {
         // Just reusing the current length of the buffer so that
         // the new buffer can just be filled while iterating over
         // the characters.
-        new_buffer := new char[this.length + 1]; // +1 for null terminator.
+        new_buffer := new char[this.length + 1] ---; // +1 for null terminator.
         new_length := this.length;
         new_buffer_offset := 0;
         
@@ -666,7 +666,7 @@ String struct {
         // TODO: should probably use capacities and grow by *2 when not enough space.
 
         new_length := this.length + length;
-        new_buffer := new char[new_length + 1]; // +1 for null termination.
+        new_buffer := new char[new_length + 1] ---; // +1 for null termination.
 
         memcpy(new_buffer, this.buffer, this.length);
         memcpy(new_buffer + this.length, s, length);
@@ -691,7 +691,7 @@ String struct {
         // TODO: should probably use capacities and grow by *2 when not enough space.
 
         new_length := this.length + length;
-        new_buffer := new char[new_length + 1];
+        new_buffer := new char[new_length + 1] ---;
 
         memcpy(new_buffer, s, length);
         memcpy(new_buffer + length, this.buffer, this.length);
@@ -957,7 +957,7 @@ private fn array_like_type_to_string(array void*, elm_type Type*, length int) St
 
 fn concat(s1 String^, s2 String^) String {
     new_length := s1.length + s2.length;
-    buffer char* = new char[new_length + 1]; // +1 for null termination.
+    buffer char* = new char[new_length + 1] ---; // +1 for null termination.
     memcpy(buffer            , s1.buffer, s1.length);
     memcpy(buffer + s1.length, s2.buffer, s2.length);
     buffer[new_length] = '\0'; // Null termination.

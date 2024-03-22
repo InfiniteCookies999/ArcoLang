@@ -14,7 +14,7 @@ private StringFormatBuffer struct : Writeable {
     private fn grow(new_capacity int) {
         if capacity == 0 {
             // First time allocation.
-            buffer = new char[new_capacity];
+            buffer = new char[new_capacity] ---;
             capacity = new_capacity;
         } else {
             old_buffer := buffer;
@@ -22,7 +22,7 @@ private StringFormatBuffer struct : Writeable {
             // For now just choosing to either grow to required capacity
             // or *2.
             capacity = math.max(new_capacity, capacity << 1);
-            buffer = new char[capacity];
+            buffer = new char[capacity] ---;
             memcpy(buffer, old_buffer, length);
             delete old_buffer;
         }

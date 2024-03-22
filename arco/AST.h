@@ -433,7 +433,7 @@ namespace arco {
         bool IsGlobal              = false;
         bool TyIsInfered           = false;
         bool ImplicitPtr           = false;
-        // If this is set to try then the memory will not be initialized
+        // If this is set to true then the memory will not be initialized
         // to a default value.
         bool LeaveUninitialized    = false;
         // Needed because generic type information might override if the
@@ -850,6 +850,9 @@ namespace arco {
         FuncDecl* CalledConstructor = nullptr;
         bool VarArgsPassAlong = false;
         bool UsesSlice = false;
+        // If this is set to true then the memory will not be initialized
+        // to a default value.
+        bool LeaveUninitialized = false;
 
         llvm::SmallVector<NonNamedValue> Values;
         llvm::SmallVector<NamedValue>    NamedValues;
