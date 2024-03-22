@@ -317,7 +317,8 @@ arco::AstNode* arco::Parser::ParseStmt() {
     case TokenKind::KW_PRIVATE:
     case TokenKind::KW_READONLY:
     case TokenKind::KW_WRITEONLY:
-    case TokenKind::KW_DLLIMPORT: {
+    case TokenKind::KW_DLLIMPORT:
+    case TokenKind::KW_LINKNAME: {
         // TODO: constructors!
         Modifiers Mods = ParseModifiers();
         if (CTok.Is(TokenKind::KW_FN)) {
@@ -1091,9 +1092,10 @@ arco::IfStmt* arco::Parser::ParseIf() {
     IfStmt* If = NewNode<IfStmt>(CTok);
     NextToken(); // Consuming 'if' token
     
+    bool PrevAllowStructInitializer = AllowStructInitializer;
     AllowStructInitializer = false;
     If->Cond = ParseExpr();
-    AllowStructInitializer = true;
+    AllowStructInitializer = PrevAllowStructInitializer;
 
     PUSH_SCOPE();
     ParseScopeStmtOrStmts(If->Scope);
@@ -1224,6 +1226,7 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
     PredicateLoopStmt* Loop = NewNode<PredicateLoopStmt>(LoopTok);
     
     if (CTok.IsNot('{')) {
+        bool PrevAllowStructInitializer = AllowStructInitializer;
         AllowStructInitializer = false;
         Loop->Cond = ParseExpr();
         if (CTok.Is(TokenKind::DOT_DOT_EQ) || CTok.Is(TokenKind::DOT_DOT_LT)) {
@@ -1234,7 +1237,7 @@ arco::PredicateLoopStmt* arco::Parser::ParsePredicateLoop(Token LoopTok) {
             Rg->RHS = ParseExpr();
             Loop->Cond = Rg;
         }
-        AllowStructInitializer = true;
+        AllowStructInitializer = PrevAllowStructInitializer;
     }
 
     ParseScopeStmtOrStmts(Loop->Scope);
@@ -1261,23 +1264,42 @@ arco::RangeLoopStmt* arco::Parser::ParseRangeLoop(Token LoopTok, VarDeclList* Li
     Match(';');
 
     if (CTok.IsNot('{')) {
+        bool PrevAllowStructInitializer = AllowStructInitializer;
         AllowStructInitializer = false;
         Loop->Scope.StartLoc = CTok.Loc;
-        Expr* E = ParseAssignmentAndExprs();
-        AllowStructInitializer = true;
-        if (CTok.Is(';')) {
-            // loop expr; expr;    expr;
-            Loop->Scope.EndLoc = PrevToken.Loc;
-            Loop->Scope.Stmts.push_back(E);
-        } else if (CTok.IsNot('{')) {
-            // loop expr; expr; expr  expr;
-            Loop->Incs.push_back(E);
+        //   // TODO: Should this first parse a statement in
+        //   // case the user leaves off the increment?
+        //Expr* E = ParseAssignmentAndExprs();
+        //AllowStructInitializer = PrevAllowStructInitializer;
+        //if (CTok.Is(';')) {
+        //    // loop expr; expr;    expr;
+        //    Loop->Scope.EndLoc = PrevToken.Loc;
+        //    Loop->Scope.Stmts.push_back(E);
+        //} else if (CTok.IsNot('{')) {
+        //    // loop expr; expr; expr  expr;
+        //    Loop->Incs.push_back(E);
+        //    Loop->Scope.StartLoc = CTok.Loc;
+        //    Loop->Scope.Stmts.push_back(ParseStmt());
+        //    Loop->Scope.EndLoc = PrevToken.Loc;
+        //} else {
+        //    // loop expr; expr; expr {
+        //    Loop->Incs.push_back(E);
+        //    ParseScopeStmts(Loop->Scope);
+        //}
+
+        // ^^ Used to allow the increment to be optional if the
+        //    body doesn't have a a block surounded in {}. This
+        //    is not being allowed anymore due to it being too
+        //    confusing.
+        Expr* Inc = ParseAssignmentAndExprs();
+        Loop->Incs.push_back(Inc);
+        AllowStructInitializer = PrevAllowStructInitializer;
+        if (CTok.IsNot('{')) {
             Loop->Scope.StartLoc = CTok.Loc;
             Loop->Scope.Stmts.push_back(ParseStmt());
             Loop->Scope.EndLoc = PrevToken.Loc;
         } else {
             // loop expr; expr; expr {
-            Loop->Incs.push_back(E);
             ParseScopeStmts(Loop->Scope);
         }
 
@@ -1308,6 +1330,7 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok, VarDeclLi
     }
 
     Match(':', "for iteration loop");
+    bool PrevAllowStructInitializer = AllowStructInitializer;
     AllowStructInitializer = false;
     Loop->IterOnExpr = ParseExpr();
     if (CTok.Is(TokenKind::DOT_DOT_EQ) || CTok.Is(TokenKind::DOT_DOT_LT)) {
@@ -1318,7 +1341,7 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok, VarDeclLi
         Rg->RHS = ParseExpr();
         Loop->IterOnExpr = Rg;
     }
-    AllowStructInitializer = true;
+    AllowStructInitializer = PrevAllowStructInitializer;
 
     // PUSH_SCOPE(); -- Called in ParseLoop
     ParseScopeStmtOrStmts(Loop->Scope);
@@ -2784,6 +2807,8 @@ T arco::Parser::FoldInt(Token OpTok, T LHS, T RHS, bool& OpApplies) {
     case TokenKind::LT_LT: { 
         if (RHS < 0) {
             Error(OpTok.Loc, "Cannot shift using a negative value");
+        } else if (RHS == 0) {
+            // TODO: Should it give an error?
         } else if (static_cast<ulen>(RHS) - 1 > sizeof(T) * 8) {
             Error(OpTok.Loc, "Shifting bits larger than bit size of type '%s'",
                 Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
@@ -2794,6 +2819,8 @@ T arco::Parser::FoldInt(Token OpTok, T LHS, T RHS, bool& OpApplies) {
     case TokenKind::GT_GT: {
         if (RHS < 0) {
             Error(OpTok.Loc, "Cannot shift using a negative value");
+        } else if (RHS == 0) {
+            // TODO: Should it give an error?
         } else if (static_cast<ulen>(RHS) - 1 > sizeof(T) * 8) {
             Error(OpTok.Loc, "Shifting bits larger than bit size of type '%s'",
                 Type::GetIntTypeBasedOnByteSize(sizeof(T), std::is_signed_v<T>, Context)->ToString());
@@ -3122,10 +3149,14 @@ void arco::Parser::SkipRecovery(llvm::DenseSet<u16> IncludeSet) {
     case TokenKind::KW_BREAK:
     case TokenKind::KW_CONTINUE:
     case TokenKind::KW_DELETE:
+    case TokenKind::KW_RAISE:
+
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:
     case TokenKind::KW_READONLY:
     case TokenKind::KW_WRITEONLY:
+    case TokenKind::KW_DLLIMPORT:
+    case TokenKind::KW_LINKNAME:
     case '{':
     case '}':
         return;

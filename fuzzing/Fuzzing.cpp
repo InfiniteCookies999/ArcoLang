@@ -6,7 +6,7 @@
 #include <fstream>
 
 #include "FuzzUtils.h"
-#include "Level3ParserFuzzing.h"
+#include "AdvancedFuzzing.h"
 
 void GenLevel0LexFuzz() {
 
@@ -152,8 +152,19 @@ void GenLevel2ParseFuzz(arco::ArcoContext& Context) {
         u16 Kind = ValidTokenKinds[rand() % ValidTokenKinds.size()];
         TokenKinds.push_back(Kind);
     }
-    WriteTokensToFile(TokenKinds, FileStream, Context);
+    //WriteTokensToFile(TokenKinds, FileStream, Context);
 
+}
+
+void GenLevel3ParserFuzz(arco::Compiler& Compiler) {
+    GenAdvancedFuzz(Compiler.Context, {});
+}
+
+void GenLevel4SemaFuzz(arco::Compiler& Compiler) {
+    GenAdvancedFuzz(Compiler.Context, {
+        AdvFuzzSemConsiders::NO_UNREACHABLE,
+        AdvFuzzSemConsiders::RESTRICT_SHIFT_SIZE
+        });
 }
 
 int main() {
@@ -164,8 +175,8 @@ int main() {
     Compiler.PreInitContext();
     Compiler.Stage = arco::Compiler::Stages::PARSE_SEMCHECK_COMPILE_ONLY;
     
-    GenLevel3ParseFuzz(Compiler.Context);
-
+    GenLevel4SemaFuzz(Compiler);
+    
     llvm::SmallVector<arco::Source> Sources;
     Sources.push_back(arco::Source{ true, "default.program.module", "fuzz_gen.arco" });
 

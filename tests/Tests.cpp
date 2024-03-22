@@ -128,7 +128,7 @@ int main() {
     RunTest(SRC("loops/loops14.arco"), "0 1 2 3 4 5 ");
     RunTest(SRC("loops/loops15.arco"), "foo called finished");
     RunTest(SRC("loops/loops16.arco"), "10");
-    RunTest(SRC("loops/loops17.arco"), "5");
+    // -- Disallowed:   RunTest(SRC("loops/loops17.arco"), "5");
     RunTest(SRC("loops/loops18.arco"), "124346221577");
     RunTest(SRC("loops/loops19.arco"), "10");
     RunTest(SRC("loops/loops20.arco"), "10");

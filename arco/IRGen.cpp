@@ -478,6 +478,9 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func, GenericBinding* Binding, boo
 
     if (Func->GetLLFunction()) return;
 
+    // TODO: Optimization: GenFuncLinkName already creates the linkage
+    // name so this is creating it twice. Although this relies on Identifier
+    // and the other on a Twine.
     if (Func->Mods & ModKinds::NATIVE) {
         Identifier Name = Func->Name;
         if (!Func->LinkageName.empty()) {
@@ -1180,7 +1183,11 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
         } else if (!Ret->Value && CFunc == Context.MainEntryFunc) {
             Builder.CreateStore(GetLLInt32(0), LLRetAddr);
         } else if (Ret->Value) {
-            Builder.CreateStore(GenRValue(Ret->Value), LLRetAddr);
+            llvm::Value* LLRetValue = GenRValue(Ret->Value);
+            if (CFunc == Context.MainEntryFunc) {
+                LLRetValue = GenCast(Context.Int32Type, Ret->Value->Ty, LLRetValue);
+            }
+            Builder.CreateStore(LLRetValue, LLRetAddr);
         }
 
 
@@ -2422,18 +2429,9 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
 }
 
 llvm::Constant* arco::IRGenerator::GenComptimeValue(VarDecl* Var) {
-    // TODO: This will need additional work because folding values may
-    // result in llvm's poision type which is not constant.
+    // The value was computed during sema so can just grab the value.
     if (Var->IsGeneric()) {
-        if (Var->GenData->CurBinding->LLValue) {
-            return Var->GenData->CurBinding->LLValue;
-        }
-        Var->GenData->CurBinding->LLValue = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));
         return Var->GenData->CurBinding->LLValue;
-    }
-    
-    if (!Var->LLComptimeVal) {
-        Var->LLComptimeVal = llvm::cast<llvm::Constant>(GenRValue(Var->Assignment));
     }
     return Var->LLComptimeVal;
 }

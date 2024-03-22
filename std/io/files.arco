@@ -104,7 +104,7 @@ FileHandle struct : Writeable, Readable {
     
     fn close() {
         if flushable {
-           // TODO: fix _ := flushable.flush();
+            flushable.flush() catch _ {};
         }
         win32.CloseHandle(handle);
         handle = null;

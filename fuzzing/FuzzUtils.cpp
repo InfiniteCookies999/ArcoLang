@@ -105,7 +105,7 @@ std::string GenRandomCharLiteral() {
 
 std::string GenRandomStringLiteral() {
     std::string Result = "\"";
-    int Length = rand() % 100;
+    int Length = rand() % 10;
     for (int i = 0; i < Length; i++) {
         Result += GenRandomCharChar();
     }
@@ -136,31 +136,44 @@ std::string GenRandomFloatLiteral() {
     return Result;
 }
 
-void WriteTokensToFile(const llvm::SmallVector<u16>& Tokens, std::ofstream& FileStream, arco::ArcoContext& Context) {
+std::string BuildTokenString(arco::ArcoContext& Context, const FuzzToken& Tok) {
+    u16 Kind = Tok.Kind;
+
+    std::string AsString;
+    if (Kind == FUZZ_BUILT_TOKEN_KIND) {
+        AsString = Tok.Lexeme;
+    } else if (Kind == arco::TokenKind::IDENT) {
+        AsString = GenRandomIdentLiteral();
+    } else if (Kind == arco::TokenKind::INT_LITERAL) {
+        AsString = GenRandomIntLiteral(10);
+    } else if (Kind == arco::TokenKind::HEX_LITERAL) {
+        AsString = GenRandomIntLiteral(16);
+    } else if (Kind == arco::TokenKind::BIN_LITERAL) {
+        AsString = GenRandomIntLiteral(2);
+    } else if (Kind == arco::TokenKind::CHAR_LITERAL) {
+        AsString = GenRandomCharLiteral();
+    } else if (Kind == arco::TokenKind::STRING_LITERAL) {
+        AsString = GenRandomStringLiteral();
+    } else if (Kind == arco::TokenKind::FLOAT32_LITERAL ||
+               Kind == arco::TokenKind::FLOAT64_LITERAL ||
+               Kind == arco::TokenKind::ERROR_FLOAT_LITERAL
+        ) {
+        AsString = GenRandomFloatLiteral();
+    } else {
+        AsString = arco::Token::TokenKindToString(Kind, Context);
+    }
+    assert(!AsString.empty());
+    
+    return AsString;
+}
+
+void WriteTokensToFile(const llvm::SmallVector<FuzzToken>& Tokens,
+                       std::ofstream& FileStream,
+                       arco::ArcoContext& Context) {
     int Count = 0;
-    for (u16 Kind : Tokens) {
+    for (const FuzzToken& Tok : Tokens) {
+        std::string AsString = BuildTokenString(Context, Tok);
         
-        std::string AsString;
-        if (Kind == arco::TokenKind::IDENT) {
-            AsString = GenRandomIdentLiteral();
-        } else if (Kind == arco::TokenKind::INT_LITERAL) {
-            AsString = GenRandomIntLiteral(10);
-        } else if (Kind == arco::TokenKind::HEX_LITERAL) {
-            AsString = GenRandomIntLiteral(16);
-        } else if (Kind == arco::TokenKind::BIN_LITERAL) {
-            AsString = GenRandomIntLiteral(2);
-        } else if (Kind == arco::TokenKind::CHAR_LITERAL) {
-            AsString = GenRandomCharLiteral();
-        } else if (Kind == arco::TokenKind::STRING_LITERAL) {
-            AsString = GenRandomStringLiteral();
-        } else if (Kind == arco::TokenKind::FLOAT32_LITERAL ||
-            Kind == arco::TokenKind::FLOAT64_LITERAL ||
-            Kind == arco::TokenKind::ERROR_FLOAT_LITERAL
-            ) {
-            AsString = GenRandomFloatLiteral();
-        } else {
-            AsString = arco::Token::TokenKindToString(Kind, Context);
-        }
         for (char c : AsString) {
             FileStream << c;
         }

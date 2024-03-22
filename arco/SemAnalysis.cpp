@@ -1396,6 +1396,9 @@ return;
         if (Var->Assignment->Is(AstKind::CATCH_ERROR)) {
             CatchError* Catch = static_cast<CatchError*>(Var->Assignment);
             CheckCatchError(Catch, Var);
+        } else if (Var->Assignment->Is(AstKind::HEAP_ALLOC)) {
+            HeapAlloc* Alloc = static_cast<HeapAlloc*>(Var->Assignment);
+            CheckHeapAlloc(Alloc, Var->Ty);
         } else {
             CheckNode(Var->Assignment);
         }
@@ -2162,7 +2165,10 @@ YIELD_ERROR(BinOp)
             llvm::Value* LLValue = GenFoldable(BinOp->RHS->Loc, BinOp->RHS);
             if (LLValue) {
                 llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLValue);
-                if (LLInt->getZExtValue() - 1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
+                u64 ShiftVal = LLInt->getZExtValue();
+                if (ShiftVal == 0) {
+                    // TODO: Should this error? Shifting zero is a pointless operation!
+                } else if (ShiftVal - 1 > LTy->GetSizeInBytes(Context.LLArcoModule) * 8) {
                     Error(BinOp, "Shifting bits larger than bit size of type '%s'", LTy);
                 }
             }
@@ -3026,7 +3032,6 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
     FuncDecl* Selected = FindBestFuncCallCanidate(FuncName, Canidates, Args, NamedArgs, VarArgsPassAlong, AllBindableTypes);
     if (!Selected) {
         DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
-        // Unbinding any bindings from generic functions
         return nullptr;
     }
     
@@ -3203,7 +3208,6 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
 
     FuncDecl* Selection = nullptr;
 
-    // TODO: make calls to functions with Any absolute last to consider.
     bool CheckName = !FuncName.IsNull();
 
     ulen GenericFuncCount = 0;
@@ -3361,8 +3365,10 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 
         // This must be kept as GetUniqueId because we care about the actual
         // type not what it would be if it was bound.
-        if (Param->Ty->GetUniqueId() == Context.AnyType->GetUniqueId()) {
-            HasAny = true;
+        if (!Context.StandAlone) {
+            if (Param->Ty->GetUniqueId() == Context.AnyType->GetUniqueId()) {
+                HasAny = true;
+            }
         }
         
         if (!CheckCallArg(Arg,
@@ -3392,8 +3398,10 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
 
             // This must be kept as GetUniqueId because we care about the actual
             // type not what it would be if it was bound.
-            if (Param->Ty->GetUniqueId() == Context.AnyType->GetUniqueId()) {
-                HasAny = true;
+            if (!Context.StandAlone) {
+                if (Param->Ty->GetUniqueId() == Context.AnyType->GetUniqueId()) {
+                    HasAny = true;
+                }
             }
 
             if (!CheckCallArg(NamedArg.AssignValue,
@@ -4267,7 +4275,7 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
         );
     }
     
-    if (Canidate) {
+    if (Canidate && Canidate->IsGeneric()) {
         for (GenericType* GenTy : Canidate->GenData->GenTys) {
             CheckGenericConstraint(Canidate, GenTy, &BindableTypes, &MismatchInfo);
         }
