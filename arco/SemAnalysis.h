@@ -103,6 +103,7 @@ namespace arco {
 
         void CheckBinaryOp(BinaryOp* BinOp);
         void CheckUnaryOp(UnaryOp* UniOp);
+        template<bool SpellChecking>
         void CheckIdentRef(IdentRef* IRef,
                            bool ExpectsFuncCall,
                            Namespace* NamespaceToLookup,

@@ -49,73 +49,6 @@ void arco::SemAnalyzer::ReportStatementsInInvalidContext(FileScope* FScope) {
     }
 }
 
-namespace arco {
-// TODO: Should this limit the search count?
-struct ImportErrorSpellChecker {
-
-    template<typename T>
-    void AddSearches(const llvm::DenseMap<Identifier, T>& SearchMap) {
-        for (auto [Name, _] : SearchMap) {
-            AllSearches.push_back(Name.Text.str());
-        }
-    }
-
-    void AddSearches(const llvm::StringMap<Module*>& Modules) {
-        auto Itr = Modules.begin();
-        while (Itr != Modules.end()) {
-            AllSearches.push_back(Itr->first().str());
-            ++Itr;
-        }
-    }
-
-    void SearchAndEndError(Logger& Log, Identifier SearchIdent) {
-        const char* Found = FindClosestSpellingMatch(AllSearches, SearchIdent.Text.str());
-        if (Found) {
-            std::string DidYouMeanStr = "Did you mean '";
-            std::string InsteadOfStr  = "' insteaf of '";
-            Log.AddNoteLine([=](auto& OS) {
-                OS << DidYouMeanStr << Found << InsteadOfStr << SearchIdent << "'?";
-            });
-            Log.AddNoteLine([=](auto& OS) {
-                OS << std::string(DidYouMeanStr.size() + 1, ' ');
-                SetTerminalColor(TerminalColorBrightGreen);
-                
-                auto DiffStr = [](const std::string& S1,
-                                  const std::string& S2,
-                                  const char C) -> std::string {
-                    std::string Result = "";
-                    for (ulen i = 0; i < S1.size(); i++) {
-                        if (i >= S2.size()) {
-                            Result += std::string(S1.size() - i, C);
-                            break;
-                        }
-
-                        const char C1 = S1[i];
-                        const char C2 = S2[i];
-                        Result += C1 == C2 ? ' ' : C;
-                    }
-                    return Result;
-                };
-
-                std::string SearchStr = SearchIdent.Text.str();
-                std::string Pluses  = DiffStr(Found, SearchStr, '+');
-                std::string Minuses = DiffStr(SearchStr, Found, '-');
-
-                OS << Pluses;
-                SetTerminalColor(TerminalColorRed);
-                OS << std::string(InsteadOfStr.size(), ' ');
-                OS << Minuses;
-                SetTerminalColor(TerminalColorDefault);
-            });
-        }
-        Log.EndError();
-        AllSearches.clear();
-    }
-
-    llvm::SmallVector<std::string> AllSearches;
-};
-}
-
 void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) {
     if (FScope->ImportsResolved) return;
     FScope->ImportsResolved = true;
@@ -124,7 +57,7 @@ void arco::SemAnalyzer::ResolveImports(FileScope* FScope, ArcoContext& Context) 
 Logger Log(FScope, FScope->Buffer); \
 Log.BeginError(ErrorLoc, Fmt, __VA_ARGS__);
 
-    ImportErrorSpellChecker SpellChecker;
+    ErrorSpellChecker SpellChecker;
 
     for (auto& [LookupIdent, StructOrNamespaceImport] : FScope->Imports) {
         auto ModItr = Context.ModNamesToMods.find(StructOrNamespaceImport.ModOrNamespace.Text);
@@ -594,7 +527,7 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
             IdentRef* ConstraintRef = GenTy->GetConstraintRef();
             if (!ConstraintRef) continue;
             // TODO: Fix: this shows wrong information about original bind locations.
-            CheckIdentRef(ConstraintRef, false, nullptr, nullptr, true);
+            CheckIdentRef<false>(ConstraintRef, false, nullptr, nullptr, true);
             if (!ConstraintRef->FoundBinding) {
                 Func->ParsingError = true;
             }
@@ -746,7 +679,7 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
         CheckUnaryOp(static_cast<UnaryOp*>(Node));
         break;
     case AstKind::IDENT_REF:
-        CheckIdentRef(static_cast<IdentRef*>(Node), false, nullptr);
+        CheckIdentRef<false>(static_cast<IdentRef*>(Node), false, nullptr);
         break;
     case AstKind::FIELD_ACCESSOR:
         CheckFieldAccessor(static_cast<FieldAccessor*>(Node), false);
@@ -2455,6 +2388,7 @@ YIELD_ERROR(UniOp);
     }
 }
 
+template<bool SpellChecking>
 void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                                       bool ExpectsFuncCall,
                                       Namespace* NamespaceToLookup,
@@ -2463,62 +2397,105 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
 
     bool LocalNamespace = !NamespaceToLookup;
 
-    auto SearchForFuncs = [=]() {
+    using SpellCheckList = std::conditional_t<SpellChecking,
+                                                llvm::SmallVector<std::string, 64>,
+                                                void*>;
+    SpellCheckList CheckListFuncs, CheckListOther;
+
+    auto SearchForFuncs = [=, &CheckListFuncs]() {
         if (StructToLookup) {
-            auto Itr = StructToLookup->Funcs.find(IRef->Ident);
-            if (Itr != StructToLookup->Funcs.end()) {
-                IRef->Funcs   = &Itr->second;
-                IRef->RefKind = IdentRef::RK::Funcs;
+            if constexpr (!SpellChecking) {
+                auto Itr = StructToLookup->Funcs.find(IRef->Ident);
+                if (Itr != StructToLookup->Funcs.end()) {
+                    IRef->Funcs = &Itr->second;
+                    IRef->RefKind = IdentRef::RK::Funcs;
+                }
+            } else {
+                for (auto& [Name, List] : StructToLookup->Funcs)
+                    for (FuncDecl* Func : List)    
+                        CheckListFuncs.push_back(Func->Name.Text.str());
             }
         } else {
 
             // Check local namespace first since it has higher priority than the default namespace.
             if (LocalNamespace && FScope->UniqueNSpace) {
                 // File marked with a namespace need to search the namespace the file belongs to as well.
-                auto Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
-                if (Itr != FScope->UniqueNSpace->Funcs.end()) {
-                    IRef->Funcs = &Itr->second;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
+                if constexpr (!SpellChecking) {
+                    auto Itr = FScope->UniqueNSpace->Funcs.find(IRef->Ident);
+                    if (Itr != FScope->UniqueNSpace->Funcs.end()) {
+                        IRef->Funcs = &Itr->second;
+                        IRef->RefKind = IdentRef::RK::Funcs;
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, List] : FScope->UniqueNSpace->Funcs)
+                        for (FuncDecl* Func : List)
+                            CheckListFuncs.push_back(Func->Name.Text.str());
                 }
             }
             
             if (!LocalNamespace) {
-                auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
-                if (Itr != NamespaceToLookup->Funcs.end()) {
-                    IRef->Funcs = &Itr->second;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
+                if constexpr (!SpellChecking) {
+                    auto Itr = NamespaceToLookup->Funcs.find(IRef->Ident);
+                    if (Itr != NamespaceToLookup->Funcs.end()) {
+                        IRef->Funcs = &Itr->second;
+                        IRef->RefKind = IdentRef::RK::Funcs;
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, List] : NamespaceToLookup->Funcs)
+                        for (FuncDecl* Func : List)
+                            CheckListFuncs.push_back(Func->Name.Text.str());
                 }
             }
 
             // Relative member functions.
             if (CStruct && LocalNamespace) {
-                auto Itr = CStruct->Funcs.find(IRef->Ident);
-                if (Itr != CStruct->Funcs.end()) {
-                    IRef->Funcs = &Itr->second;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
+                if constexpr (!SpellChecking) {
+                    auto Itr = CStruct->Funcs.find(IRef->Ident);
+                    if (Itr != CStruct->Funcs.end()) {
+                        IRef->Funcs = &Itr->second;
+                        IRef->RefKind = IdentRef::RK::Funcs;
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, List] : CStruct->Funcs)
+                        for (FuncDecl* Func : List)
+                            CheckListFuncs.push_back(Func->Name.Text.str());
                 }
             }
 
             if (LocalNamespace) {
-                auto Itr = Mod->DefaultNamespace->Funcs.find(IRef->Ident);
-                if (Itr != Mod->DefaultNamespace->Funcs.end()) {
-                    IRef->Funcs = &Itr->second;
-                    IRef->RefKind = IdentRef::RK::Funcs;
-                    return;
+                if constexpr (!SpellChecking) {
+                    auto Itr = Mod->DefaultNamespace->Funcs.find(IRef->Ident);
+                    if (Itr != Mod->DefaultNamespace->Funcs.end()) {
+                        IRef->Funcs = &Itr->second;
+                        IRef->RefKind = IdentRef::RK::Funcs;
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, List] : Mod->DefaultNamespace->Funcs)
+                        for (FuncDecl* Func : List)
+                            CheckListFuncs.push_back(Func->Name.Text.str());
                 }
             }
             
             // Searching for functions in static imports.
             if (LocalNamespace) {
-                for (auto& Import : FScope->StaticImports) {
-                    auto Itr = Import.NSpace->Funcs.find(IRef->Ident);
-                    if (Itr != Import.NSpace->Funcs.end()) {
-                        IRef->Funcs   = &Itr->second;
-                        IRef->RefKind = IdentRef::RK::Funcs;
-                        return;
+                if constexpr (!SpellChecking) {
+                    for (auto& Import : FScope->StaticImports) {
+                        auto Itr = Import.NSpace->Funcs.find(IRef->Ident);
+                        if (Itr != Import.NSpace->Funcs.end()) {
+                            IRef->Funcs = &Itr->second;
+                            IRef->RefKind = IdentRef::RK::Funcs;
+                            return;
+                        }
+                    }
+                } else {
+                    for (auto& Import : FScope->StaticImports) {
+                        for (auto& [Name, List] : Import.NSpace->Funcs)
+                            for (FuncDecl* Func : List)
+                                CheckListFuncs.push_back(Func->Name.Text.str());
                     }
                 }
             }
@@ -2548,7 +2525,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
         return false;
     };
 
-    auto SearchForOther = [=]() {
+    auto SearchForOther = [=, &CheckListOther]() {
         if (StructToLookup) {
             VarDecl* Field = StructToLookup->FindField(IRef->Ident);
             if (Field) {
@@ -2559,45 +2536,72 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             
             if (LocalNamespace && FScope->UniqueNSpace) {
                 // File marked with a namespace need to search the namespace the file belongs to as well.
-                if (SearchNamespace(FScope->UniqueNSpace)) {
-                    return;
+                if constexpr (!SpellChecking) {
+                    if (SearchNamespace(FScope->UniqueNSpace)) {
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, Dec] : FScope->UniqueNSpace->Decls)
+                        CheckListOther.push_back(Dec->Name.Text.str());
                 }
             }
 
             if (LocalNamespace) {
-                if (SearchNamespace(Mod->DefaultNamespace)) {
-                    return;
+                if constexpr (!SpellChecking) {
+                    if (SearchNamespace(Mod->DefaultNamespace)) {
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, Dec] : Mod->DefaultNamespace->Decls)
+                        CheckListOther.push_back(Dec->Name.Text.str());
                 }
             } else {
-                if (SearchNamespace(NamespaceToLookup)) {
-                    return;
+                if constexpr (!SpellChecking) {
+                    if (SearchNamespace(NamespaceToLookup)) {
+                        return;
+                    }
+                } else {
+                    for (auto& [Name, Dec] : NamespaceToLookup->Decls)
+                        CheckListOther.push_back(Dec->Name.Text.str());
                 }
             }
 
             // Search for private declarations.
             if (LocalNamespace) {
-                if (Decl* Dec = FScope->FindDecl(IRef->Ident)) {
-                    if (Dec->Is(AstKind::VAR_DECL)) {
-                        IRef->Var     = static_cast<VarDecl*>(Dec);
-                        IRef->RefKind = IdentRef::RK::Var;
-                        return;
-                    } else if (Dec->Is(AstKind::STRUCT_DECL)) {
-                        IRef->Struct  = static_cast<StructDecl*>(Dec);
-                        IRef->RefKind = IdentRef::RK::Struct;
-                        return;
-                    } else if (Dec->Is(AstKind::ENUM_DECL)) {
-                        IRef->Enum    = static_cast<EnumDecl*>(Dec);
-                        IRef->RefKind = IdentRef::RK::Enum;
-                        return;
+                if constexpr (!SpellChecking) {
+                    if (Decl* Dec = FScope->FindDecl(IRef->Ident)) {
+                        if (Dec->Is(AstKind::VAR_DECL)) {
+                            IRef->Var = static_cast<VarDecl*>(Dec);
+                            IRef->RefKind = IdentRef::RK::Var;
+                            return;
+                        } else if (Dec->Is(AstKind::STRUCT_DECL)) {
+                            IRef->Struct = static_cast<StructDecl*>(Dec);
+                            IRef->RefKind = IdentRef::RK::Struct;
+                            return;
+                        } else if (Dec->Is(AstKind::ENUM_DECL)) {
+                            IRef->Enum = static_cast<EnumDecl*>(Dec);
+                            IRef->RefKind = IdentRef::RK::Enum;
+                            return;
+                        }
                     }
+                } else {
+                    for (Decl* Dec : FScope->PrivateDecls)
+                        CheckListOther.push_back(Dec->Name.Text.str());
                 }
             }
 
             // Searching for global variables in static imports.
             if (LocalNamespace) {
-                for (auto& Import : FScope->StaticImports) {
-                    if (SearchNamespace(Import.NSpace)) {
-                        return;
+                if constexpr (!SpellChecking) {
+                    for (auto& Import : FScope->StaticImports) {
+                        if (SearchNamespace(Import.NSpace)) {
+                            return;
+                        }
+                    }
+                } else {
+                    for (auto& Import : FScope->StaticImports) {
+                        for (auto& [Name, Dec] : Import.NSpace->Decls)
+                            CheckListOther.push_back(Dec->Name.Text.str());
                     }
                 }
             }
@@ -2635,106 +2639,128 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             SearchForFuncs();
     }
     
-    switch (IRef->RefKind) {
-    case IdentRef::RK::Var: {
-        VarDecl* VarRef = IRef->Var;
-        if (VarRef->IsGeneric()) {
-            if (ExpectsGenericConstraint) break;
+    if constexpr (!SpellChecking) {
+        switch (IRef->RefKind) {
+        case IdentRef::RK::Var: {
+            VarDecl* VarRef = IRef->Var;
+            if (VarRef->IsGeneric()) {
+                if (ExpectsGenericConstraint) break;
 
-            if (IRef->GenBindings.empty()) {
-                Error(IRef, "Missing type bindings for generic variable");
-                IRef->Ty = Context.ErrorType;
-                break;
-            } else {
-                if (IRef->GenBindings.size() != VarRef->GenData->GenTys.size()) {
-                    Error(IRef,
-                        "Incorrect number of type bindings for generic variable. Expected %s. Got %s",
-                        VarRef->GenData->GenTys.size(), IRef->GenBindings.size());
+                if (IRef->GenBindings.empty()) {
+                    Error(IRef, "Missing type bindings for generic variable");
                     IRef->Ty = Context.ErrorType;
                     break;
+                } else {
+                    if (IRef->GenBindings.size() != VarRef->GenData->GenTys.size()) {
+                        Error(IRef,
+                            "Incorrect number of type bindings for generic variable. Expected %s. Got %s",
+                            VarRef->GenData->GenTys.size(), IRef->GenBindings.size());
+                        IRef->Ty = Context.ErrorType;
+                        break;
+                    }
                 }
-            }
 
-            IRef->HasConstAddress = true;
-            // Is foldable is always true for generic variables.
+                IRef->HasConstAddress = true;
+                // Is foldable is always true for generic variables.
+
+                if (VarRef->IsGlobal || VarRef->IsField()) {
+                    GenericBinding* Binding = GetExistingBinding(VarRef, IRef->GenBindings);
+                    if (!Binding) {
+                        Binding = CreateNewBinding(VarRef, IRef->GenBindings);
+                        BindTypes(VarRef, Binding);
+                        EnsureChecked(IRef->Loc, VarRef);
+                        IRef->Ty = VarRef->GenData->CurBinding->QualifiedType;
+                        UnbindTypes(VarRef);
+                    } else {
+                        IRef->Ty = Binding->QualifiedType;
+                    }
+                    IRef->FoundBinding = Binding;
+                }
+
+                break;
+            } else if (!IRef->GenBindings.empty()) {
+                Error(IRef, "The variable '%s' does not have generics", VarRef->Name);
+                IRef->Ty = Context.ErrorType;
+                break;
+            }
 
             if (VarRef->IsGlobal || VarRef->IsField()) {
-                GenericBinding* Binding = GetExistingBinding(VarRef, IRef->GenBindings);
-                if (!Binding) {
-                    Binding = CreateNewBinding(VarRef, IRef->GenBindings);
-                    BindTypes(VarRef, Binding);
-                    EnsureChecked(IRef->Loc, VarRef);
-                    IRef->Ty = VarRef->GenData->CurBinding->QualifiedType;
-                    UnbindTypes(VarRef);
-                } else {
-                    IRef->Ty = Binding->QualifiedType;
-                }
-                IRef->FoundBinding = Binding;
+                EnsureChecked(IRef->Loc, VarRef);
             }
-            
+
+            IRef->Ty = VarRef->Ty;
+
+            IRef->HasConstAddress = VarRef->HasConstAddress;
+            if (!VarRef->IsComptime()) {
+                IRef->IsFoldable = false;
+            }
             break;
-        } else if (!IRef->GenBindings.empty()) {
-            Error(IRef, "The variable '%s' does not have generics", VarRef->Name);
+        }
+        case IdentRef::RK::Import: {
+            IRef->Ty = Context.ImportType;
+            IRef->IsFoldable = false;
+            break;
+        }
+        case IdentRef::RK::Funcs: {
+            IRef->Ty = Context.FuncRefType;
+            IRef->IsFoldable = false;
+            break;
+        }
+        case IdentRef::RK::Struct: {
+            if (!IRef->Struct->HasBeenChecked) {
+                SemAnalyzer A(Context, IRef->Struct);
+                A.CheckStructDecl(IRef->Struct);
+            }
+            IRef->Ty = Context.StructRefType;
+            IRef->IsFoldable = false;
+            break;
+        }
+        case IdentRef::RK::Enum: {
+            if (!IRef->Struct->HasBeenChecked) {
+                SemAnalyzer A(Context, IRef->Enum);
+                A.CheckEnumDecl(IRef->Enum);
+            }
+            IRef->Ty = Context.EnumRefType;
+            IRef->IsFoldable = false;
+            break;
+        }
+        case IdentRef::RK::NotFound: {
+            if (ExpectsFuncCall) {
+                Log.BeginError(IRef->Loc, "Could not find a function for identifier '%s'", IRef->Ident);
+                CheckIdentRef<true>(IRef,
+                                    ExpectsFuncCall,
+                                    NamespaceToLookup,
+                                    StructToLookup,
+                                    ExpectsGenericConstraint);
+                Log.EndError();
+            } else {
+                Log.BeginError(IRef->Loc, "Could not find symbol for %s '%s'",
+                    StructToLookup ? "field" : "identifier",
+                    IRef->Ident);
+                CheckIdentRef<true>(IRef,
+                                    ExpectsFuncCall,
+                                    NamespaceToLookup,
+                                    StructToLookup,
+                                    ExpectsGenericConstraint);
+                Log.EndError();
+            }
             IRef->Ty = Context.ErrorType;
             break;
         }
-
-        if (VarRef->IsGlobal || VarRef->IsField()) {
-            EnsureChecked(IRef->Loc, VarRef);
+        default:
+            assert(!"Unimplemented ident reference end case");
+            break;
         }
-
-        IRef->Ty = VarRef->Ty;
-        
-        IRef->HasConstAddress = VarRef->HasConstAddress;
-        if (!VarRef->IsComptime()) {
-            IRef->IsFoldable = false;
-        }
-        break;
-    }
-    case IdentRef::RK::Import: {
-        IRef->Ty = Context.ImportType;
-        IRef->IsFoldable = false;
-        break;
-    }
-    case IdentRef::RK::Funcs: {
-        IRef->Ty = Context.FuncRefType;
-        IRef->IsFoldable = false;
-        break;
-    }
-    case IdentRef::RK::Struct: {
-        if (!IRef->Struct->HasBeenChecked) {
-            SemAnalyzer A(Context, IRef->Struct);
-            A.CheckStructDecl(IRef->Struct);
-        }
-        IRef->Ty = Context.StructRefType;
-        IRef->IsFoldable = false;
-        break;
-    }
-    case IdentRef::RK::Enum: {
-        if (!IRef->Struct->HasBeenChecked) {
-            SemAnalyzer A(Context, IRef->Enum);
-            A.CheckEnumDecl(IRef->Enum);
-        }
-        IRef->Ty = Context.EnumRefType;
-        IRef->IsFoldable = false;
-        break;
-    }
-    case IdentRef::RK::NotFound: {
+    } else {
+        ErrorSpellChecker SpellChecker;
         if (ExpectsFuncCall) {
-            Error(IRef, "Could not find a function for identifier '%s'", IRef->Ident);
+            SpellChecker.AddSearches(CheckListFuncs);
+            SpellChecker.Search(Log, IRef->Ident);
         } else {
-            Error(IRef, "Could not find symbol for %s '%s'",
-                  StructToLookup ? "field" : "identifier",
-                  IRef->Ident);
+            SpellChecker.AddSearches(CheckListOther);
+            SpellChecker.Search(Log, IRef->Ident);
         }
-        IRef->Ty = Context.ErrorType;
-        break;
     }
-    default:
-        assert(!"Unimplemented ident reference end case");
-        break;
-    }
-
 }
 
 void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall) {
@@ -2742,7 +2768,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
     Expr* Site = FieldAcc->Site;
 
     if (Site->Is(AstKind::IDENT_REF)) {
-        CheckIdentRef(static_cast<IdentRef*>(Site), false, nullptr);
+        CheckIdentRef<false>(static_cast<IdentRef*>(Site), false, nullptr);
     } else {
         CheckNode(Site);
     }
@@ -2795,7 +2821,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
 
     if (Site->Ty == Context.ImportType) {
         IdentRef* IRef = static_cast<IdentRef*>(Site);
-        CheckIdentRef(FieldAcc, ExpectsFuncCall, IRef->NSpace);
+        CheckIdentRef<false>(FieldAcc, ExpectsFuncCall, IRef->NSpace);
         return;
     }
 
@@ -2856,7 +2882,7 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
             StructTy);
         YIELD_ERROR(FieldAcc);
     } else {
-        CheckIdentRef(FieldAcc, ExpectsFuncCall, nullptr, StructTy->GetStruct());
+        CheckIdentRef<false>(FieldAcc, ExpectsFuncCall, nullptr, StructTy->GetStruct());
         if (FieldAcc->Ty != Context.ErrorType) {
             if (FieldAcc->RefKind == IdentRef::RK::Var && (FieldAcc->Var->Mods & ModKinds::PRIVATE)) {
                 if (FieldAcc->Var->FScope != FScope) {
@@ -2896,7 +2922,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
     switch (Call->Site->Kind) {
     case AstKind::IDENT_REF:
-        CheckIdentRef(static_cast<IdentRef*>(Call->Site), true, nullptr);
+        CheckIdentRef<false>(static_cast<IdentRef*>(Call->Site), true, nullptr);
         break;
     case AstKind::FIELD_ACCESSOR:
         CheckFieldAccessor(static_cast<FieldAccessor*>(Call->Site), true);
