@@ -17,7 +17,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 
 # Add source to this project's executable.
-add_library (arco   "Lexer.h" "Lexer.cpp" "Source.h" "Tokens.h" "Tokens.cpp" "Prelude.h" "Parser.h" "Parser.cpp" "AST.h" "Identifier.h" "Identifier.cpp" "Logger.h" "Logger.cpp" "TermColors.h" "TermColors.cpp" "Types.h" "Context.h" "Context.cpp" "IRGen.h" "IRGen.cpp" "SemAnalysis.h" "SemAnalysis.cpp" "Types.cpp" "CodeGen.h" "CodeGen.cpp" "Compiler.h" "Compiler.cpp" "FloatConversions.h" "FloatConversions.cpp" "AST.cpp" "Process.h" "Process.cpp"   "EmitDebugInfo.h" "EmitDebugInfo.cpp" "SpellChecking.h" "SpellChecking.cpp" "TypeBinding.h" "TypeBinding.cpp")
+add_library (arco   "Lexer.h" "Lexer.cpp" "Source.h" "Tokens.h" "Tokens.cpp" "Prelude.h" "Parser.h" "Parser.cpp" "AST.h" "Identifier.h" "Identifier.cpp" "Logger.h" "Logger.cpp" "TermColors.h" "TermColors.cpp" "Types.h" "Context.h" "Context.cpp" "IRGen.h" "IRGen.cpp" "SemAnalysis.h" "SemAnalysis.cpp" "Types.cpp" "CodeGen.h" "CodeGen.cpp" "Compiler.h" "Compiler.cpp" "FloatConversions.h" "FloatConversions.cpp" "AST.cpp" "Process.h" "Process.cpp"   "EmitDebugInfo.h" "EmitDebugInfo.cpp" "SpellChecking.h" "SpellChecking.cpp"   "Generics.h" "Generics.cpp")
 target_include_directories (arco PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories (arco PUBLIC ${LLVM_INCLUDE_DIRS})
 

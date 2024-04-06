@@ -1,0 +1,61 @@
+import math;
+
+generics<T>
+List struct {
+
+    private  buckets  T*;
+    private  capacity int;
+    readonly length   int;
+
+    ~List() {
+        delete buckets;
+        buckets  = null;
+        length   = 0;
+        capacity = 0;
+    }
+
+    List moveobj(list List<T>*)
+        : buckets(exchange(list.buckets, null)),
+          capacity(exchange(list.capacity, 0)),
+          length(exchange(list.length, 0)) {
+    }
+
+    List copyobj(list List<T>*) {
+        buckets = new T[list.length] ---;
+        // TODO: Optimize by checking if the type is trivially copyable
+        // and using memcpy on all the buckets if they are!
+        loop i : 0 ..< list.length {
+            buckets[i] = list.buckets[i];
+        }
+        length   = list.length;
+        capacity = list.length;
+    }
+
+    private fn grow(new_capacity int) {
+        // TODO: Once the language supports deleting without calling destructors
+        // that will need to happen instead.
+        old_buckets := buckets;
+        buckets = new T[new_capacity] ---;
+        memcpy(buckets, old_buckets, length * sizeof(T));
+
+        capacity = new_capacity;
+        delete old_buckets;
+    }
+
+    private fn ensure_capacity(new_capacity int) {
+        if capacity < new_capacity {
+            growth_capacity := math.max(new_capacity, capacity << 1);
+            grow(growth_capacity);
+        }
+    }
+
+    fn add(value T) {
+        ensure_capacity(length + 1);
+        buckets[length] = moveobj(value);
+        ++length;
+    }
+
+    fn get(index int) T {
+        return buckets[index];
+    }
+}

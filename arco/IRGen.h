@@ -8,12 +8,14 @@
 namespace arco {
 
     class ArcoContext;
-
+    struct GenericStructInfo;
+    using InstructionRange = std::pair<llvm::Instruction*, llvm::Instruction*>;
+    
     llvm::Type* GenType(ArcoContext& Context, Type* Ty);
-    llvm::StructType* GenStructType(ArcoContext& Context, StructDecl* Struct);
+    llvm::StructType* GenForwardDeclStructType(ArcoContext& Context);
+    void GenStructType(ArcoContext& Context, StructType* StructTy, llvm::StructType* LLStructTy);
     llvm::FunctionType* GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Func);
     llvm::IntegerType* GetSystemIntType(llvm::LLVMContext& LLContext, llvm::Module& LLModule);
-
     bool FuncUsesParamRetSlot(llvm::Module& LLModule, StructType* StructTy, ulen SizeInBytes);
     bool FuncUsesParamRetSlot(ArcoContext& Context, StructType* StructTy);
 
@@ -26,11 +28,15 @@ namespace arco {
 
         explicit IRGenerator(ArcoContext& Context);
 
-        void GenFunc(FuncDecl* Func);
-        
+        void GenFuncDecl(FuncDecl* Func);
+        void GenFuncBody(FuncDecl* Func);
+
         void GenGlobalVar(VarDecl* Global);
 
-        void GenImplicitDefaultConstructorBody(StructDecl* Struct);
+        void GenImplicitDefaultConstructor(StructType* StructTy);
+        void GenImplicitDestructor(StructType* StructTy);
+
+        void GenGenericStructConstructorSharedInstructions(StructType* StructTy);
 
         void GenGlobalInitFuncBody();
         void GenGlobalDestroyFuncBody();
@@ -67,6 +73,8 @@ namespace arco {
         llvm::Value* LLCatchErrorAddr = nullptr;
         // Where to redirect to if there is an error!
         llvm::BasicBlock* LLErrorCatchBlock;
+
+        GenericStructInfo* SharedConstructorGenInfo = nullptr;
 
         struct DestroyObject {
             Type*        Ty;
@@ -120,9 +128,6 @@ namespace arco {
 
         ulen FieldInitializingIdx = -1;
 
-        void GenFuncDecl(FuncDecl* Func, GenericBinding* Binding = nullptr, bool ShouldBind = false);
-        void GenFuncBody(FuncDecl* Func);
-
         llvm::Function* GenGlobalInitFuncDecl();
         llvm::Function* GenDestroyGlobalsFuncDecl();
 
@@ -159,7 +164,6 @@ namespace arco {
         llvm::Value* GenStringLiteral(const char* String, ulen Length);
         llvm::Value* GenIdentRef(IdentRef* IRef);
         llvm::Value* GenFieldAccessor(FieldAccessor* FieldAcc);
-        llvm::Constant* GenComptimeValue(VarDecl* Var);
         llvm::Value* GenFuncCall(FuncCall* Call,
                                  llvm::Value* LLAddr);
         llvm::Value* GenFuncCallGeneral(Expr* CallNode,
@@ -180,6 +184,7 @@ namespace arco {
                                           llvm::Value* LLAddr);
         void GenStructInitArgs(llvm::Value* LLAddr,
                                StructDecl* Struct,
+                               StructType* StructTy,
                                llvm::SmallVector<NonNamedValue>& Args,
                                llvm::SmallVector<NamedValue>& NamedArgs);
         llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr);
@@ -258,13 +263,17 @@ namespace arco {
 
         void GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Value* LLSlot);
 
-        void CopyOrMoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
-        void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
-        void MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructDecl* Struct);
+        void CopyOrMoveStructObject(llvm::Value* LLToAddr,
+                                    llvm::Value* LLFromAddr,
+                                    StructType*  StructTy);
+        void CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructType* StructTy);
+        void MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLFromAddr, StructType* StructTy);
 
         void GenConstructorBodyFieldAssignments(FuncDecl* Func, StructDecl* Struct);
-        void GenCallToInitVTableFunc(llvm::Value* LLAddr, StructDecl* Struct);
-        llvm::Function* GenInitVTableFunc(StructDecl* Struct);
+        void GenCallToInitVTableFunc(llvm::Value* LLAddr,
+                                     StructDecl*  Struct,
+                                     StructType*  StructTy);
+        llvm::Function* GenInitVTableFunc(StructDecl* Struct, StructType* StructTy);
 
         std::tuple<bool, llvm::Constant*> GenGlobalVarInitializeValue(VarDecl* Global);
 
@@ -273,8 +282,7 @@ namespace arco {
 
         void CallDestructors(llvm::SmallVector<DestroyObject>& Objects);
         void CallDestructors(Type* Ty, llvm::Value* LLAddr);
-        void GenCompilerDestructorAndCall(StructDecl* Struct, llvm::Value* LLAddr);
-
+        
         void DestroyLocScopeInitializedObjects();
         void DestroyCurrentlyInitializedObjects();
         
@@ -317,7 +325,6 @@ namespace arco {
         void GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment);
 
         void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);
-        llvm::Function* GenDefaultConstructorDecl(StructDecl* Struct);
 
         llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name, bool IsErrCond = false);
 
@@ -330,6 +337,29 @@ namespace arco {
                                           FuncDecl* CalledFunc,
                                           const llvm::SmallVector<NonNamedValue>& Args,
                                           const llvm::SmallVector<NamedValue>& NamedArgs);
+
+        using ReplaceInstList = llvm::SmallVector<std::pair<llvm::Instruction*, llvm::Instruction*>, 64>;
+        void GenCommonSharedFieldUnseenAllocs(
+            llvm::Function* LLSharedFunc,
+            ReplaceInstList& LLReplaceUnseenInstructions
+            );
+        void GenCommonSharedFieldInstructions(
+            llvm::Value* LLThis,
+            llvm::Function* LLSharedFunc,
+            const InstructionRange& Range,
+            ReplaceInstList& LLReplaceInstructions,
+            ReplaceInstList& LLReplaceUnseenInstructions,
+            llvm::DenseMap<llvm::BasicBlock*, llvm::BasicBlock*>& LLVisitedBlocks,
+            bool IsRoot = true);
+        llvm::BasicBlock* GenCommonSharedFieldInstructionsBlock(
+            llvm::Value* LLThis,
+            llvm::Function* LLSharedFunc,
+            ReplaceInstList& LLReplaceInstructions,
+            ReplaceInstList& LLReplaceUnseenInstructions,
+            llvm::DenseMap<llvm::BasicBlock*, llvm::BasicBlock*>& LLVisitedBlocks,
+            llvm::BasicBlock* LLBranchBB,
+            llvm::Instruction* LLEndInst
+        );
 
         inline DebugInfoEmitter* GetDIEmitter(Decl* D) {
             return D->FScope->DIEmitter;
@@ -347,12 +377,8 @@ namespace arco {
             return arco::GenType(Context, Ty);
         }
 
-        inline llvm::StructType* GenStructType(StructDecl* Struct) {
-            return arco::GenStructType(Context, Struct);
-        }
-        
-        inline llvm::StructType* GenStructType(StructType* StructTy) {
-            return arco::GenStructType(Context, StructTy->GetStruct());
+        inline llvm::Type* GenType(Type* Ty, Decl* CDecl) {
+            return arco::GenType(Context, Ty);
         }
 
         inline llvm::Constant* GetLLInt8(i32 Value) {

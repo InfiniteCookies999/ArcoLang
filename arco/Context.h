@@ -78,6 +78,8 @@ namespace arco {
 
         FuncDecl* MainEntryFunc = nullptr;
 
+        bool CheckingUnhcecked = false;
+
         ulen BailCountForShowingOverloadedFuncs = 5;
 
         // 'main' identifier (for identifying entry points)
@@ -115,6 +117,13 @@ namespace arco {
         InterfaceDecl* StdErrorInterface = nullptr;
         FuncDecl* StdErrorPanicFunc = nullptr;
         FuncDecl* InitializeErrorHandlingFunc = nullptr;
+        StructType* StdStringStructType;
+        StructType* StdAnyStructType;
+        StructType* StdTypeStructType;
+        StructType* StdArrayTypeStructType;
+        StructType* StdStructTypeStructType;
+        StructType* StdFieldTypeStructType;
+        StructType* StdEnumTypeStructType;
 
         Type* IntType;
         Type* PtrsizeType;
@@ -143,7 +152,7 @@ namespace arco {
         Type* StructRefType;
         Type* EnumRefType;
         Type* InterfaceRefType;
-        Type* AnyType;
+        StructType* AnyType;
         PointerType* ErrorInterfacePtrType;
 
         // Maps a binary operator to its precedence.
@@ -181,12 +190,12 @@ namespace arco {
             Type*                    RetType;
         };
         // TODO: should this be a map instead?
-        llvm::SmallVector<LLIntrinsicDef>               LLVMValidIntrinsicArgs;
-        llvm::DenseMap<StructDecl*, llvm::Function*> CompilerGeneratedDestructors;
-        llvm::SmallVector<VarDecl*> GlobalsNeedingDestruction;
+        llvm::SmallVector<LLIntrinsicDef>          LLVMValidIntrinsicArgs;
+        llvm::SmallVector<VarDecl*>                GlobalsNeedingDestruction;
         llvm::DenseMap<u32, llvm::GlobalVariable*> LLTypeInfoMap;
         llvm::DenseMap<u32, llvm::StructType*>     LLSliceTypes;
         llvm::DenseMap<u32, llvm::DIType*>         LLDITypeCache;
+        llvm::SmallVector<llvm::Function*>         LLDiscardFuncs;
 
         llvm::DenseMap<u32, PointerType*>                     PointerTyCache;
         llvm::DenseMap<u32, ImplPointerType*>                 ImplPointerTyCache;
@@ -194,7 +203,7 @@ namespace arco {
         llvm::DenseMap<std::pair<u32, ulen>, ArrayType*>      ArrayTyCache;
         llvm::DenseMap<llvm::SmallVector<u32>, FunctionType*> FunctionTyCache;
         // TODO: llvm::DenseMap<u32, StructType*>                   StructCache;
-        std::queue<StructDecl*>                          DefaultConstrucorsNeedingCreated;
+        //std::queue<StructType*>                               ImplicitDefaultConstrucorsNeedingCreated;
 
     private:
         // TODO: This can be replaced with perfect hashing!

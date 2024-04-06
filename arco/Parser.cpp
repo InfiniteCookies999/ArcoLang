@@ -5,6 +5,7 @@
 
 #include "Context.h"
 #include "FloatConversions.h"
+#include "Generics.h"
 
 namespace arco {
     
@@ -329,7 +330,7 @@ arco::AstNode* arco::Parser::ParseStmt() {
                 Stmt = ParseVarDeclList(Mods);
                 Match(';');
             } else if (PeekTok.Is(TokenKind::KW_STRUCT)) {
-                Stmt = ParseStructDecl(Mods);
+                Stmt = ParseStructDecl(Mods, std::move(GenTys));
             } else if (PeekTok.Is(TokenKind::KW_ENUM)) {
                 Stmt = ParseEnumDecl(Mods);
             } else if (PeekTok.Is(TokenKind::KW_INTERFACE)) {
@@ -425,10 +426,22 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
     ulen NumErrs = TotalAccumulatedErrors;
 
     FuncDecl* Func = NewNode<FuncDecl>(CTok);
+    bool HasGenericParent = CStruct && CStruct->IsGeneric();
     if (!GenTys.empty()) {
+        for (GenericType* GenTy : GenTys) {
+            GenTy->SetBoundToDecl(Func);
+        }
+
         // TODO: Use of call to new
         Func->GenData = new GenericData;
-        Func->GenData->GenTys = GenTys;
+        auto& FuncGenTys = Func->GenData->GenTys;
+        FuncGenTys = std::move(GenTys);
+        if (HasGenericParent) {
+            Func->GenData->ParentGenData = CStruct->GenData;
+        }
+    } else if (HasGenericParent) {
+        Func->GenData = new GenericData;
+        Func->GenData->ParentGenData = CStruct->GenData;
     }
 
     if (CTok.Is(TokenKind::KW_FN)) {
@@ -494,8 +507,9 @@ arco::FuncDecl* arco::Parser::ParseFuncDecl(Modifiers Mods, llvm::SmallVector<Ge
     if (Func->IsGeneric()) {
         for (VarDecl* Param : Func->Params) {
             if (Param->Ty->ContainsGenerics) {
-                Param->GenericIdx = Func->GenData->NumQualifications;
+                Param->GenQualIdx = Func->GenData->NumQualifications;
                 ++Func->GenData->NumQualifications;
+                Func->GenData->VarsNeedingConstQualification.push_back(Param);
             }
         }
     }
@@ -545,6 +559,9 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
                     if (Param->Ty->GetRealKind() != TypeKind::Array) {
                         NextToken(); // Implicit pointer type.
                         Param->Ty = PointerType::Create(Param->Ty, Context);
+                        if (Param->Ty->ContainsGenerics) {
+                            ProcessGenericContainingType(Param->Ty);
+                        }
                         Param->ImplicitPtr = true;
                     }
                 }
@@ -581,7 +598,7 @@ void arco::Parser::ParseFuncSignature(FuncDecl* Func) {
             NextToken(); // Consuming 'const' token.
             Func->ReturnsConstAddress = true;
         }
-        Func->RetTy = ParseType(true);
+        Func->RetTy = ParseType(true, false, true);
     } else {
         if (CTok.Is(':')) {
             NextToken(); // Consuming ':' token.
@@ -645,6 +662,9 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods, llvm::SmallVector<Gene
         // TODO: Use of call to new
         Var->GenData = new GenericData;
         Var->GenData->GenTys = GenTys;
+        for (GenericType* GenTy : GenTys) {
+            GenTy->SetBoundToDecl(Var);
+        }
     }
 
     if (CTok.Is(TokenKind::KW_CONST)) {
@@ -665,7 +685,7 @@ arco::VarDecl* arco::Parser::ParseVarDecl(Modifiers Mods, llvm::SmallVector<Gene
         Var->HasConstAddress = true;
         Var->ExplicitlyMarkedConst = true;
     } else {
-        Var->Ty = ParseType(true);
+        Var->Ty = ParseType(true, true, false);
     
         if (CTok.Is('=')) {
             NextToken(); // Consuming '=' token.
@@ -722,7 +742,7 @@ arco::VarDeclList* arco::Parser::ParseVarDeclList(Modifiers Mods) {
             IsInfered = true;
             HasConstAddress = true;
         } else {
-            Ty = ParseType(false);
+            Ty = ParseType(true, false, false);
         }
         
         if (NumErrs != TotalAccumulatedErrors) {
@@ -813,11 +833,19 @@ void arco::Parser::FinishVarDecl(VarDecl* Var) {
     }
 }
 
-arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
+arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys) {
 
     ulen NumErrs = TotalAccumulatedErrors;
 
     StructDecl* Struct = NewNode<StructDecl>(CTok);
+    if (!GenTys.empty()) {
+        // TODO: Use of call to new
+        for (GenericType* GenTy : GenTys) {
+            GenTy->SetBoundToDecl(Struct);
+        }
+        Struct->GenData = new GenericData;
+        Struct->GenData->GenTys = GenTys;
+    }
     Struct->UniqueTypeId = Context.UniqueTypeIdCounter++;
     Struct->Mod    = Mod;
     Struct->FScope = FScope;
@@ -844,14 +872,22 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
         } while (MoreInterfaces);
     }
 
-    Context.UncheckedDecls.insert(Struct);
+    if (!Struct->IsGeneric()) {
+        Context.UncheckedDecls.insert(Struct);
+    }
 
     StructDecl* PrevStruct = CStruct;
     CStruct = Struct;
+    ulen GenQualIdxCount = 0;
 
-    auto ProcessField = [=](VarDecl* Field) {
+    auto ProcessField = [=, &GenQualIdxCount](VarDecl* Field) {
         if (!Field->Name.IsNull()) {
             Field->FieldIdx = Struct->Fields.size();
+            Field->Struct = Struct;
+            if (Field->Ty->ContainsGenerics) {
+                Field->GenQualIdx = GenQualIdxCount++;
+                Struct->GenData->VarsNeedingConstQualification.push_back(Field);
+            }
             Struct->Fields.push_back(Field);
         }
     };
@@ -901,6 +937,7 @@ arco::StructDecl* arco::Parser::ParseStructDecl(Modifiers Mods) {
                         Struct->Constructors.push_back(Func);
                     }
                     if (Func->Params.empty()) {
+                        Func->IsDefaultConstructor = true;
                         Struct->DefaultConstructor = Func;
                     }
                 } else {
@@ -940,7 +977,7 @@ arco::EnumDecl* arco::Parser::ParseEnumDecl(Modifiers Mods) {
 
     if (CTok.Is(':')) {
         NextToken(); // Consuming ':' token.
-        Enum->ValuesType = ParseType(false);
+        Enum->ValuesType = ParseType(true, false, false);
     }
 
     Context.UncheckedDecls.insert(Enum);
@@ -1364,7 +1401,13 @@ arco::DeleteStmt* arco::Parser::ParseDelete() {
 arco::RaiseStmt* arco::Parser::ParseRaise() {
     RaiseStmt* Raise = NewNode<RaiseStmt>(CTok);
     NextToken(); // Consuming 'raise' token.
-    Raise->StructInit = ParseStructInitializer();
+    // TODO: Generics bind types!
+    // TODO: Verify that the identifier token is actually an identifier token.
+    // TODO: Might want to change the way things are parsed here for the sake of better
+    // error recovery by not just assuming it is a struct initializer.
+    Token IdentTok = CTok;
+    NextToken();
+    Raise->StructInit = ParseStructInitializer(IdentTok, {});
     if (CFunc) {
         CFunc->HasRaiseStmt = true;
     }
@@ -1463,9 +1506,13 @@ arco::Modifiers arco::Parser::ParseModifiers() {
     }
 }
 
-arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType, bool ForRetTy) {
+arco::Type* arco::Parser::ParseType(bool IsRoot,
+                                    bool AllowImplicitArrayType,
+                                    bool AllowDynamicArray,
+                                    bool ForRetTy) {
 
     arco::Type* Ty = CTok.Is(TokenKind::KW_FN) ? ParseFunctionType() : ParseBasicType(ForRetTy);
+
     if (Ty == Context.ErrorType) {
         return Ty;
     }
@@ -1483,18 +1530,12 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType, bool ForRetTy) 
         }
     }
 
-    if (CTok.Is('[')) {
-
-        if (PeekToken(1).Is('*')) {
-            // Slice type. For now we only allow for a single dimensional
-            // slice type. In the future it may be nice to allow for multidimensional
-            // slice types.
-            NextToken(); // Consuming '[' token.
-            NextToken(); // Consuming ']' token.
-            Match(']');
-            Ty = SliceType::Create(Ty, Context);
-            return Ty;
-        }
+    if (CTok.Is('[') && PeekToken(1).Is('*')) {
+        NextToken(); // Consuming '[' token.
+        NextToken(); // Consuming '*' token.
+        Match(']');
+        Ty = SliceType::Create(Ty, Context);
+    } else if (CTok.Is('[')) {
 
         llvm::SmallVector<Expr*, 2>     LengthExprs;
         llvm::SmallVector<SourceLoc, 2> ExpandedErrorLocs;
@@ -1519,29 +1560,42 @@ arco::Type* arco::Parser::ParseType(bool AllowImplicitArrayType, bool ForRetTy) 
                 NextToken(); // Consuming ']' token
             } else {
                 EncounteredNonImplicit = true;
-                
+
                 SourceLoc ExpandedErrorLoc;
                 CREATE_EXPANDED_SOURCE_LOC(
                     LengthExprs.push_back(ParseExpr()),
                     ExpandedErrorLoc
                 )
-                ExpandedErrorLocs.push_back(ExpandedErrorLoc);
+                    ExpandedErrorLocs.push_back(ExpandedErrorLoc);
 
                 if (IsImplicit && !AlreadyReportedImplicitError) {
                     Error(CTok, "Implicit array subscripts require all subscripts to be implicit.");
                     AlreadyReportedImplicitError = true;
                 }
-            
+
                 Match(']');
             }
         }
 
         for (long long i = LengthExprs.size() - 1; i >= 0; i--) {
-            Ty = ArrayType::Create(Ty, LengthExprs[i], ExpandedErrorLocs[i], Context);
+            Ty = ArrayType::Create(Ty, LengthExprs[i], ExpandedErrorLocs[i], AllowDynamicArray, Context);
         }
     }
 
+    if (IsRoot && Ty->ContainsGenerics) {
+        ProcessGenericContainingType(Ty);
+    }
     return Ty;
+}
+
+void arco::Parser::ProcessGenericContainingType(Type* Ty) {
+    if (CVar && CVar->IsGeneric()) {
+        CVar->GenData->TypesNeedingQualification.push_back(Ty);
+    } else if (CFunc && CFunc->IsGeneric()) {
+        CFunc->GenData->TypesNeedingQualification.push_back(Ty);
+    } else if (CStruct && CStruct->IsGeneric()) {
+        CStruct->GenData->TypesNeedingQualification.push_back(Ty);
+    }
 }
 
 arco::Type* arco::Parser::ParseFunctionType() {
@@ -1560,16 +1614,16 @@ arco::Type* arco::Parser::ParseFunctionType() {
                     NextToken(); // Consuming the identifier.
                     NextToken(); // Consuming 'const' token.
                     HasConstAddress = true;
-                    Ty = ParseType(false);
+                    Ty = ParseType(false, false, false);
                     break;
                 case TYPE_KW_START_CASES:
                 case TokenKind::IDENT:
                     // Allowing the parameters to have names.
                     NextToken(); // Consuming the name identifier.
-                    Ty = ParseType(false);
+                    Ty = ParseType(false, false, false);
                     break;
                 default:
-                    Ty = ParseType(false);
+                    Ty = ParseType(false, false, false);
                     break;
                 }
             } else {
@@ -1577,7 +1631,7 @@ arco::Type* arco::Parser::ParseFunctionType() {
                     NextToken(); // Consuming 'const' token.
                     HasConstAddress = true;
                 }
-                Ty = ParseType(false);
+                Ty = ParseType(false, false, false);
             }
             if (Ty == Context.ErrorType) {
                 SkipRecovery({ ',', ')' });
@@ -1602,7 +1656,7 @@ arco::Type* arco::Parser::ParseFunctionType() {
     }
     
     // TODO: allow the return type to be optional and default to void?
-    Type* RetTy = ParseType(false, true);
+    Type* RetTy = ParseType(false, false, true);
 
     return FunctionType::Create(TypeInfo{ RetTy, ReturnsConstAddress }, std::move(ParamTypes), Context);
 }
@@ -1628,6 +1682,10 @@ arco::Type* arco::Parser::ParseBasicType(bool ForRetTy) {
     case TokenKind::KW_BOOL:     Ty = Context.BoolType;    NextToken(); break;
     case TokenKind::IDENT: {
         
+        Identifier Name = Identifier(CTok.GetText());
+        Token NameTok = CTok;
+        NextToken();
+        
         auto SearchForGeneric = [](Decl* D, const Identifier& Name) -> Type* {
             auto* GenData = D->GenData;
             auto Itr = std::find_if(GenData->GenTys.begin(), GenData->GenTys.end(),
@@ -1641,9 +1699,14 @@ arco::Type* arco::Parser::ParseBasicType(bool ForRetTy) {
         };
 
         bool IsGeneric = false;
-        Identifier Name = Identifier(CTok.GetText());
         if (CFunc && CFunc->IsGeneric()) {
             if (Type* GenTy = SearchForGeneric(CFunc, Name)) {
+                Ty = GenTy;
+                IsGeneric = true;
+            }
+        }
+        if (!IsGeneric && CStruct && CStruct->IsGeneric()) {
+            if (Type* GenTy = SearchForGeneric(CStruct, Name)) {
                 Ty = GenTy;
                 IsGeneric = true;
             }
@@ -1655,11 +1718,15 @@ arco::Type* arco::Parser::ParseBasicType(bool ForRetTy) {
             }
         }
 
-        if (!IsGeneric) {
-            Ty = StructType::Create(Name, CTok.Loc, Context);
+        llvm::SmallVector<Type*, 8> BindTypes;
+        if (CTok.Is('<')) {
+            ParseTypeBindings(false, BindTypes);
         }
-        
-        NextToken();
+
+        if (!IsGeneric) {
+            Ty = StructType::Create(Name, std::move(BindTypes), NameTok.Loc, Context);
+        }
+
         break;
     }
     default:
@@ -1681,7 +1748,7 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
     // that uses the generic types so that they may also be considered a parse error.
 
     llvm::SmallVector<GenericType*> Generics;
-    Match('\\');
+    Match('<');
     bool MoreGenerics = false;
     ulen GenericIdx = 0;
 
@@ -1720,7 +1787,12 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
             Error(NameTok, "Duplicate generic by name '%s'", Name);
         } else if (!Name.IsNull()) {
             
-            GenericType* GenTy = GenericType::Create(Name, ConstraintRef, InvertsConstraint, GenericIdx, Context);
+            GenericType* GenTy = GenericType::Create(Name,
+                                                     ConstraintRef,
+                                                     InvertsConstraint,
+                                                     GenericIdx,
+                                                     NameTok.Loc,
+                                                     Context);
             ++GenericIdx;
             Generics.push_back(GenTy);
         }
@@ -1731,7 +1803,7 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
         }
     } while (MoreGenerics);
 
-    Match('\\');
+    Match('>');
     return Generics;
 }
 
@@ -1740,7 +1812,14 @@ llvm::SmallVector<arco::GenericType*> arco::Parser::ParseGenerics() {
 //===-------------------------------===//
 
 arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
-    Expr* LHS = ParseExprAndCatch();
+    return ParseAssignmentAndExprs(ParseExprAndCatch());
+}
+
+arco::Expr* arco::Parser::ParseAssignmentAndExprs(Expr* LHS) {
+    if (LHS->Is(AstKind::CATCH_ERROR)) {
+        return ParseBinaryExpr(LHS);
+    }
+
     switch (CTok.Kind) {
     case '=':
     case TokenKind::PLUS_EQ:
@@ -1764,7 +1843,10 @@ arco::Expr* arco::Parser::ParseAssignmentAndExprs() {
 }
 
 arco::Expr* arco::Parser::ParseExprAndCatch() {
-    Expr* E = ParseExpr();
+    return ParseExprAndCatch(ParseExpr());
+}
+
+arco::Expr* arco::Parser::ParseExprAndCatch(Expr* E) {
     if (CTok.Is(TokenKind::KW_CATCH)) {
         CatchError* Catch = NewNode<CatchError>(CTok);
         NextToken();
@@ -1792,9 +1874,9 @@ arco::Expr* arco::Parser::ParseExpr() {
         Ternary* Tern = NewNode<Ternary>(CTok);
         Tern->Cond = LHS;
         NextToken();
-        Tern->LHS = ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+        Tern->LHS = ParseExpr();
         Match(':', "for ternary expression");
-        Tern->RHS = ParseBinaryExpr(ParsePrimaryAndPostfixUnaryExpr());
+        Tern->RHS = ParseExpr();
         return Tern;
     } else {
         return LHS;
@@ -1949,30 +2031,21 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
     case TokenKind::STRING_LITERAL:  return ParseStringLiteral();
     case TokenKind::IDENT: {
 
-        if (AllowStructInitializer && PeekToken(1).Is('{')) {
-            return ParseIdentPostfix(ParseStructInitializer());
+        Token IdentTok = CTok;
+        NextToken(); // Consuming the identifier token.
+
+        llvm::SmallVector<Type*, 8> BindTypes;
+        if (CTok.Is('$')) {
+            NextToken(); // Consuming '$' token.
+            ParseTypeBindings(true, BindTypes);
+        }
+
+        if (AllowStructInitializer && CTok.Is('{')) {
+            return ParseIdentPostfix(ParseStructInitializer(IdentTok, std::move(BindTypes)));
         } else {
 
-            IdentRef* IRef = NewNode<IdentRef>(CTok);
-            IRef->Ident = Identifier(CTok.GetText());
-            NextToken();
-
-            // Even if the identifier is not in the current scope
-            // of variable declarations it may be refering to
-            // a function identifier, class, enum, ect.. so
-            // no error is displayed and the process of determining
-            // the identifier's declaration is determined during
-            // semantic analysis.
-            if (LocScope && IRef->Is(AstKind::IDENT_REF)) {
-                if (VarDecl* FoundVar = LocScope->FindVariable(IRef->Ident)) {
-                    IRef->Var     = FoundVar;
-                    IRef->RefKind = IdentRef::RK::Var;
-                }
-            }
-
-            if (CTok.Is('\\')) {
-                ParseTypeBindings(IRef->GenBindings);
-            }
+            IdentRef* IRef = CreateIdentRef(IdentTok);
+            IRef->GenBindings = std::move(BindTypes);
 
             return ParseIdentPostfix(IRef);
         }
@@ -2052,7 +2125,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         TypeCast* Cast = NewNode<TypeCast>(CTok);
         NextToken(); // Consuming 'cast' token.
         Match('(');
-        Cast->ToType = ParseType(false);
+        Cast->ToType = ParseType(true, false, false);
         Match(')');
         Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
         return Cast;
@@ -2061,7 +2134,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         TypeBitCast* Cast = NewNode<TypeBitCast>(CTok);
         NextToken(); // Consuming 'cast' token.
         Match('(');
-        Cast->ToType = ParseType(false);
+        Cast->ToType = ParseType(true, false, false);
         Match(')');
         Cast->Value = ParsePrimaryAndPostfixUnaryExpr();
         return Cast;
@@ -2070,7 +2143,8 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         SizeOf* SOf = NewNode<SizeOf>(CTok);
         NextToken(); // Consuming 'sizeof' token.
         Match('(');
-        SOf->TypeToGetSizeOf = ParseType(false);
+        //SOf->TOrE = ParseTypeOrExpr(')');
+        SOf->TypeToGetSizeOf = ParseType(true, false, false); // ParseTypeOrExpr(')');
         SOf->Ty = Context.IntType;
         Match(')');
         return SOf;
@@ -2079,7 +2153,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         TypeOf* TOf = NewNode<TypeOf>(CTok);
         NextToken(); // Consuming 'typeof' token.
         Match('(');
-        TOf->TypeToGetTypeOf = ParseType(false);
+        TOf->TypeToGetTypeOf = ParseType(true, false, false);
         Match(')');
         // Need to call ParseIdentPostfix because it returns
         // a data structure that the user can access.
@@ -2089,7 +2163,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         TypeId* TId = NewNode<TypeId>(CTok);
         NextToken(); // Consuming 'typeid' token.
         Match('(');
-        TId->TypeToGetTypeId = ParseType(false);
+        TId->TypeToGetTypeId = ParseType(true, false, false);
         Match(')');
         return TId;
     }
@@ -2118,7 +2192,7 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
     case TokenKind::KW_NEW: {
         HeapAlloc* Alloc = NewNode<HeapAlloc>(CTok);
         NextToken(); // Consuming 'new' token.
-        Alloc->TypeToAlloc = ParseType(false);
+        Alloc->TypeToAlloc = ParseType(true, false, true);
         if (Alloc->TypeToAlloc == Context.ErrorType) {
             SkipRecovery();
         }
@@ -2559,15 +2633,14 @@ arco::FuncCall* arco::Parser::ParseFuncCall(Expr* Site) {
     return Call;
 }
 
-arco::StructInitializer* arco::Parser::ParseStructInitializer() {
+arco::StructInitializer* arco::Parser::ParseStructInitializer(Token IdentTok, llvm::SmallVector<Type*, 8> BindTypes) {
 
-    StructInitializer* StructInit = NewNode<StructInitializer>(CTok);
+    StructInitializer* StructInit = NewNode<StructInitializer>(IdentTok);
 
-    Identifier StructName = Identifier(CTok.GetText());
-    StructType* Ty = StructType::Create(StructName, CTok.Loc, Context);
-    NextToken();
+    Identifier StructName = Identifier(IdentTok.GetText());
+    StructType* Ty = StructType::Create(StructName, std::move(BindTypes), IdentTok.Loc, Context);
 
-    NextToken(); // Consuming '{' token.
+    Match('{', "for struct initializer");
     StructInit->Ty = Ty;
 
     if (CTok.IsNot('}')) {
@@ -2585,7 +2658,7 @@ arco::Array* arco::Parser::ParseArray() {
 
     switch (CTok.Kind) {
     case TYPE_KW_START_CASES:
-        Arr->ReqBaseType = ParseBasicType();
+        Arr->ReqBaseType = ParseBasicType(false);
         Match(']');
         Match('[');
         break;
@@ -2655,24 +2728,6 @@ void arco::Parser::SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth) 
     }
 }
 
-void arco::Parser::ParseTypeBindings(llvm::SmallVector<Type*, 8>& Bindings) {
-    NextToken(); // Consuming '\' token.
-
-    // TODO: Better error recovery!
-    bool MoreBindings = false;
-    do {
-
-        Bindings.push_back(ParseType(false));
-
-        MoreBindings = CTok.Is(',');
-        if (MoreBindings) {
-            NextToken();
-        }
-    } while (MoreBindings);
-    
-    Match('\\', "for generic type bindings");
-}
-
 void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
                                          llvm::SmallVector<NamedValue>& NamedValues,
                                          RecoveryStrat Strat) {
@@ -2740,6 +2795,85 @@ void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Value
         }
     } while (MoreValues);
     RecStrat = PrevStrat;
+}
+
+void arco::Parser::ParseTypeBindings(bool IsRoot, llvm::SmallVector<Type*, 8>& BindTypes) {
+    Match('<', "for generic type bindings");
+
+    // TODO: Better error recovery!
+    bool MoreBindings = false;
+    do {
+
+        BindTypes.push_back(ParseType(IsRoot, false, false));
+
+        MoreBindings = CTok.Is(',');
+        if (MoreBindings) {
+            NextToken();
+        }
+    } while (MoreBindings);
+
+    Match('>', "for generic type bindings");
+}
+
+arco::TypeOrExpr* arco::Parser::ParseTypeOrExpr(u16 StopTok) {
+    
+    TypeOrExpr* TOrE = NewNode<TypeOrExpr>(CTok);
+
+    switch (CTok.Kind) {
+    case TokenKind::IDENT: {
+        Token PeekTok1 = PeekToken(1);
+        Token PeekTok2 = PeekToken(2);
+        if (PeekTok1.Is('*') && PeekTok2.Is('*')) {
+            // S**
+            TOrE->ResolvedType = ParseType(true, false, false);
+            break;
+        } else if (PeekTok1.Is('*') && PeekTok2.Is(StopTok)) {
+            // S*
+            TOrE->ResolvedType = ParseType(true, false, false);
+            break;
+        } else if (PeekTok1.Is('[') && PeekTok2.Is('*') && PeekToken(3).Is(']')) {
+            // S[*]
+            TOrE->ResolvedType = ParseType(true, false, false);
+            break;
+        } else if (PeekTok1.IsNot('[')) {
+            TOrE->ResolvedExpr = ParseExpr();
+            break;
+        }
+        
+        // TODO: Fix for generics.
+
+        TOrE->AmbIdentRef = NewNode<IdentRef>(CTok);
+        TOrE->AmbIdentRef->Ident = Identifier(CTok.GetText());
+        NextToken(); // Consuming identifier
+        NextToken(); // Consuming '[' token.
+        TOrE->AmbTyOfE = ParseTypeOrExpr(']');
+        if (TOrE->AmbTyOfE->ResolvedType) {
+            // TODO: It is a type
+        } /*else if (TOrE->AmbTyOfE->ResolvedExpr) {
+            // this isn't right it could still be an array access.
+
+            
+        }*/
+
+        if (CTok.Is(',')) {
+            // TODO: It is a type
+        }
+
+        Match(']');
+        
+        break;
+    }
+    case TYPE_KW_START_CASES: {
+        TOrE->ResolvedType = ParseType(true, false, false);
+        break;
+    }
+    default:
+        TOrE->ResolvedExpr = ParseExpr();
+        break;
+    }
+
+
+    return TOrE;
 }
 
 template<typename T>
@@ -3100,7 +3234,7 @@ arco::Token arco::Parser::PeekToken(ulen n) {
         SavedTokens[SavedTokensCount] = Lex.NextToken();
         ++SavedTokensCount;
     }
-    return SavedTokens[SavedTokensCount - 1];
+    return SavedTokens[n - 1];
 }
 
 void arco::Parser::Match(u16 Kind, const char* Purpose) {
@@ -3209,4 +3343,23 @@ arco::Identifier arco::Parser::ParseIdentifier(const char* ErrorMessage) {
     llvm::StringRef Text = CTok.Loc.Text;
     NextToken(); // Consuming ident token.
     return Identifier(Text);
+}
+
+arco::IdentRef* arco::Parser::CreateIdentRef(Token IdentTok) {
+    IdentRef* IRef = NewNode<IdentRef>(IdentTok);
+    IRef->Ident = Identifier(IdentTok.GetText());
+    
+    // Even if the identifier is not in the current scope
+    // of variable declarations it may be refering to
+    // a function identifier, class, enum, ect.. so
+    // no error is displayed and the process of determining
+    // the identifier's declaration is determined during
+    // semantic analysis.
+    if (LocScope && IRef->Is(AstKind::IDENT_REF)) {
+        if (VarDecl* FoundVar = LocScope->FindVariable(IRef->Ident)) {
+            IRef->Var = FoundVar;
+            IRef->RefKind = IdentRef::RK::Var;
+        }
+    }
+    return IRef;
 }

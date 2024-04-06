@@ -60,7 +60,7 @@ restartLex:
     case ';':  return CreateToken(';', TokStart);
     case ',':  return CreateToken(',', TokStart);
     case '?':  return CreateToken('?', TokStart);
-    case '\\': return CreateToken('\\', TokStart);
+    case '$':  return CreateToken('$', TokStart);
     case '.':
         if (*CurPtr == '.') {
             ++CurPtr;

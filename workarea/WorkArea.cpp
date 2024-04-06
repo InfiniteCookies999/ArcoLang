@@ -9,7 +9,7 @@
 #define SRC(x) ARCO_TEST_SOURCE_DIR x
 
 int main() {
-  
+
     llvm::SmallVector<arco::Source> Sources;
     Sources.push_back(arco::Source{ true, "default.program.module", SRC("workpad") });
     
@@ -23,17 +23,17 @@ int main() {
     Compiler.Compile(Sources);
     
     if (!arco::FoundCompileError) {
-        //std::string StdOutResult;
-        //int Ok = arco::ExeHiddenProcess("program", StdOutResult);
-        //
-        //if (!Ok) {
-        //    llvm::outs() << "Failed to run the compiled program\n";
-        //    return 1;
-        //} else {
-        //    llvm::outs() << '\n';
-        //    llvm::outs() << "Program Standard Output: \"";
-        //    llvm::outs() << StdOutResult << "\"\n";
-        //}
+        std::string StdOutResult;
+        int Ok = arco::ExeHiddenProcess("program", StdOutResult);
+        
+        if (!Ok) {
+            llvm::outs() << "Failed to run the compiled program\n";
+            return 1;
+        } else {
+            llvm::outs() << '\n';
+            llvm::outs() << "Program Standard Output: \"";
+            llvm::outs() << StdOutResult << "\"\n";
+        }
     }
     
     return 0;

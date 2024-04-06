@@ -73,6 +73,7 @@ fn streq(str1 cstr, str2 cstr) bool {
  *          c-string.
  */
 fn strlen(s cstr) int {
+    if !s   return 0;
     return cast(int) _strlen(s);
 }
 private native("strlen") fn(cdecl) _strlen(s cstr) ptrsize;
@@ -150,7 +151,7 @@ fn count_leading_zeros(x uint64) int {
 /*
  * Moves the contents of x into y and y into x.
  */
-generics\T\
+generics<T>
 fn swap(a T^, b T^) {
     t := moveobj(*a);
     *a = moveobj(*b);
@@ -161,7 +162,7 @@ fn swap(a T^, b T^) {
  * Replaces value with new_value and returns the
  * old value.
  */
-generics\T\
+generics<T>
 fn exchange(value T^, new_value T) T {
     old_value := moveobj(*value);
     *value     = moveobj(new_value);

@@ -18,7 +18,7 @@ in  := TokenStream{ &in_file_handle };
 // Used to determine if the value can be printed using
 // a generic function or if it would be better to fallback
 // on the function which uses an Any type.
-generics\T\
+generics<T>
 private requires_any :: typeid(T) == TypeId.ARRAY ||
                         typeid(T) == TypeId.SLICE ||
                         typeid(T) == TypeId.ENUM  ||
@@ -39,7 +39,7 @@ fn print(i int, base int) {
     try out.write(i, base);
 }
 
-generics\!requires_any T\
+generics<!requires_any T>
 fn print(value T) {
     try out.write(value);
 }
@@ -72,7 +72,7 @@ fn println(i int, base int) {
     try out.writeln(i);
 }
 
-generics\!requires_any T\
+generics<!requires_any T>
 fn println(value T) {
     try out.writeln(value);
 }
@@ -97,7 +97,7 @@ fn println(fmt cstr, args Any...) {
 //
 //----------------------------------------------
 
-generics\!requires_any T\
+generics<!requires_any T>
 fn eprint(value T) {
     err.write(value) catch _ {};
 }
@@ -110,7 +110,7 @@ fn eprint(fmt cstr, args Any...) {
     err.write(fmt, args) catch _ {};
 }
 
-generics\!requires_any T\
+generics<!requires_any T>
 fn eprintln(value T) {
     err.writeln(value) catch _ {};
 }

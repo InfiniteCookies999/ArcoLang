@@ -252,13 +252,19 @@ int main() {
     RunTest(SRC("generics/generics8.arco"), "Programming is fun cool message");
     RunTest(SRC("generics/generics9.arco"), "constrait foo no constraint foo");
     RunTest(SRC("generics/generics10.arco"), "constrait foo no constraint foo");
-
+    
     RunTest(SRC("errors/errors1.arco"), "test message");
     RunTest(SRC("errors/errors2.arco"), "test message");
     RunTest(SRC("errors/errors3.arco"), "test message 55");
     RunTest(SRC("errors/errors4.arco"), "test message 2");
     RunTest(SRC("errors/errors5.arco"), "test message");
     
+    RunTest(SRC("generics/generic_structs1.arco"), "55 hello");
+    RunTest(SRC("generics/generic_structs2.arco"), "55 hello");
+    RunTest(SRC("generics/generic_structs3.arco"), "55 hello");
+    RunTest(SRC("generics/generic_structs4.arco"), "55 hello");
+    RunTest(SRC("generics/generic_structs5.arco"), "72 55 72 hello");
+
     //RunTest(SRC("lots_of_errors.arco"), "");
 
     if (Succeeded + Failed > 0) {

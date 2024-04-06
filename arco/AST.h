@@ -26,6 +26,7 @@ namespace arco {
     struct FuncDecl;
     struct VarDecl;
     struct Expr;
+    struct TypeOrExpr;
     struct Decl;
     struct FileScope;
     using ScopeStmts = llvm::SmallVector<AstNode*>;
@@ -33,20 +34,8 @@ namespace arco {
     class DebugInfoEmitter;
     struct StructInitializer;
 
-    // TODO: May want to make this a DenseMap so to increase lookup
-    //       performance.
-    struct GenericBinding {
-        union {
-            llvm::Function* LLFunction = nullptr;
-            llvm::Constant* LLValue;
-        };
-        Type*                    QualifiedType; // Type deduced for variables after binding and checking.
-        llvm::SmallVector<Type*> BindableTypes;
-        FileScope*               OriginalFile;
-        SourceLoc                OriginalLoc;
-    };
-
-    using GenericBindings = llvm::SmallVector<GenericBinding*>;
+    struct GenericBinding;
+    struct GenericData;
 
     enum class AstKind {
         
@@ -93,7 +82,8 @@ namespace arco {
         RANGE,
         TERNARY,
         TRY_ERROR,
-        CATCH_ERROR
+        CATCH_ERROR,
+        TYPE_OR_EXPR
 
     };
 
@@ -194,16 +184,6 @@ namespace arco {
 
     };
 
-    struct GenericData {
-        llvm::SmallVector<GenericType*>   GenTys;
-        GenericBindings                   Bindings;
-        GenericBinding*                   CurBinding = nullptr;
-        // Stack used to restore state of whatever the previous binding
-        // was if the binding changed while it currently had a binding.
-        std::stack<GenericBinding*>       BindingStack;
-        ulen                              NumQualifications = 0;
-    };
-
     struct Decl : AstNode {
         Decl(AstKind Kind) : AstNode(Kind) {}
 
@@ -224,6 +204,8 @@ namespace arco {
         inline bool IsGeneric() const {
             return GenData != nullptr;
         }
+
+        GenericBinding* GetCurBinding();
 
         inline bool IsStructLike() {
             return Kind == AstKind::STRUCT_DECL || Kind == AstKind::ENUM_DECL ||
@@ -251,33 +233,50 @@ namespace arco {
         FuncDecl*                             Destructor         = nullptr;
         llvm::DenseMap<Identifier, FuncsList> Funcs; // Member functions.
 
-        u32 UniqueTypeId;
+        u32 UniqueTypeId; // Not valid when it is generic.
 
-        // When the struct implements interfaces this offset is the offset
-        // past the interface data.
-        ulen VirtualOffset = 0;
-
-        llvm::StructType* LLStructTy         = nullptr;
-        llvm::Function* LLDefaultConstructor = nullptr;
-        llvm::Function* LLInitVTableFunc     = nullptr;
-        llvm::Function* LLTypeIdFunc         = nullptr;
-
-        // At least one field has assignment.
-        // This also takes into account fields which are structs
-        // which themselves need assignment.
-        bool FieldsHaveAssignment = false;
-        // This is true if either their is a user defined
-        // destructor or if the structure contains another
-        // structure which needs destruction.
-        bool NeedsDestruction = false;
-        // If the struct implements the Error interface and this
-        // is set to false then the error may be raised without the
-        // function having the error as one of its raised errors.
-        bool MustForceRaise = true;
+        bool FieldsChecked = false;
 
         bool ImplementsInterface(InterfaceDecl* Interface);
 
         VarDecl* FindField(Identifier Name);
+
+        void SetFieldsHaveAssignment(bool Tof);
+
+        void SetNeedsDestruction(bool Tof);
+
+        void SetMustForceRaise(bool Tof);
+
+        // NOTE: This information is only set when the struct is not generic.
+        // If it is generic then this information is set as part of GenericStructInfo.
+
+        // NOTE: The data from here on down is effectively private. It only
+        // exists here publically so the IRGen can quickly access and modify
+        // the data based on if the struct is generic or not.
+        
+        llvm::StructType* LLStructTy           = nullptr;
+        llvm::Function*   LLDefaultConstructor = nullptr;
+        llvm::Function*   LLDestructor         = nullptr;
+        // Offset past the pointers into the vtable.
+        ulen              VirtualOffset = 0;
+        // A function that generates and stores the pointers of
+        // the vtable into the struct.
+        llvm::Function*   LLInitVTableFunc = nullptr;
+        StructType*       StructTy = nullptr;
+
+        // At least one field has assignment.
+        // This also takes into account fields which are structs
+        // which themselves need assignment.
+        bool FieldsHaveAssignment;
+        // This is true if either there is a user defined
+        // destructor or if the structure contains another
+        // structure which needs destruction.
+        bool NeedsDestruction;
+        // If the struct implements the Error interface and this
+        // is set to false then the error may be raised without the
+        // function having the error as one of its raised errors.
+        bool MustForceRaise;
+
     };
 
     struct EnumDecl : Decl {
@@ -322,10 +321,8 @@ namespace arco {
     struct FuncDecl : Decl {
         FuncDecl() : Decl(AstKind::FUNC_DECL) {}
 
-    private:
         llvm::Function* LLFunction = nullptr;
-    public:
-
+    
         // Zero means it is not a LLVMIntrinsic.
         llvm::Intrinsic::ID LLVMIntrinsicID = 0;
 
@@ -346,8 +343,10 @@ namespace arco {
         bool IsDestructor          = false;
         bool IsCopyConstructor     = false;
         bool IsMoveConstructor     = false;
+        bool IsDefaultConstructor  = false;
         bool IsVariadic            = false;
         bool HasRaiseStmt          = false;
+        bool ExplicitlyHasGenerics = false;
 
         // When this is not -1 it indicates the index number of
         // the function in an interface.
@@ -387,21 +386,9 @@ namespace arco {
 
         Expr* GetInitializerValue(VarDecl* Field);
 
-        inline llvm::Function* GetLLFunction() {
-            if (IsGeneric()) {
-                return GenData->CurBinding->LLFunction;
-            } else {
-                return LLFunction;
-            }
-        }
+        llvm::StructType* GetLLStructType();
 
-        inline void SetLLFunction(llvm::Function* LLFunction) {
-            if (IsGeneric()) {
-                GenData->CurBinding->LLFunction = LLFunction;
-            } else {
-                this->LLFunction = LLFunction;
-            }
-        }
+        StructType* GetParentStructType();
 
         // If not empty it defines the explicit name for a linked
         // function.
@@ -419,13 +406,15 @@ namespace arco {
 
         Type* Ty;
 
+        StructDecl* Struct;
+
         ulen ParamIdx = -1;
         ulen FieldIdx = -1;
         // This is not equivalent to FieldIdx because if the struct implements
         // an interface it is offset so that it does not interfere with the
         // interface data.
         ulen LLFieldIdx;
-        ulen GenericIdx;
+        ulen GenQualIdx;
 
         // If the variable is declared inside a function
         // and returned.
@@ -462,6 +451,10 @@ namespace arco {
         Expr* Assignment = nullptr;
 
         inline bool IsComptime() const {
+            return IsComptime(Ty, HasConstAddress);
+        }
+
+        inline bool IsComptime(Type* Ty, bool HasConstAddress) const {
             return (Ty->IsNumber() || Ty->GetKind() == TypeKind::Bool) &&
                     HasConstAddress && ParamIdx == -1;
         }
@@ -769,7 +762,7 @@ namespace arco {
 
         // If calling a generic function the binding information is stored
         // so that the correct generic function may be called.
-        GenericBinding* Binding;
+        GenericBinding* FoundBinding;
 
     };
 
@@ -863,7 +856,8 @@ namespace arco {
     struct SizeOf : Expr {
         SizeOf() : Expr(AstKind::SIZEOF) {}
 
-        Type* TypeToGetSizeOf;
+        //TypeOrExpr* TOrE;
+        Type*       TypeToGetSizeOf;
 
     };
 
@@ -922,6 +916,17 @@ namespace arco {
         Expr* CaughtExpr;
         
         LexScope Scope;
+    };
+
+    struct TypeOrExpr : Expr {
+        TypeOrExpr() : Expr(AstKind::TYPE_OR_EXPR) {}
+
+        Type*       ResolvedType = nullptr; // Set if resolved to a type.
+        Expr*       ResolvedExpr = nullptr;
+        IdentRef*   AmbIdentRef; // If ambiguous Ident refers to the name of a type or other value.
+        TypeOrExpr* AmbTyOfE; // If ambigous this is either an expression for an array type or
+                              // part of the larger type.
+
     };
 }
 

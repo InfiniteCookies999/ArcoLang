@@ -1,12 +1,11 @@
 #include "SpellChecking.h"
 
-// Computes the levenstein distance.
 #include "Prelude.h"
 #include "Logger.h"
 #include "TermColors.h"
-
 #include "AST.h"
 
+// Computes the levenstein distance.
 ulen LevRow(const std::string& S1, const std::string& S2) {
 
     const ulen m = S1.size(), n = S2.size();

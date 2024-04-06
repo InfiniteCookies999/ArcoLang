@@ -290,9 +290,9 @@ int main(int argc, char* argv[]) {
                 DriverError(i, "Empty option");
             } else if (!OptManager.ProcessOption(i, Opt)) {
                 auto AllOpts = OptManager.GetAllOptionsAsStrings();
-                const char* Found = arco::FindClosestSpellingMatch(AllOpts, argv[i]);
+                std::string Found = arco::FindClosestSpellingMatch(AllOpts, argv[i]);
                 // TODO: picky: there is an extra period after the question mark
-                std::string DidYouMean = Found ? ",  Did you mean: " + std::string(Found) + "?" : "";
+                std::string DidYouMean = !Found.empty() ? ",  Did you mean: " + std::string(Found) + "?" : "";
                 DriverError(i, "Unknown option: %s%s", argv[i], DidYouMean);
             }
         } else {

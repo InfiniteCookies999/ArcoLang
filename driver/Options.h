@@ -17,7 +17,7 @@ public:
 
 	bool ProcessOption(int ArgNum, llvm::StringRef Opt);
 
-	llvm::SmallVector<std::string> GetAllOptionsAsStrings();
+	llvm::SmallVector<std::string, 64> GetAllOptionsAsStrings();
 
 private:
 

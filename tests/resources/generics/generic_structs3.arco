@@ -1,0 +1,24 @@
+import std;
+
+generics<T>
+A struct {
+    val T;
+
+    generics<V>
+    fn foo(v V) {
+        val = cast(T) v;
+    }
+}
+
+fn main() {
+
+    a1 A<int>;
+    a1.foo(55.3);
+    std.print(a1.val);
+    std.print(" ");
+
+    a2 A<cstr>;
+    a2.foo("hello");
+    std.print(a2.val);
+
+}

@@ -102,7 +102,7 @@ namespace arco {
         VarDeclList* ParseVarDeclList(Modifiers Mods);
         VarDecl* CreateVarDecl(Token Tok, Identifier Name, Modifiers Mods);
         void FinishVarDecl(VarDecl* Var);
-        StructDecl* ParseStructDecl(Modifiers Mods);
+        StructDecl* ParseStructDecl(Modifiers Mods, llvm::SmallVector<GenericType*> GenTys = {});
         EnumDecl* ParseEnumDecl(Modifiers Mods);
         InterfaceDecl* ParseInterfaceDecl(Modifiers Mods);
 
@@ -121,7 +121,11 @@ namespace arco {
         RaiseStmt* ParseRaise();
 
         Modifiers ParseModifiers();
-        Type* ParseType(bool AllowImplicitArrayType, bool ForRetTy = false);
+        Type* ParseType(bool IsRoot,
+                        bool AllowImplicitArrayType,
+                        bool AllowDynamicArray,
+                        bool ForRetTy = false);
+        void ProcessGenericContainingType(Type* Ty);
         Type* ParseFunctionType();
         Type* ParseBasicType(bool ForRetTy = false);
         llvm::SmallVector<GenericType*> ParseGenerics();
@@ -131,7 +135,9 @@ namespace arco {
         //===-------------------------------===//
 
         Expr* ParseAssignmentAndExprs();
+        Expr* ParseAssignmentAndExprs(Expr* LHS);
         Expr* ParseExprAndCatch();
+        Expr* ParseExprAndCatch(Expr* E);
         Expr* ParseExpr();
         Expr* ParseBinaryExpr(Expr* LHS);
         Expr* ParsePrimaryAndPostfixUnaryExpr();
@@ -146,7 +152,7 @@ namespace arco {
         NumberLiteral* ParseFloatLiteral(NumberLiteral* Number);
         StringLiteral* ParseStringLiteral();
         FuncCall* ParseFuncCall(Expr* Site);
-        StructInitializer* ParseStructInitializer();
+        StructInitializer* ParseStructInitializer(Token IdentTok, llvm::SmallVector<Type*, 8> BindTypes);
         Array* ParseArray();
         // Updates the largest array length at the depth
         // of the current array.
@@ -155,12 +161,14 @@ namespace arco {
         // and sets the required array lengths based on the largest
         // array lengths at the given depths.
         void SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth = 0);
-        void ParseTypeBindings(llvm::SmallVector<Type*, 8>& Bindings);
-
-
+        
         void ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
                                    llvm::SmallVector<NamedValue>& NamedValues,
                                    RecoveryStrat Strat);
+
+        void ParseTypeBindings(bool IsRoot, llvm::SmallVector<Type*, 8>& BindTypes);
+
+        TypeOrExpr* ParseTypeOrExpr(u16 StopTok);
 
         template<typename T>
         T FoldInt(Token OpTok, T LHSVal, T RHSVal, bool& OpApplies);
@@ -193,6 +201,8 @@ namespace arco {
         void SkipRecovery(llvm::DenseSet<u16> IncludeSet = {});
 
         Identifier ParseIdentifier(const char* ErrorMessage);
+
+        IdentRef* CreateIdentRef(Token IdentTok);
 
         void Error(Token Tok, const char* Msg) {
             Log.BeginError(Tok.Loc, Msg);

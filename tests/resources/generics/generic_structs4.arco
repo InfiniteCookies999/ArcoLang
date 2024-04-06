@@ -1,0 +1,24 @@
+import std;
+
+generics<T>
+A struct {
+    val T;
+}
+
+generics<T>
+fn foo(a A<T>*, v T) {
+    a.val = v;
+}
+
+fn main() {
+
+    a1 A<int>;
+    foo(&a1, 55);
+    std.print(a1.val);
+    std.print(" ");
+
+    a2 A<cstr>;
+    foo(&a2, "hello");
+    std.print(a2.val);
+
+}

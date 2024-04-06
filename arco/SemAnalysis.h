@@ -3,7 +3,6 @@
 
 #include "AST.h"
 #include "Logger.h"
-#include "TypeBinding.h"
 
 namespace arco {
 
@@ -29,18 +28,21 @@ namespace arco {
         void CheckEnumDecl(EnumDecl* Enum);
         void CheckInterfaceDecl(InterfaceDecl* Interface);
 
-        void CheckVarDecl(VarDecl* Var);
+        void CheckVarDecl(VarDecl* Var, bool PartialGenFixup = false, bool ForceCheck = false);
 
     private:
         ArcoContext& Context;
         Module*      Mod;
         Logger       Log;
-
+        
         FileScope*  FScope;
         FuncDecl*   CFunc   = nullptr;
         StructDecl* CStruct = nullptr;
+        VarDecl*    CVar    = nullptr;
         VarDecl*    CGlobal = nullptr;
         VarDecl*    CField  = nullptr;
+
+        bool NotFullyQualifiedVarState = false;
 
         // Every time a loop is entered this is incremented,
         // and decremented when existed
@@ -71,6 +73,7 @@ namespace arco {
         };
 
         void CheckFuncParams(FuncDecl* Func, bool NotFullyQualified = false);
+        //void CheckStructFields(StructDecl* Struct, bool NotFullyQualified = false);
 
         void CheckNode(AstNode* Node);
 
@@ -107,7 +110,7 @@ namespace arco {
         void CheckIdentRef(IdentRef* IRef,
                            bool ExpectsFuncCall,
                            Namespace* NamespaceToLookup,
-                           StructDecl* StructToLookup = nullptr,
+                           StructType* StructToLookupTy = nullptr,
                            bool ExpectsGenericConstraint = false);
         void CheckFieldAccessor(FieldAccessor* FieldAcc, bool ExpectsFuncCall);
         void CheckThisRef(ThisRef* This);
@@ -119,19 +122,21 @@ namespace arco {
                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                        bool& VarArgsPassAlong,
                                        GenericBinding*& Binding,
-                                       Type*& RetTy);
+                                       Type*& RetTy,
+                                       GenericBinding* StructGenericBinding);
         void CreateCallCasts(FuncDecl* Selected,
                              llvm::SmallVector<NonNamedValue>& Args,
                              llvm::SmallVector<NamedValue>& NamedArgs,
                              bool VarArgsPassAlong,
-                             Type*& RetTy,
                              const BindableList* QualifiedTypes);
         FuncDecl* FindBestFuncCallCanidate(Identifier FuncName,
                                            FuncsList* Canidates,
                                            llvm::SmallVector<NonNamedValue>& Args,
                                            llvm::SmallVector<NamedValue>& NamedArgs,
                                            bool& SelectedVarArgsPassAlong,
-                                           llvm::SmallVector<BindableList, 8>& AllBindableTypes);
+                                           llvm::SmallVector<BindableList, 8>& AllBindableTypes,
+                                           llvm::SmallVector<BindableList, 8>& AllQualTypes,
+                                           BindableList* StructBindableTypes);
         bool CompareAsCanidate(FuncDecl* Canidate,
                                llvm::SmallVector<NonNamedValue>& Args,
                                llvm::SmallVector<NamedValue>& NamedArgs,
@@ -140,20 +145,24 @@ namespace arco {
                                ulen& NumSignConflicts,
                                bool& CanidateVarArgPassAlong,
                                bool& HasAny,
-                               BindableList* BindableTypes);
+                               BindableList* BindableTypes,
+                               BindableList* QualTypes,
+                               BindableList* StructBindableTypes);
         bool CheckCallArg(Expr* Arg, VarDecl* Param, Type* ParamType,
                           ulen& NumConflicts,
                           ulen& EnumImplicitConflicts,
                           ulen& NumSignConflicts,
                           BindableList* BindableTypes,
-                          ulen NumGenerics);
+                          BindableList* QualTypes,
+                          BindableList* StructBindableTypes);
         bool CheckCallArgGeneric(Type* ArgTy,
                                  bool AllowImplicitPointer,
                                  Type* ParamType,
-                                 BindableList* BindableTypes,
+                                 BindableList& BindableTypes,
+                                 BindableList& QualTypes,
+                                 BindableList& StructBindableTypes,
                                  Type*& QualType,
-                                 ulen NumGenerics,
-                                 ulen GenericIdx,
+                                 ulen QualIdx,
                                  bool IsRoot,
                                  bool FromPtr = false,
                                  ArgMismatchData* MismatchData = nullptr);
@@ -164,7 +173,8 @@ namespace arco {
         void DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                FuncsList* Canidates,
                                                const llvm::SmallVector<NonNamedValue>& Args,
-                                               const llvm::SmallVector<NamedValue>& NamedArgs);
+                                               const llvm::SmallVector<NamedValue>& NamedArgs,
+                                               BindableList* StructBindableTypes);
         void DisplayErrorForSingleFuncForFuncCall(
             const char* CallType,
             SourceLoc Loc,
@@ -172,8 +182,8 @@ namespace arco {
             const llvm::SmallVector<NonNamedValue>& Args,
             const llvm::SmallVector<NamedValue>& NamedArgs,
             ulen NumDefaultArgs = 0,
-            FuncDecl* CalledFunc = nullptr
-        );
+            FuncDecl* CalledFunc = nullptr,
+            BindableList* StructBindableTypes = nullptr);
         bool DidGenericConstraintsHaveErrors(FuncDecl* Canidate,
                                              const BindableList& BindableTypes);
         std::string GetFuncDefForError(const llvm::SmallVector<TypeInfo>& ParamTypes, FuncDecl* CalledFunc);
@@ -186,6 +196,8 @@ namespace arco {
                                         ulen NumGenerics,
                                         ulen NumQualifications,
                                         BindableList& BindableTypes,
+                                        BindableList& QualTypes,
+                                        BindableList* StructBindableTypes,
                                         FuncDecl* Canidate,
                                         bool& PreliminaryError);
         void GetCallMismatchInfoForArg(Type* ParamTy,
@@ -193,9 +205,9 @@ namespace arco {
                                        bool AllowImplicitPtr,
                                        bool ParamConstMemory,
                                        BindableList& BindableTypes,
-                                       ulen NumGenerics,
-                                       ulen NumQualifications,
-                                       ulen GenericIdx,
+                                       BindableList& QualTypes,
+                                       BindableList* StructBindableTypes,
+                                       ulen& QualIdx,
                                        ArgMismatchData& MismatchData);
         void ShowMismatchInfoForBindFail(bool IsRoot,
                                          Type* ArgTy,
@@ -213,7 +225,7 @@ namespace arco {
         void CheckTypeCast(TypeCast* Cast);
         void CheckTypeBitCast(TypeBitCast* Cast);
         void CheckStructInitializer(StructInitializer* StructInit);
-        FuncDecl* CheckStructInitArgs(StructDecl* Struct,
+        FuncDecl* CheckStructInitArgs(StructType* StructTy,
                                       SourceLoc ErrorLoc,
                                       llvm::SmallVector<NonNamedValue>& Args,
                                       llvm::SmallVector<NamedValue>& NamedArgs,
@@ -227,6 +239,7 @@ namespace arco {
         void CheckTernary(Ternary* Tern);
         void CheckVarDeclList(VarDeclList* List);
         void CheckCatchError(CatchError* Catch, VarDecl* CaptureVar);
+        void CheckTypeOrExpr(TypeOrExpr* TOrE);
 
         void CheckCondition(Expr* Cond, const char* PreErrorText);
 
@@ -238,13 +251,18 @@ namespace arco {
         bool ViolatesConstAssignment(VarDecl* DestVar, Expr* Assignment);
         bool ViolatesConstAssignment(Type* DestTy, bool DestConstAddress, Expr* Assignment);
 
-        bool FixupType(Type* Ty, bool AllowDynamicArrays = false);
-        bool FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic);
-        bool FixupStructType(StructType* StructTy);
+        bool FixupType(Type* Ty, bool AllowDynamicArrays = false, bool PartialGenFixup = false);
+        bool FixupArrayType(ArrayType* ArrayTy, bool PartialGenFixup, bool FixupElmTy = true);
+        bool FixupStructType(StructType* StructTy, bool PartialGenFixup);
+    public:
+        static void FinishNonGenericStructType(ArcoContext& Context, StructType* StructTy);
+    private:
+        void FinishGenericStructType(StructType* StructTy);
+        
 
         Decl* FindStructLikeTypeByName(Identifier Name);
 
-        Type* QualifyType(Type* Ty, const BindableList& BindableTypes);
+        Type* QualifyType(Type* Ty, const GenericBinding* Binding);
 
         void CheckModifibility(Expr* LValue);
         bool IsLValue(Expr* E);
@@ -268,16 +286,11 @@ namespace arco {
         /// 
         llvm::Value* GenFoldable(SourceLoc ErrorLoc, Expr* E);
 
-        void AddGenericErrorInfo() {
-            if (CFunc && CFunc->IsGeneric()) {
-                if (CFunc->GenData->CurBinding) {
-                    Log.AddMarkMessage(
-                        CFunc->GenData->CurBinding->OriginalFile,
-                        CFunc->GenData->CurBinding->OriginalLoc,
-                        "Original bind location");
-                }
-            }
-        }
+        void RequestGenNonGenericFunc(FuncDecl* Func);
+
+        void AddGenericErrorInfo();
+
+        void CreateQualifications(Decl* D);
 
         void Error(SourceLoc Loc, const char* Msg) {
             Log.BeginError(Loc, Msg);

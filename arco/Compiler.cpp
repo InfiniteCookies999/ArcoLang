@@ -12,7 +12,7 @@
 #include "CodeGen.h"
 #include "FloatConversions.h"
 #include "EmitDebugInfo.h"
-#include "TypeBinding.h"
+#include "Generics.h"
 
 static bool ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
     std::ifstream Stream(Path, std::ios::binary | std::ios::in);
@@ -124,7 +124,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
     // -- DEBUG
-    // llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
+    llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
 
     if (FoundCompileError) {
         return 1;
@@ -300,6 +300,10 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
 
     SemCheckBegin = GetTimeInMilliseconds();
     if (Context.MainEntryFunc) {
+        if (!FoundCompileError) {
+            IRGenerator IRGen(Context);
+            IRGen.GenFuncDecl(Context.MainEntryFunc);
+        }
         Context.RequestGen(Context.MainEntryFunc);
     } else {
         Logger::GlobalError(llvm::errs(), "Could not find entry point function");
@@ -322,12 +326,17 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         auto DToGen = Context.QueuedDeclsToGen.front();
         Context.QueuedDeclsToGen.pop();
 
-        SemAnalyzer Analyzer(Context, DToGen.D);
         if (DToGen.D->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
             if (Func->IsGeneric()) {
+                // NOTE: It is not actually needed to bind the types of
+                // the generic struct because the binding information store
+                // the binding's of the struct and will also bind those generic
+                // types.
                 BindTypes(Func, DToGen.Binding);
+                Func->LLFunction = DToGen.Binding->FuncInfo->LLFunction;
             }
+            SemAnalyzer Analyzer(Context, DToGen.D);
             Analyzer.CheckFuncDecl(Func);
         }
         SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
@@ -346,7 +355,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         IRGenerator IRGen(Context);	
         if (DToGen.D->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
-            IRGen.GenFunc(Func);
+            IRGen.GenFuncBody(Func);
             if (Func->IsGeneric()) {
                 UnbindTypes(Func);
             }
@@ -361,20 +370,18 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     if (!FoundCompileError && Stage != PARSE_SEMCHECK_ONLY) {
         IRGenerator IRGen(Context);
         IRGen.GenGlobalInitFuncBody();
-
-        while (!Context.DefaultConstrucorsNeedingCreated.empty()) {
-            StructDecl* Struct = Context.DefaultConstrucorsNeedingCreated.front();
-            Context.DefaultConstrucorsNeedingCreated.pop();
-            IRGen.GenImplicitDefaultConstructorBody(Struct);
-        }
-
         IRGen.GenGlobalDestroyFuncBody();
     }
     
+    for (llvm::Function* LLDiscardFunc : Context.LLDiscardFuncs) {
+        LLDiscardFunc->eraseFromParent();
+    }
+
     IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
     SemCheckBegin = GetTimeInMilliseconds();
     // Checking any code that was not generated.
+    Context.CheckingUnhcecked = true;
     while (!Context.UncheckedDecls.empty()) {
         Decl* D = *Context.UncheckedDecls.begin();
         SemAnalyzer Analyzer(Context, D);
@@ -514,7 +521,8 @@ bool arco::Compiler::FindStdLibStructs() {
     Context.StdErrorInterface    = FindStdLibInterface(StdModule->DefaultNamespace, Context.ErrorInterfaceIdentifier);
     Context.StdTypeIdEnum        = FindStdLibEnum(ReflectNamespace, Context.TypeIdIdentifier);
     if (Context.StdAnyStruct) {
-        Context.AnyType = StructType::Create(Context.StdAnyStruct, Context);
+        Context.AnyType = StructType::Create(Context.StdAnyStruct, {}, Context);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.AnyType);
     }
     
     if (Context.StdErrorInterface) {
@@ -531,7 +539,28 @@ bool arco::Compiler::FindStdLibStructs() {
             Logger::GlobalError(llvm::errs(), "Standard library cannot have more than one initialize_error_handling function");
         }
         Context.InitializeErrorHandlingFunc = Funcs[0];
+        IRGenerator IRGen(Context);
+        IRGen.GenFuncDecl(Context.InitializeErrorHandlingFunc);
         Context.RequestGen(Context.InitializeErrorHandlingFunc);
+    }
+
+    if (NumErrs == TotalAccumulatedErrors) {
+        Context.StdStringStructType     = StructType::Create(Context.StdStringStruct    , {}, Context);
+        Context.StdAnyStructType        = StructType::Create(Context.StdAnyStruct       , {}, Context);
+        Context.StdTypeStructType       = StructType::Create(Context.StdTypeStruct      , {}, Context);
+        Context.StdArrayTypeStructType  = StructType::Create(Context.StdArrayTypeStruct , {}, Context);
+        Context.StdStructTypeStructType = StructType::Create(Context.StdStructTypeStruct, {}, Context);
+        Context.StdFieldTypeStructType  = StructType::Create(Context.StdFieldTypeStruct , {}, Context);
+        Context.StdEnumTypeStructType   = StructType::Create(Context.StdEnumTypeStruct  , {}, Context);
+    
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdStringStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdAnyStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdTypeStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdArrayTypeStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdStructTypeStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdFieldTypeStructType);
+        SemAnalyzer::FinishNonGenericStructType(Context, Context.StdEnumTypeStructType);
+    
     }
 
     return NumErrs == TotalAccumulatedErrors;

@@ -1,6 +1,6 @@
 import std;
 
-generics\T\
+generics<T>
 fn foo(func fn(T) void, value T) {
     func(value);
 }

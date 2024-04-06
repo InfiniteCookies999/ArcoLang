@@ -1,6 +1,7 @@
 #include "AST.h"
 
 #include "Context.h"
+#include "Generics.h"
 
 // TODO: These predicate find_if functions may be slower than just iterating
 // normally.
@@ -15,6 +16,26 @@ arco::Expr* arco::FuncDecl::GetInitializerValue(VarDecl* Field) {
         return nullptr;
     }
     return Itr->Assignment;
+}
+
+llvm::StructType* arco::FuncDecl::GetLLStructType() {
+    // NOTE: Call Our own binding to get the generic
+    // struct type because the struct is not always
+    // bound when the generic function is bound.
+    if (Struct->IsGeneric()) {
+        assert(GenData->CurBinding && "Not bound!");
+        return GenData->CurBinding->StructInfo->LLStructType;
+    } else {
+        return Struct->LLStructTy;
+    }
+}
+
+arco::StructType* arco::FuncDecl::GetParentStructType() {
+    if (Struct->IsGeneric()) {
+        return GenData->CurBinding->StructInfo->QualStructTy;
+    } else {
+        return Struct->StructTy;
+    }
 }
 
 bool arco::StructDecl::ImplementsInterface(InterfaceDecl* Interface) {
@@ -53,3 +74,27 @@ arco::Decl* arco::FileScope::FindDecl(Identifier Name) {
     }
     return *Itr;
 }
+
+arco::GenericBinding* arco::Decl::GetCurBinding() {
+    return GenData->CurBinding;
+}
+
+#define SET_STATE_INFO(Name, Val)                        \
+        if (IsGeneric())                                 \
+            GenData->CurBinding->StructInfo->Name = Val; \
+        else                                             \
+            Name = Val;
+
+void arco::StructDecl::SetFieldsHaveAssignment(bool Tof) {
+    SET_STATE_INFO(FieldsHaveAssignment, Tof);
+}
+
+void arco::StructDecl::SetNeedsDestruction(bool Tof) {
+    SET_STATE_INFO(NeedsDestruction, Tof);
+}
+
+void arco::StructDecl::SetMustForceRaise(bool Tof) {
+    SET_STATE_INFO(MustForceRaise, Tof);
+}
+
+#undef SET_STATE_INFO

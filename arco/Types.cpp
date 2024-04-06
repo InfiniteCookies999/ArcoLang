@@ -3,6 +3,7 @@
 #include <llvm/IR/Module.h>
 
 #include "Context.h"
+#include "Generics.h"
 
 arco::TypeKind arco::Type::GetKind() const {
     return Unbox()->GetRealKind();
@@ -44,11 +45,14 @@ bool arco::Type::TypeHasStorage(bool FromPtr) const {
 
 bool arco::Type::Equals(const Type* Ty) const {
     
-    if (Ty->ContainsGenerics || this->ContainsGenerics) {
-        return GenericsEquals(Ty);
+    if (Ty->ContainsGenerics) {
+        Ty = Ty->QualType;
     }
-
-    return UniqueId == Ty->UniqueId;
+    if (this->ContainsGenerics) {
+        return this->QualType->UniqueId == Ty->UniqueId;
+    } else {
+        return UniqueId == Ty->UniqueId;
+    }
 }
 
 bool arco::Type::IsNumber() const {
@@ -164,20 +168,21 @@ arco::Type* arco::Type::Unbox() {
         // Enums are alias for their value types.
         StructType* StructTy = static_cast<StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
-    } else if (Kind == TypeKind::Generic) {
-        // Still have to unbind because of enums.
-        GenericType* GenTy = static_cast<GenericType*>(this);
-        return GenTy->GetBoundTy()->Unbox();
+    }
+    else if (ContainsGenerics) {
+        if (QualType->Kind == TypeKind::Enum) {
+            StructType* StructTy = static_cast<StructType*>(QualType);
+            return StructTy->GetEnum()->ValuesType;
+        } else {
+            return QualType;
+        }
     }
     return this;
 }
 
 arco::Type* arco::Type::UnboxGeneric() {
-    if (Kind == TypeKind::Generic) {
-        GenericType* GenTy = static_cast<GenericType*>(this);
-        // Need to still unbox the generic if the generic bound another
-        // generic.
-        return GenTy->GetBoundTy()->UnboxGeneric();
+    if (ContainsGenerics) {
+        return QualType;
     }
     return this;
 }
@@ -203,6 +208,7 @@ const arco::ArrayType* arco::Type::AsArrayTy() const {
 }
 
 const arco::StructType* arco::Type::AsStructType() const {
+    TypeKind K = GetKind();
     assert((GetKind() == TypeKind::Struct || GetKind() == TypeKind::Interface) && "Not a struct type");
     return static_cast<const StructType*>(Unbox());
 }
@@ -217,33 +223,35 @@ const arco::Type* arco::Type::Unbox() const {
         // Enums are alias for their value types.
         const StructType* StructTy = static_cast<const StructType*>(this);
         return StructTy->GetEnum()->ValuesType;
-    } else if (Kind == TypeKind::Generic) {
-        // Still have to unbox the type again in case it is an enum.
-        const GenericType* GenTy = static_cast<const GenericType*>(this);
-        return GenTy->GetBoundTy()->Unbox();
+    }
+    else if (ContainsGenerics) {
+        if (QualType->Kind == TypeKind::Enum) {
+            const StructType* StructTy = static_cast<const StructType*>(QualType);
+            return StructTy->GetEnum()->ValuesType;
+        }
+        return QualType;
     }
     return this;
 }
 
 const arco::Type* arco::Type::UnboxGeneric() const {
-    if (Kind == TypeKind::Generic) {
-        const GenericType* GenTy = static_cast<const GenericType*>(this);
-        return GenTy->GetBoundTy();
+    if (ContainsGenerics) {
+        return QualType;
     }
     return this;
 }
 
 bool arco::Type::TypeNeedsDestruction() const {
     if (GetKind() == TypeKind::Struct) {
-        const StructDecl* Struct = AsStructType()->GetStruct();
-        return Struct->NeedsDestruction;
+        const StructType* StructTy = AsStructType();
+        return StructTy->DoesNeedsDestruction();
     } else if (GetKind() == TypeKind::Array) {
-        const ArrayType* ArrayTy = static_cast<const ArrayType*>(this);
+        const ArrayType* ArrayTy = AsArrayTy();
         const Type*      BaseTy  = ArrayTy->GetBaseType();
 
         if (BaseTy->GetKind() == TypeKind::Struct) {
-            const StructDecl* Struct = BaseTy->AsStructType()->GetStruct();
-            return Struct->NeedsDestruction;
+            const StructType* StructTy = BaseTy->AsStructType();
+            return StructTy->DoesNeedsDestruction();
         }
     }
     return false;
@@ -284,6 +292,7 @@ ulen arco::Type::GetSizeInBytes(llvm::Module& LLModule) const {
     case TypeKind::Int8:
     case TypeKind::UInt8:
     case TypeKind::Char:
+    case TypeKind::Bool:
         return 1;
     case TypeKind::Int16:
     case TypeKind::UInt16:
@@ -331,11 +340,17 @@ arco::Type* arco::Type::GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Cont
     }
 }
 
-bool arco::Type::HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundTys) const {
+bool arco::Type::HasTypeBound(const llvm::SmallVector<Type*, 8>* PartiallyBoundFuncTys,
+                              const llvm::SmallVector<Type*, 8>* PartiallyBoundStructTys) const {
     switch (GetRealKind()) {
     case TypeKind::Generic: {
         const GenericType* GenTy = static_cast<const GenericType*>(this);
-        return PartiallyBoundTys[GenTy->GetIdx()] != nullptr;
+        Decl* BoundToDecl = GenTy->GetBoundToDecl();
+        if (BoundToDecl->Is(AstKind::FUNC_DECL)) {
+            return (*PartiallyBoundFuncTys)[GenTy->GetIdx()];
+        } else {
+            return (*PartiallyBoundStructTys)[GenTy->GetIdx()];
+        }
     }
     case TypeKind::Pointer:
     case TypeKind::Slice:
@@ -354,15 +369,15 @@ bool arco::Type::HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundT
                 break;
             }
         }
-        return ElmTy->HasTypeBound(PartiallyBoundTys);
+        return ElmTy->HasTypeBound(PartiallyBoundFuncTys, PartiallyBoundStructTys);
     }
     case TypeKind::Function: {
         const FunctionType* FuncTy = static_cast<const FunctionType*>(this);
-        if (FuncTy->RetTyInfo.Ty->HasTypeBound(PartiallyBoundTys)) {
+        if (FuncTy->RetTyInfo.Ty->HasTypeBound(PartiallyBoundFuncTys, PartiallyBoundStructTys)) {
             return true;
         }
         for (const TypeInfo& PInfo : FuncTy->ParamTypes) {
-            if (PInfo.Ty->HasTypeBound(PartiallyBoundTys)) {
+            if (PInfo.Ty->HasTypeBound(PartiallyBoundFuncTys, PartiallyBoundStructTys)) {
                 return true;
             }
         }
@@ -374,19 +389,202 @@ bool arco::Type::HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundT
 }
 
 std::string arco::Type::ToString(bool                               ShowFullGenericTy,
-                                 const llvm::SmallVector<Type*, 8>* PartiallyBoundTys,
+                                 const llvm::SmallVector<Type*, 8>* PartiallyBoundFuncTys,
+                                 const llvm::SmallVector<Type*, 8>* PartiallyBoundStructTys,
                                  bool                               ReplaceGenTyWithBoundTy) const {
+    
+    bool HasPartiallyBoundTys = PartiallyBoundFuncTys || PartiallyBoundStructTys;
+
     if (ContainsGenerics && !ReplaceGenTyWithBoundTy) {
         if (ShowFullGenericTy) {
             std::string S = ToString(false);
+            if (S == "error") return S;
+            S += " = ";
+            std::string LS = ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, true);
+            if (LS == "error") return LS;
+            S += LS;
+            return S;
+        } else if (HasPartiallyBoundTys) {
+            if (HasTypeBound(PartiallyBoundFuncTys, PartiallyBoundStructTys)) {
+                std::string S = ToString(false);
+                if (S == "error") return S;
+                S += " = ";
+                std::string LS = ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, true);
+                if (LS == "error") return LS;
+                S += LS;
+                return S;
+            } else {
+                PartiallyBoundFuncTys   = nullptr;
+                PartiallyBoundStructTys = nullptr;
+            }
+        }
+    }
+
+    const Type* Ty = this;
+    if (ContainsGenerics && ReplaceGenTyWithBoundTy) {
+        // Qualify so the type is shown without generic information.
+        if (!HasPartiallyBoundTys) {
+            Ty = Ty->UnboxGeneric();
+        } // Otherwise have to bind as we go.
+    }
+
+    switch (Ty->GetRealKind()) {
+    case TypeKind::Int8:		    return "int8";
+    case TypeKind::Int16:		    return "int16";
+    case TypeKind::Int32:		    return "int32";
+    case TypeKind::Int64:		    return "int64";
+    case TypeKind::UInt8:           return "uint8";
+    case TypeKind::UInt16:          return "uint16";
+    case TypeKind::UInt32:          return "uint32";
+    case TypeKind::UInt64:          return "uint64";
+    case TypeKind::Float32:         return "float32";
+    case TypeKind::Float64:         return "float64";
+    case TypeKind::Char:            return "char";
+    case TypeKind::Int:             return "int";
+    case TypeKind::Ptrsize:         return "ptrsize";
+    case TypeKind::Void:            return "void";
+    case TypeKind::Null:            return "null";
+    case TypeKind::CStr:            return "cstr";
+    case TypeKind::Import:          return "import";
+    case TypeKind::Bool:            return "bool";
+    case TypeKind::EmptyArrayElm:   return "";
+    case TypeKind::Error:           return "error";
+    case TypeKind::FuncRef:         return "fn reference";
+    case TypeKind::StructRef:       return "struct reference";
+    case TypeKind::EnumRef:         return "enum reference";
+    case TypeKind::InterfaceRef:    return "interface reference";
+    case TypeKind::Generic: {
+        
+        const GenericType* GenTy = static_cast<const GenericType*>(Ty);
+        std::string S = "";
+        const Type* BoundTy = nullptr;
+        if (ReplaceGenTyWithBoundTy && HasPartiallyBoundTys) {
+            Decl* BoundToDecl = GenTy->GetBoundToDecl();
+            if (BoundToDecl->Is(AstKind::FUNC_DECL)) {
+                BoundTy = (*PartiallyBoundFuncTys)[GenTy->GetIdx()];
+            } else {
+                BoundTy = (*PartiallyBoundStructTys)[GenTy->GetIdx()];
+            }
+        }
+
+        if (BoundTy) {
+            S += BoundTy->ToString(false);
+        } else {
+            S += GenTy->GetName().Text.str();
+        }
+        return S;
+    }
+    case TypeKind::Pointer: {
+        if (!Ty->UniqueId && ShowFullGenericTy) {
+            return "error";
+        }
+
+        const PointerType* PtrTy = static_cast<const PointerType*>(Ty);
+        return PtrTy->GetElementType()->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy) + "*";
+    }
+    case TypeKind::Slice: {
+        if (!Ty->UniqueId && ShowFullGenericTy) {
+            return "error";
+        }
+
+        const SliceType* SliceTy = static_cast<const SliceType*>(Ty);
+        return SliceTy->GetElementType()->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy) + "[*]";
+    }
+    case TypeKind::Array: {
+        if (!Ty->UniqueId && ShowFullGenericTy) {
+            return "error";
+        }
+
+        const ArrayType* ArrayTy = static_cast<const ArrayType*>(Ty);
+
+        Type* BaseTy = ArrayTy->GetElementType();
+        while (BaseTy->GetRealKind() == ArrayTy->GetRealKind()) {
+            BaseTy = static_cast<ArrayType*>(BaseTy)->GetElementType();
+        }
+
+        std::string Val = BaseTy->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy);
+        while (true) {
+            Val += "[" + std::to_string(ArrayTy->GetLength()) + "]";
+            if (ArrayTy->GetElementType()->GetRealKind() == TypeKind::Array)
+                ArrayTy = static_cast<ArrayType*>(ArrayTy->GetElementType());
+            else return Val;
+        }
+        return Val;
+    }
+    case TypeKind::Struct:
+    case TypeKind::Enum:
+    case TypeKind::Interface: {
+        if (!Ty->UniqueId && ShowFullGenericTy) {
+            return "error";
+        }
+
+        const StructType* StructTy = static_cast<const StructType*>(Ty);
+        std::string S = StructTy->GetStructName().Text.str();
+        const llvm::SmallVector<Type*, 8>& BindTypes = StructTy->GetBindTypes();
+        if (!BindTypes.empty()) {
+            S += "<";
+            for (ulen i = 0; i < StructTy->GetBindTypes().size(); i++) {
+                const Type* BindTy = BindTypes[i];
+                S += BindTy->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy);
+                if (i+1 != BindTypes.size()) {
+                    S += ", ";
+                }
+            }
+            S += ">";
+        }
+        return S;
+    }
+    case TypeKind::Function: {
+        if (!Ty->UniqueId && ShowFullGenericTy) {
+            return "error";
+        }
+
+        const FunctionType* FuncTy = static_cast<const FunctionType*>(Ty);
+        std::string Val = "fn(";
+        for (ulen i = 0; i < FuncTy->ParamTypes.size(); i++) {
+            Val += FuncTy->ParamTypes[i].ConstMemory ? "const " : "";
+            Val += FuncTy->ParamTypes[i].Ty->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy);
+            if (i+1 != FuncTy->ParamTypes.size()) {
+                Val += ", ";
+            }
+        }
+        Val += ") ";
+        Val += FuncTy->RetTyInfo.ConstMemory ? "const " : "";
+        Val += FuncTy->RetTyInfo.Ty->ToString(ShowFullGenericTy, PartiallyBoundFuncTys, PartiallyBoundStructTys, ReplaceGenTyWithBoundTy);
+        return Val;
+    }
+    default:
+        assert(!"Unhandled ToString() for type");
+        return "";
+    }
+
+    /*
+    
+    
+    
+    
+    
+    if (ContainsGenerics && ShowFullGenericTy) {
+        return ToString(ShowFullGenericTy, PartiallyBoundTys);
+    }
+    
+    if (ContainsGenerics && !ReplaceGenTyWithBoundTy) {
+        if (ShowFullGenericTy) {
+            std::string S = ToString(false);
+            if (S == "error") return S;
             S += "=";
-            S += ToString(ShowFullGenericTy, PartiallyBoundTys, true);
+            std::string LS = ToString(ShowFullGenericTy, PartiallyBoundTys, true);
+            if (LS == "error") return LS;
+            S += LS;
             return S;
         } else if (PartiallyBoundTys) {
             if (HasTypeBound(*PartiallyBoundTys)) {
                 std::string S = ToString(false);
+                if (S == "error") return S;
                 S += "=";
-                S += ToString(ShowFullGenericTy, PartiallyBoundTys, true);
+                std::string LS = ToString(ShowFullGenericTy, PartiallyBoundTys, true);
+                if (LS == "error") return LS;
+                S += LS;
                 return S;
             } else {
                 PartiallyBoundTys = nullptr;
@@ -440,7 +638,7 @@ std::string arco::Type::ToString(bool                               ShowFullGene
         return S;
     }
     case TypeKind::Pointer: {
-        if (!this->UniqueId) {
+        if (!this->UniqueId && ShowFullGenericTy) {
             return "error";
         }
 
@@ -448,7 +646,7 @@ std::string arco::Type::ToString(bool                               ShowFullGene
         return PtrTy->GetElementType()->ToString(ShowFullGenericTy, PartiallyBoundTys, ReplaceGenTyWithBoundTy) + "*";
     }
     case TypeKind::Slice: {
-        if (!this->UniqueId) {
+        if (!this->UniqueId && ShowFullGenericTy) {
             return "error";
         }
 
@@ -456,7 +654,7 @@ std::string arco::Type::ToString(bool                               ShowFullGene
         return SliceTy->GetElementType()->ToString(ShowFullGenericTy, PartiallyBoundTys, ReplaceGenTyWithBoundTy) + "[*]";
     }
     case TypeKind::Array: {
-        if (!this->UniqueId) {
+        if (!this->UniqueId && ShowFullGenericTy) {
             return "error";
         }
 
@@ -479,15 +677,28 @@ std::string arco::Type::ToString(bool                               ShowFullGene
     case TypeKind::Struct:
     case TypeKind::Enum:
     case TypeKind::Interface: {
-        if (!this->UniqueId) {
+        if (!this->UniqueId && ShowFullGenericTy) {
             return "error";
         }
 
         const StructType* StructTy = static_cast<const StructType*>(this);
-        return StructTy->GetStructName().Text.str();
+        std::string S = StructTy->GetStructName().Text.str();
+        const llvm::SmallVector<Type*, 8>& BindTypes = StructTy->GetBindTypes();
+        if (!BindTypes.empty()) {
+            S += "<";
+            for (ulen i = 0; i < StructTy->GetBindTypes().size(); i++) {
+                const Type* BindTy = BindTypes[i];
+                S += BindTy->ToString(ShowFullGenericTy, PartiallyBoundTys, ReplaceGenTyWithBoundTy);
+                if (i+1 != BindTypes.size()) {
+                    S += ", ";
+                }
+            }
+            S += ">";
+        }
+        return S;
     }
     case TypeKind::Function: {
-        if (!this->UniqueId) {
+        if (!this->UniqueId && ShowFullGenericTy) {
             return "error";
         }
 
@@ -508,81 +719,7 @@ std::string arco::Type::ToString(bool                               ShowFullGene
     default:
         assert(!"Unhandled ToString() for type");
         return "";
-    }
-}
-
-bool arco::Type::GenericsEquals(const Type* Ty) const {
-    
-    const Type* TyUnboxed   = Ty->UnboxGeneric();
-    const Type* ThisUnboxed = this->UnboxGeneric();
-
-    switch (ThisUnboxed->GetRealKind()) {
-    case TypeKind::Pointer: {
-        if (TyUnboxed->GetRealKind() != TypeKind::Pointer) return false;
-        
-        const PointerType* PtrTy     = TyUnboxed->AsPointerTy();
-        const PointerType* ThisPtrTy = ThisUnboxed->AsPointerTy();
-        if (ThisPtrTy->GetDepthLevel() != PtrTy->GetDepthLevel()) {
-            return false;
-        }
-
-        return ThisPtrTy->GetBaseType()->GenericsEquals(PtrTy->GetBaseType());
-    }
-    case TypeKind::Slice: {
-        if (TyUnboxed->GetRealKind() != TypeKind::Slice) return false;
-
-        const SliceType* SliceTy     = TyUnboxed->AsSliceTy();
-        const SliceType* ThisSliceTy = ThisUnboxed->AsSliceTy();
-        if (ThisSliceTy->GetDepthLevel() != SliceTy->GetDepthLevel()) {
-            return false;
-        }
-
-        return ThisSliceTy->GetBaseType()->GenericsEquals(SliceTy->GetBaseType());
-    }
-    case TypeKind::Array: {
-        if (TyUnboxed->GetRealKind() != TypeKind::Array) return false;
-
-        // TODO: Change this to be non-recursive.
-
-        const ArrayType* ArrTy     = TyUnboxed->AsArrayTy();
-        const ArrayType* ThisArrTy = ThisUnboxed->AsArrayTy();
-       
-        if (ThisArrTy->GetLength() != ArrTy->GetLength()) return false;
-
-        return ThisArrTy->GetElementType()->GenericsEquals(ArrTy->GetElementType());
-    }
-    case TypeKind::Function: {
-        if (TyUnboxed->GetRealKind() != TypeKind::Function) return false;
-
-        const FunctionType* FuncTy     = TyUnboxed->AsFunctionType();
-        const FunctionType* ThisFuncTy = ThisUnboxed->AsFunctionType();
-
-        if (ThisFuncTy->ParamTypes.size() != FuncTy->ParamTypes.size()) {
-            return false;
-        }
-
-        if (!ThisFuncTy->RetTyInfo.Ty->GenericsEquals(FuncTy->RetTyInfo.Ty)) {
-            return false;
-        }
-        if (ThisFuncTy->RetTyInfo.ConstMemory != FuncTy->RetTyInfo.ConstMemory) {
-            return false;
-        }
-        for (ulen i = 0; i < ThisFuncTy->ParamTypes.size(); i++) {
-            const TypeInfo& ThisPInfo = ThisFuncTy->ParamTypes[i];
-            const TypeInfo& PInfo     = FuncTy->ParamTypes[i];
-            if (!ThisPInfo.Ty->GenericsEquals(PInfo.Ty)) {
-                return false;
-            }
-            if (ThisPInfo.ConstMemory != PInfo.ConstMemory) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-    default:
-        return ThisUnboxed->Equals(TyUnboxed);
-    }
+    }*/
 }
 
 arco::Type* arco::ContainerType::GetBaseType() const {
@@ -671,9 +808,10 @@ arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, ulen Length, ArcoContext& 
     }
 }
 
-arco::ArrayType* arco::ArrayType::Create(Type* ElmTy,
-                                         Expr* LengthExpr,
-                                         SourceLoc LengthExprErrorLoc,
+arco::ArrayType* arco::ArrayType::Create(Type*        ElmTy,
+                                         Expr*        LengthExpr,
+                                         SourceLoc    LengthExprErrorLoc,
+                                         bool         AllowDynamic,
                                          ArcoContext& Context) {
     ArrayType* Ty = new ArrayType;
     Ty->ElmTy              = ElmTy;
@@ -691,11 +829,20 @@ ulen arco::ArrayType::GetTotalLinearLength() const {
     return Length;
 }
 
-arco::StructType* arco::StructType::Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context) {
+arco::StructType* arco::StructType::Create(Identifier StructName, llvm::SmallVector<Type*, 8> BindTypes, SourceLoc ErrorLoc, ArcoContext& Context) {
     // TODO: Caching?
     StructType* Ty = new StructType(TypeKind::Struct); // TODO: Should this default to an indetermined type?
     Ty->StructName = StructName;
     Ty->ErrorLoc   = ErrorLoc;
+    Ty->BindTypes  = std::move(BindTypes);
+    if (!Ty->BindTypes.empty()) {
+        for (Type* BindTy : Ty->BindTypes) {
+            if (BindTy->ContainsGenerics) {
+                Ty->ContainsGenerics = true;
+                break;
+            }
+        }
+    }
     return Ty;
 }
 
@@ -717,12 +864,39 @@ arco::StructType* arco::StructType::Create(InterfaceDecl* Interface, ArcoContext
     return Ty;
 }
 
-arco::StructType* arco::StructType::Create(StructDecl* Struct, ArcoContext& Context) {
+#define GET_STATE_INFO(Name)                   \
+if (Struct->IsGeneric()) {                     \
+    bool Tof = FoundBinding->StructInfo->Name; \
+    return Tof;                                \
+} else return Struct->Name;
+
+bool arco::StructType::DoesFieldsHaveAssignment() const {
+    GET_STATE_INFO(FieldsHaveAssignment);
+}
+
+bool arco::StructType::DoesNeedsDestruction() const {
+    GET_STATE_INFO(NeedsDestruction);
+}
+
+bool arco::StructType::DoesMustForceRaise() const {
+    GET_STATE_INFO(MustForceRaise);
+}
+
+#undef GET_STATE_INFO
+
+arco::StructType* arco::StructType::Create(StructDecl* Struct, llvm::SmallVector<Type*, 8> BindTypes, ArcoContext& Context) {
     // TODO: Caching?
     StructType* Ty = new StructType(TypeKind::Struct);
     Ty->UniqueId   = Struct->UniqueTypeId;
     Ty->StructName = Struct->Name;
     Ty->Struct     = Struct;
+    Ty->BindTypes  = std::move(BindTypes);
+    for (Type* BindTy : Ty->BindTypes) {
+        if (BindTy->ContainsGenerics) {
+            Ty->ContainsGenerics = true;
+            break;
+        }
+    }
     return Ty;
 }
 
@@ -779,16 +953,18 @@ arco::GenericType* arco::GenericType::Create(Identifier Name,
                                              IdentRef* ConstraintRef,
                                              bool InvertConstraint,
                                              ulen Idx,
+                                             SourceLoc ErrorLoc,
                                              ArcoContext& Context) {
     // NOTE: there is no need to cache since every instance of a created generic
     //       type is known during parsing and only exists within a local scope.
     GenericType* GenTy = new GenericType;
-    GenTy->UniqueId = Context.UniqueTypeIdCounter++;
+    GenTy->UniqueId = Context.UniqueTypeIdCounter++; // Is a unique id even needed?
     GenTy->Name = Name;
     GenTy->ConstraintRef = ConstraintRef;
     GenTy->InvertConstraint = InvertConstraint;
     GenTy->ContainsGenerics = true;
     GenTy->Idx = Idx;
+    GenTy->ErrorLoc = ErrorLoc;
     return GenTy;
 }
 

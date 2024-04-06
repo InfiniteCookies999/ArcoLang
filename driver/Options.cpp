@@ -44,7 +44,7 @@ bool OptionManager::ProcessOption(int ArgNum, llvm::StringRef Opt) {
     return true;
 }
 
-llvm::SmallVector<std::string> OptionManager::GetAllOptionsAsStrings() {
+llvm::SmallVector<std::string, 64> OptionManager::GetAllOptionsAsStrings() {
     llvm::SmallVector<std::string> AllOptStrings;
     AllOptStrings.reserve(Options.size());
     for (const Option& Option : Options) {

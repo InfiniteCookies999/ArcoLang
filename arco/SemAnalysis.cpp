@@ -4,6 +4,7 @@
 #include "IRGen.h"
 #include "SpellChecking.h"
 #include "TermColors.h"
+#include "Generics.h"
 
 #include <sstream>
 
@@ -241,15 +242,30 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
     Func->HasBeenChecked = true;
     Context.UncheckedDecls.erase(Func);
     if (Func->ParsingError) return;
-    
+
+    //if (Func->IsGeneric()) {
+    //    llvm::outs() << "CURRENTLY BOUND TYPES:\n";
+    //    for (ulen i = 0; i < Func->GenData->GenTys.size(); i++) {
+    //        GenericType* GenTy = Func->GenData->GenTys[i];
+    //        llvm::outs() << GenTy->ToString() << "\n";
+    //    }
+    //}
+
     // -- DEBUG
-    //llvm::outs() << "Checking function: "
-    //             << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "")
-    //             << Func->Name
-    //             << " : " << Func->FScope->Path
-    //             << "\n";
+    // llvm::outs() << "Checking function: "
+    //              << (Func->Struct ? Func->Struct->Name.Text.str() + "." : "")
+    //              << Func->Name
+    //              << " : " << Func->FScope->Path
+    //              << "\n";
+
+    if (Func->IsGeneric()) {
+        CreateQualifications(Func);
+    }
 
     CheckFuncParams(Func);
+    // Need to check for parsing errors again in case CheckFuncParams
+    // set the function as having parsing errors.
+    if (Func->ParsingError) return;
 
     CFunc   = Func;
     CStruct = Func->Struct;
@@ -281,37 +297,14 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
         Error(Func, "Destructors cannot raise errors");
     }
 
-    auto CheckMoveOrCopyConstructor = [=](const char* ConstructorType) {
-        if (Func->IsVariadic) {
-            Error(Func->Loc, "%s constructors cannot be variadic", ConstructorType);
-        }
-        if (Func->Params.empty()) {
-            Error(Func->Loc, "%s constructor must have argument for struct to copy", ConstructorType);
-        } else if (Func->Params.size() > 1) {
-            Error(Func->Loc, "%s constructor must have only one argument for the struct to copy", ConstructorType);
-        } else {
-            Type* ParamTy = Func->Params[0]->Ty;
-            Type* ExpectedType = PointerType::Create(StructType::Create(Func->Struct, Context), Context);
-            if (!ParamTy->Equals(ExpectedType)) {
-                Error(Func->Loc, "%s constructor must have type '%s' but found type '%s'",
-                    ConstructorType, ExpectedType, ParamTy);
-            }
-        }
-    };
-
-    if (Func->IsConstructor && Func->IsCopyConstructor) {
-        CheckMoveOrCopyConstructor("Copy");
-    } else if (Func->IsConstructor && Func->IsMoveConstructor) {
-        CheckMoveOrCopyConstructor("Copy");
-    }
-
     if (Func->IsConstructor) {
-
         StructDecl* Struct = Func->Struct;
-        if (!Struct->HasBeenChecked) {
-            SemAnalyzer Analyzer(Context, Struct);
-            Analyzer.CheckStructDecl(Struct);
-        }
+        // TODO: I do not think this is needed but may need to come back to.
+        // doesn't take into account generics.
+        //if (!Struct->HasBeenChecked) {
+        //    SemAnalyzer Analyzer(Context, Struct);
+        //    Analyzer.CheckStructDecl(Struct);
+        //}
 
         if (!Struct->ParsingError) {
             for (const FuncDecl::InitializerValue& InitValue : Func->InitializerValues) {
@@ -360,7 +353,6 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
             }
         }
     }
-
 
     if (Func->Mods & ModKinds::NATIVE) {
 
@@ -416,40 +408,63 @@ void arco::SemAnalyzer::CheckFuncDecl(FuncDecl* Func) {
 }
 
 void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
-    if (Struct->HasBeenChecked) return;
+    if (Struct->HasBeenChecked && !Struct->IsGeneric()) return;
     Struct->HasBeenChecked = true;
     Context.UncheckedDecls.erase(Struct);
     if (Struct->ParsingError) return;
+
+    if (Struct->IsGeneric()) {
+        CreateQualifications(Struct);
+        auto& StructInfo = Struct->GetCurBinding()->StructInfo;
+
+        // Qualifying all the field types because bindings are temporary but
+        // references to the field types may exist longer than the bindings.
+        for (VarDecl* Field : Struct->Fields) {
+            if (Field->Ty->ContainsGenerics) {
+                StructInfo->QualifiedFieldTypes.push_back(Field->Ty->GetQualType());
+                bool HasConstAddress = Field->Ty->GetKind() == TypeKind::CStr || Field->ExplicitlyMarkedConst;
+                StructInfo->FieldsConstAddressInfo.push_back(HasConstAddress);
+            }
+        }
+    }
 
     Struct->IsBeingChecked = true;
     FScope  = Struct->FScope;
     CStruct = Struct;
 
+    bool NeedsDestruction     = false;
+    bool FieldsHaveAssignment = false;
+
     if (Struct->Destructor) {
-        Struct->NeedsDestruction = true;
+        NeedsDestruction = true;
     }
 
     // Skip over pointers to vtable.
     ulen LLFieldIdx = Struct->InterfaceHooks.size();  //   Struct->Interfaces.size();  -- this struct is not filled out yet!
     for (VarDecl* Field : Struct->Fields) {
-        CheckVarDecl(Field);
-        
+        if (Field->TyIsInfered) {
+            NotFullyQualifiedVarState = true;
+            CheckVarDecl(Field, false, Struct->IsGeneric());
+        } else {
+            NotFullyQualifiedVarState = false;
+            CheckVarDecl(Field, false, Struct->IsGeneric());
+        }
+
         if (!Field->IsComptime()) {
             if (Field->Assignment) {
-                Struct->FieldsHaveAssignment = true;
+                FieldsHaveAssignment = true;
             }
-            
+
             Field->LLFieldIdx = LLFieldIdx;
             ++LLFieldIdx;
         }
-        
-        // TODO: Does the field need to be checked for a complete type here?
+
         if (Field->Ty->GetKind() == TypeKind::Struct) {
             StructType* StructTy = Field->Ty->AsStructType();
             StructDecl* OStruct = StructTy->GetStruct();
-            if (Struct) {
-                Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
-                Struct->NeedsDestruction |= OStruct->NeedsDestruction;
+            if (OStruct) {
+                FieldsHaveAssignment |= StructTy->DoesFieldsHaveAssignment();
+                NeedsDestruction |= StructTy->DoesNeedsDestruction();
             }
         } else if (Field->Ty->GetKind() == TypeKind::Array) {
             ArrayType* ArrayTy = Field->Ty->AsArrayTy();
@@ -458,13 +473,16 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
             if (BaseTy->GetKind() == TypeKind::Struct) {
                 StructType* StructTy = Field->Ty->AsStructType();
                 StructDecl* OStruct = StructTy->GetStruct();
-                if (Struct) {
-                    Struct->FieldsHaveAssignment |= OStruct->FieldsHaveAssignment;
-                    Struct->NeedsDestruction |= OStruct->NeedsDestruction;
+                if (OStruct) {
+                    FieldsHaveAssignment |= StructTy->DoesFieldsHaveAssignment();
+                    NeedsDestruction |= StructTy->DoesNeedsDestruction();
                 }
             }
         }
     }
+
+    Struct->SetFieldsHaveAssignment(FieldsHaveAssignment);
+    Struct->SetNeedsDestruction(NeedsDestruction);
 
     // Keep this below checking fields because the the function may end up
     // being part of the function signature.
@@ -475,33 +493,149 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
     // type information has been determined already.
     Struct->IsBeingChecked = false;
 
-    // TODO: Figure out why it is required to check function parameters here.
-    // Would be nicer to not check them since checking them means more decending
-    if (Struct->Destructor) {
-        SemAnalyzer A(Context, Struct->Destructor);
-        A.CheckFuncParams(Struct->Destructor);
-        Context.RequestGen(Struct->Destructor);
+    if (Struct->IsGeneric()) {
+        if (!Struct->GetCurBinding()->StructInfo->QualStructTy) {
+            Struct->GetCurBinding()->StructInfo->QualStructTy =
+                StructType::Create(Struct, Struct->GetCurBinding()->BindableTypes, Context);
+            FinishGenericStructType(Struct->GetCurBinding()->StructInfo->QualStructTy);
+        }
+    } else {
+        if (!Struct->StructTy) {
+            Struct->StructTy = StructType::Create(Struct, {}, Context);
+            FinishNonGenericStructType(Context, Struct->StructTy);
+        }
     }
+    
+    StructType* StructTy = Struct->IsGeneric() ? Struct->GetCurBinding()->StructInfo->QualStructTy
+                                               : Struct->StructTy;
+    
+    if (Struct->DefaultConstructor) {
+        if (Struct->IsGeneric()) {
+            // Actually have to see if there already exists because a
+            // function call may have created one.
+            GenericBinding* ExistingBinding =
+                GetExistingBinding(Struct->DefaultConstructor, {}, Struct->GenData->CurBinding);
+            if (ExistingBinding) {
+                Struct->GetCurBinding()->StructInfo->LLDefaultConstructor = ExistingBinding->FuncInfo->LLFunction;
+            } else {
+                GenericBinding* Binding =
+                    CreateNewBinding(Struct->DefaultConstructor, {}, Struct->GenData->CurBinding);
+                Binding->FuncInfo = new GenericFuncInfo; // TODO: Use of new
+                Binding->StructInfo = Struct->GetCurBinding()->StructInfo;
+                if (!FoundCompileError && !Context.CheckingUnhcecked) {
+                    IRGenerator IRGen(Context);
+                    Struct->DefaultConstructor->GenData->CurBinding = Binding;
+                    IRGen.GenFuncDecl(Struct->DefaultConstructor);
+                    Struct->GetCurBinding()->StructInfo->LLDefaultConstructor = Binding->FuncInfo->LLFunction;
+                }
+                Context.RequestGen(Struct->DefaultConstructor, Binding);
+            }
+        } else {
+            RequestGenNonGenericFunc(Struct->DefaultConstructor);
+            Struct->LLDefaultConstructor = Struct->DefaultConstructor->LLFunction;
+        }
+    }
+    if (Struct->Destructor) {
+        if (Struct->IsGeneric()) {
+            GenericBinding* Binding =
+                CreateNewBinding(Struct->Destructor, {}, Struct->GenData->CurBinding);
+            Binding->FuncInfo = new GenericFuncInfo; // TODO: Use of new
+            Binding->StructInfo = Struct->GenData->CurBinding->StructInfo;
+            if (!FoundCompileError && !Context.CheckingUnhcecked) {
+                IRGenerator IRGen(Context);
+                Struct->Destructor->GenData->CurBinding = Binding;
+                IRGen.GenFuncDecl(Struct->Destructor);
+                Struct->GetCurBinding()->StructInfo->LLDestructor = Binding->FuncInfo->LLFunction;
+            }
+            Context.RequestGen(Struct->Destructor, Binding);
+        } else {
+            RequestGenNonGenericFunc(Struct->Destructor);
+            Struct->LLDestructor = Struct->Destructor->LLFunction;
+        }
+    }
+
+    auto CheckMoveOrCopyConstructor = [=](FuncDecl* Func, const char* ConstructorType) {
+        if (Func->ExplicitlyHasGenerics) {
+            // Let the CheckFuncDecl deal with the error.
+            return;
+        }
+        if (Func->IsVariadic) {
+            Error(Func->Loc, "%s constructors cannot be variadic", ConstructorType);
+        }
+        if (Func->Params.empty()) {
+            Error(Func->Loc, "%s constructor must have argument for struct to copy", ConstructorType);
+        } else if (Func->Params.size() > 1) {
+            Error(Func->Loc, "%s constructor must have only one argument for the struct to copy", ConstructorType);
+        } else {
+
+            Type* ParamTy = Func->Params[0]->Ty;
+            if (ParamTy != Context.ErrorType) {
+                Type* ExpectedType = PointerType::Create(StructTy, Context);
+                if (!ParamTy->Equals(ExpectedType)) {
+                    Error(Func->Loc, "%s constructor must have type '%s' but found type '%s'",
+                        ConstructorType, ExpectedType, ParamTy);
+                }
+            }
+        }
+    };
+
+    auto CheckNGenMoveOrCopyConstructor = [=](FuncDecl* Func, bool IsCopy) {
+        SemAnalyzer A(Context, Func);
+        if (Struct->IsGeneric()) {
+            GenericBinding* Binding = CreateNewBinding(Func, {}, Struct->GenData->CurBinding);
+            Binding->FuncInfo = new GenericFuncInfo; // TODO: Use of new
+            Binding->StructInfo = Struct->GenData->CurBinding->StructInfo;
+            
+            
+            // Must first check that it doesn't have generics itself because
+            // if it does then an attempt to bind types will try and access
+            // a bindable list that doesn't exist. 
+            if (!Func->ExplicitlyHasGenerics) {
+                IRGenerator IRGen(Context);
+                Func->GenData->CurBinding = Binding;
+
+                BindTypes(Func, Binding);
+                A.CheckFuncParams(Func, true);
+
+                CreateQualifications(Func);
+                CheckMoveOrCopyConstructor(Func, IsCopy ? "Copy" : "Move");
+
+                if (!FoundCompileError && !Context.CheckingUnhcecked) {
+                    IRGen.GenFuncDecl(Func);
+                    if (IsCopy) {
+                        Struct->GetCurBinding()->StructInfo->LLCopyConstructor = Binding->FuncInfo->LLFunction;
+                    } else {
+                        Struct->GetCurBinding()->StructInfo->LLMoveConstructor = Binding->FuncInfo->LLFunction;
+                    }
+                    UnbindTypes(Func);
+                }
+            }
+            
+
+            Context.RequestGen(Func, Binding);
+        } else {
+            A.CheckFuncParams(Func);
+            CheckMoveOrCopyConstructor(Func, IsCopy ? "Copy" : "Move");
+            RequestGenNonGenericFunc(Func);
+        }
+    };
+
     if (Struct->CopyConstructor) {
-        SemAnalyzer A(Context, Struct->CopyConstructor);
-        A.CheckFuncParams(Struct->CopyConstructor);
-        Context.RequestGen(Struct->CopyConstructor);
+        CheckNGenMoveOrCopyConstructor(Struct->CopyConstructor, true);
     }
     if (Struct->MoveConstructor) {
-        SemAnalyzer A(Context, Struct->MoveConstructor);
-        A.CheckFuncParams(Struct->MoveConstructor);
-        Context.RequestGen(Struct->MoveConstructor);
+        CheckNGenMoveOrCopyConstructor(Struct->MoveConstructor, false);
     }
 }
 
 void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) {
-
+    
     // This must go before checking everything else because the
-    // struct may require that is function has complete type information
+    // struct may require that a function has complete type information
     // and by placing it here the struct may then recall this function,
     // this function can completely finished, and then the struct will have
     // complete information about the function.
-    if (Func->Struct) {
+    if (Func->Struct && !Func->Struct->IsGeneric()) {
         CheckStructDecl(Func->Struct);
     }
 
@@ -518,8 +652,9 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
     CStruct = Func->Struct;
     FScope  = Func->FScope;
 
-    if (!FixupType(Func->RetTy)) {
+    if (!FixupType(Func->RetTy, false, true)) {
         Func->RetTy = Context.ErrorType;
+        Func->ParsingError = true;
     }
 
     if (Func->IsGeneric()) {
@@ -532,31 +667,64 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
                 Func->ParsingError = true;
             }
         }
+
+        if (Func->IsDefaultConstructor) {
+            if (Func->ExplicitlyHasGenerics) {
+                Error(Func, "Default constructor cannot have generic types");
+                Func->ParsingError = true;
+                return;
+            }
+        } else if (Func->IsCopyConstructor) {
+            if (Func->ExplicitlyHasGenerics) {
+                Error(Func, "Copy constructor cannot have generic types");
+                Func->ParsingError = true;
+                return;
+            }
+        } else if (Func->IsMoveConstructor) {
+            if (Func->ExplicitlyHasGenerics) {
+                Error(Func, "Move constructor cannot have generic types");
+                Func->ParsingError = true;
+                return;
+            }
+        } else if (Func->IsDestructor) {
+            if (Func->ExplicitlyHasGenerics) {
+                Error(Func, "Destructors cannot have generic types");
+                Func->ParsingError = true;
+                return;
+            }
+        }
     }
+
+    NotFullyQualifiedVarState = true;
 
     llvm::SmallVector<VarDecl*, 2> Params = Func->Params;
     bool ParamsHaveAssignment = false, ParamAssignmentNotLast = false;
     for (VarDecl* Param : Params) {
-        if (NotFullyQualified && Param->Ty->ContainsGenerics) {       
-            if (!FixupType(Param->Ty)) {
+        if (Param->TyIsInfered || !NotFullyQualified || !Func->IsGeneric()) {
+            // Uses type inference so have to check the variable but need
+            // to specify that generic types cannot be used to reduce the
+            // assignment because the generic type is not known.
+            CheckVarDecl(Param, true);
+            
+            if (Param->Ty == Context.ErrorType) {
+                // TODO: Hacky so that it stops showing errors later on.
+                Func->ParsingError = true;
+                return;
+            }
+        } else {
+            if (!FixupType(Param->Ty, false, true)) {
                 Param->Ty = Context.ErrorType;
                 Func->ParsingError = true;
-                continue;
+                return;
             }
-            // TODO: This is going to mess up when types are already bound this whole
-            // process of determining if it has a constant address or not probably
-            // needs to be modified.
-            if (Param->Ty == Context.CStrType) {
-                Param->HasConstAddress = true;
+
+            if (!Param->Ty->ContainsGenerics) {
+                if (Param->Ty->GetKind() == TypeKind::CStr) {
+                    Param->HasConstAddress = true;
+                }
             }
-            continue;
         }
 
-        CheckVarDecl(Param);
-        if (Param->Ty == Context.ErrorType) {
-            // TODO: Hacky so that it stops showing errors later on.
-            Func->ParsingError = true;
-        }
         if (Param->Assignment) {
             ++Func->NumDefaultArgs;
             ParamsHaveAssignment = true;
@@ -583,6 +751,7 @@ void arco::SemAnalyzer::CheckFuncParams(FuncDecl* Func, bool NotFullyQualified) 
         // TODO: can there be circular dependency here?
         Last->Ty = SliceType::Create(Last->Ty, Context);
     }
+    NotFullyQualifiedVarState = false;
 
     if (ParamAssignmentNotLast) {
         Error(Func, "Parameter default arguments must come last in the parameter list");
@@ -797,7 +966,7 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
             llvm::Value* LLBool = GenFoldable(Field->Assignment->Loc, Field->Assignment);
             if (LLBool) {
                 llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLBool);
-                Struct->MustForceRaise = LLInt->getZExtValue() != 0;
+                Struct->SetMustForceRaise(LLInt->getZExtValue() != 0);
             }
             
             break;
@@ -883,8 +1052,7 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
 
             FoundFunc->MappedInterfaceFunc = InterfaceFunc;
 
-            // It will be needed if the struct is casted to the interface.
-            Context.RequestGen(FoundFunc);
+            RequestGenNonGenericFunc(FoundFunc);
         } else {
             Error(InterfaceHook.ErrorLoc, "Struct must implement function '%s' of interface '%s'",
                 GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc), Interface->Name);
@@ -1263,9 +1431,9 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
     LocScope = LocScope->Parent;
 }
 
-void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
-    if (Var->HasBeenChecked && !Var->IsGeneric()) {
-        // TODO: Once structs have generics then IsField will need additional checks.
+void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var, bool PartialGenFixup, bool ForceCheck) {
+    
+    if (Var->HasBeenChecked && !Var->IsGeneric() && !ForceCheck) {
         if (Var->IsField() || Var->IsGlobal) {
             return;
         }
@@ -1284,9 +1452,14 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 
     FScope = Var->FScope;
     Mod    = Var->Mod;
+    CVar   = Var;
 
     if (Var->IsField()) {
         CField = Var;
+    }
+
+    if (Var->IsGeneric()) {
+        CreateQualifications(Var);
     }
 
     if (Var->Mods & ModKinds::NATIVE) {
@@ -1298,9 +1471,9 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
         }
     }
 
-    if (!Var->ExplicitlyMarkedConst) {
-        Var->HasConstAddress = false;
-    }
+    // TODO: There is a problem at the moment with generic structs and error reporting
+    // because if the type of the variable is set to an error the future reporting of
+    // errors will be worse.
 
     // TODO: Is it needed to store a previous CGlobal/CField
     //       and set it to that once the function returns?
@@ -1308,16 +1481,18 @@ void arco::SemAnalyzer::CheckVarDecl(VarDecl* Var) {
 Var->IsBeingChecked = false;      \
 CGlobal = nullptr;                \
 CField  = nullptr;                \
+CVar    = nullptr;                \
 E;                                \
 if (Var->IsGeneric())             \
     Var->GenData                  \
        ->CurBinding               \
        ->QualifiedType = Var->Ty; \
-if constexpr (TyErr)              \
+if constexpr (TyErr) {            \
     Var->Ty = Context.ErrorType;  \
+}                                 \
 return;
 
-    if (!Var->TyIsInfered && !FixupType(Var->Ty)) {
+    if (!Var->TyIsInfered && !FixupType(Var->Ty, false, PartialGenFixup)) {
         VAR_YIELD(, true);
     }
 
@@ -1340,17 +1515,10 @@ return;
             VAR_YIELD(, true);
         }
 
-        if (Var->Ty->Equals(Context.CStrType)) {
-            Var->HasConstAddress = true;
-        }
-
         if (Var->TyIsInfered) {
             // The type is infered.
             
             Var->Ty = Var->Assignment->Ty;
-            if (Var->Ty->Equals(Context.CStrType)) {
-                Var->HasConstAddress = true;
-            }
             if (Var->Assignment->HasConstAddress &&
                 (Var->Assignment->Ty->IsPointer() || Var->Assignment->Ty->GetKind() == TypeKind::Array)) {
                 // If the memory is protected from the infered assignment take on that
@@ -1432,6 +1600,10 @@ return;
                 true);
         }
 
+        if (Var->Ty->Equals(Context.CStrType)) {
+            Var->HasConstAddress = true;
+        }
+
         if (ViolatesConstAssignment(Var, Var->Assignment)) {
             VAR_YIELD(Error(Var, "Cannot assign const memory to non-const variable"), true);
         }
@@ -1461,8 +1633,6 @@ return;
             if (!StructForTy->Constructors.empty() && !StructForTy->DefaultConstructor &&
                 !Var->IsField() && !Var->IsParam()) {
                 VAR_YIELD(Error(Var, "No default constructor to initialize the variable"), false);
-            } else if (StructForTy->DefaultConstructor) {
-                Context.RequestGen(StructForTy->DefaultConstructor);
             }
         }
     }
@@ -1748,7 +1918,8 @@ void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
     }
 
     StructInitializer* StructInit = static_cast<StructInitializer*>(Raise->StructInit);
-    StructDecl* Struct = StructInit->Ty->AsStructType()->GetStruct();
+    StructType* StructTy = StructInit->Ty->AsStructType();
+    StructDecl* Struct = StructTy->GetStruct();
     
     bool ImplementsErrorInterface = false;
     for (InterfaceDecl* Interface : Struct->Interfaces) {
@@ -1767,7 +1938,7 @@ void arco::SemAnalyzer::CheckRaiseStmt(RaiseStmt* Raise) {
         return;
     }
     
-    if (Struct->MustForceRaise) {
+    if (StructTy->DoesMustForceRaise()) {
         bool FuncRaisesError = false;
         for (const auto& RaisedError : CFunc->RaisedErrors) {
             if (RaisedError.ErrorStruct == Struct) {
@@ -2327,7 +2498,8 @@ YIELD_ERROR(UniOp);
                     });
             }
             
-            Context.RequestGen(Func);
+            // TODO: Deal with generic bindings.
+            RequestGenNonGenericFunc(Func);
 
             UniOp->HasConstAddress = false;
             UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
@@ -2392,7 +2564,7 @@ template<bool SpellChecking>
 void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                                       bool ExpectsFuncCall,
                                       Namespace* NamespaceToLookup,
-                                      StructDecl* StructToLookup,
+                                      StructType* StructToLookupTy,
                                       bool ExpectsGenericConstraint) {
 
     bool LocalNamespace = !NamespaceToLookup;
@@ -2403,7 +2575,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
     SpellCheckList CheckListFuncs, CheckListOther;
 
     auto SearchForFuncs = [=, &CheckListFuncs]() {
-        if (StructToLookup) {
+        if (StructToLookupTy) {
+            StructDecl* StructToLookup = StructToLookupTy->GetStruct();
             if constexpr (!SpellChecking) {
                 auto Itr = StructToLookup->Funcs.find(IRef->Ident);
                 if (Itr != StructToLookup->Funcs.end()) {
@@ -2526,8 +2699,8 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
     };
 
     auto SearchForOther = [=, &CheckListOther]() {
-        if (StructToLookup) {
-            VarDecl* Field = StructToLookup->FindField(IRef->Ident);
+        if (StructToLookupTy) {
+            VarDecl* Field = StructToLookupTy->GetStruct()->FindField(IRef->Ident);
             if (Field) {
                 IRef->Var     = Field;
                 IRef->RefKind = IdentRef::RK::Var;
@@ -2664,9 +2837,10 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 // Is foldable is always true for generic variables.
 
                 if (VarRef->IsGlobal || VarRef->IsField()) {
-                    GenericBinding* Binding = GetExistingBinding(VarRef, IRef->GenBindings);
+                    // TODO: Deal with parent bindings.
+                    GenericBinding* Binding = GetExistingBinding(VarRef, IRef->GenBindings, nullptr);
                     if (!Binding) {
-                        Binding = CreateNewBinding(VarRef, IRef->GenBindings);
+                        Binding = CreateNewBinding(VarRef, IRef->GenBindings, nullptr);
                         BindTypes(VarRef, Binding);
                         EnsureChecked(IRef->Loc, VarRef);
                         IRef->Ty = VarRef->GenData->CurBinding->QualifiedType;
@@ -2684,13 +2858,23 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 break;
             }
 
+            // TODO: If it is a field wouldn't it already have been checked?
             if (VarRef->IsGlobal || VarRef->IsField()) {
                 EnsureChecked(IRef->Loc, VarRef);
             }
 
-            IRef->Ty = VarRef->Ty;
+            if (VarRef->IsField() && VarRef->Ty->ContainsGenerics) {
+                // Want to use the qualified type because
+                // binding is only temporary.
+                auto& StructInfo = StructToLookupTy ? StructToLookupTy->FoundBinding->StructInfo
+                                                    : CStruct->GetCurBinding()->StructInfo;
+                IRef->Ty              = StructInfo->QualifiedFieldTypes[VarRef->GenQualIdx];
+                IRef->HasConstAddress = StructInfo->FieldsConstAddressInfo[VarRef->GenQualIdx];
+            } else {
+                IRef->Ty = VarRef->Ty;
+                IRef->HasConstAddress = VarRef->HasConstAddress;
+            }
 
-            IRef->HasConstAddress = VarRef->HasConstAddress;
             if (!VarRef->IsComptime()) {
                 IRef->IsFoldable = false;
             }
@@ -2707,6 +2891,7 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
             break;
         }
         case IdentRef::RK::Struct: {
+            // TODO: Deal with generics!
             if (!IRef->Struct->HasBeenChecked) {
                 SemAnalyzer A(Context, IRef->Struct);
                 A.CheckStructDecl(IRef->Struct);
@@ -2730,17 +2915,17 @@ void arco::SemAnalyzer::CheckIdentRef(IdentRef* IRef,
                 CheckIdentRef<true>(IRef,
                                     ExpectsFuncCall,
                                     NamespaceToLookup,
-                                    StructToLookup,
+                                    StructToLookupTy,
                                     ExpectsGenericConstraint);
                 Log.EndError();
             } else {
                 Log.BeginError(IRef->Loc, "Could not find symbol for %s '%s'",
-                    StructToLookup ? "field" : "identifier",
+                    StructToLookupTy ? "field" : "identifier",
                     IRef->Ident);
                 CheckIdentRef<true>(IRef,
                                     ExpectsFuncCall,
                                     NamespaceToLookup,
-                                    StructToLookup,
+                                    StructToLookupTy,
                                     ExpectsGenericConstraint);
                 Log.EndError();
             }
@@ -2882,7 +3067,8 @@ void arco::SemAnalyzer::CheckFieldAccessor(FieldAccessor* FieldAcc, bool Expects
             StructTy);
         YIELD_ERROR(FieldAcc);
     } else {
-        CheckIdentRef<false>(FieldAcc, ExpectsFuncCall, nullptr, StructTy->GetStruct());
+        StructDecl* Struct = StructTy->GetStruct();
+        CheckIdentRef<false>(FieldAcc, ExpectsFuncCall, nullptr, StructTy);
         if (FieldAcc->Ty != Context.ErrorType) {
             if (FieldAcc->RefKind == IdentRef::RK::Var && (FieldAcc->Var->Mods & ModKinds::PRIVATE)) {
                 if (FieldAcc->Var->FScope != FScope) {
@@ -2900,7 +3086,8 @@ void arco::SemAnalyzer::CheckThisRef(ThisRef* This) {
     }
     CheckStructDecl(CStruct);
     This->IsFoldable = false;
-    This->Ty = PointerType::Create(StructType::Create(CStruct, Context), Context);
+
+    This->Ty = PointerType::Create(CStruct->StructTy, Context);
 }
 
 void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
@@ -2990,6 +3177,26 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     IdentRef* IRef = static_cast<IdentRef*>(Call->Site);
     FuncsList* Canidates = IRef->Funcs;
 
+    GenericBinding* GenericStructBinding = nullptr;
+    if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
+        FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(Call->Site);
+        if (FieldAcc->Site->Ty->GetKind() == TypeKind::Struct) {
+            StructType* StructTy = FieldAcc->Site->Ty->AsStructType();
+            if (!StructTy->GetBindTypes().empty()) {
+                GenericStructBinding = StructTy->FoundBinding;
+            }
+        }
+    } else if (CStruct && CStruct->IsGeneric()) {
+        // Checking to see if the call is to a member function of a generic
+        // struct and if it is then have to use the current bindings of the
+        // current generic struct.
+        if (!Canidates->empty()) {
+            if ((*Canidates)[0]->Struct == CStruct) {
+                GenericStructBinding = CStruct->GetCurBinding();
+            }
+        }
+    }
+
     GenericBinding* Binding;
     Type* RetTy;
     bool VarArgsPassAlong = false;
@@ -3000,7 +3207,9 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
                                             Call->NamedArgs,
                                             VarArgsPassAlong,
                                             Binding,
-                                            RetTy);
+                                            RetTy,
+                                            GenericStructBinding);
+    
     if (!Call->CalledFunc) {
         YIELD_ERROR(Call);
     }
@@ -3012,7 +3221,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     }
 
     Call->VarArgsPassAlong = VarArgsPassAlong;
-    Call->Binding = Binding;
+    Call->FoundBinding = Binding;
 
     Call->IsFoldable = false;
     Call->Ty = RetTy;
@@ -3027,37 +3236,47 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong,
                                                         GenericBinding*& Binding,
-                                                        Type*& RetTy) {
+                                                        Type*& RetTy,
+                                                        GenericBinding* StructGenericBinding) {
 
     // TODO:  Performance this may be more efficient to just do total stack allocation
     // by limited the number of overloaded functions/parameter allowed.
 
-    // Explaination as to the layout of the BindableList:
-    // 
-    //   The first half of the list contains the types bound to the generic types
-    //   as it tries to match a type to a type containing a generic type.
-    // 
-    //   The second half of the list contains the fully qualified types.
-    //
     llvm::SmallVector<BindableList, 8> AllBindableTypes;
+    llvm::SmallVector<BindableList, 8> AllQualTypes;
     for (FuncDecl* Canidate : *Canidates) {
         if (Canidate->IsGeneric()) {
             // Initialize the partial binding for the generic function.
             AllBindableTypes.emplace_back(
-                BindableList(Canidate->GenData->GenTys.size() + Canidate->GenData->NumQualifications, nullptr)
-            );
+                BindableList(Canidate->GenData->GenTys.size(), nullptr));
+            AllQualTypes.emplace_back(
+                BindableList(Canidate->GenData->NumQualifications, nullptr));
         }
     }
 
-    FuncDecl* Selected = FindBestFuncCallCanidate(FuncName, Canidates, Args, NamedArgs, VarArgsPassAlong, AllBindableTypes);
+    BindableList* StructBindableTypes = StructGenericBinding ? &StructGenericBinding->BindableTypes
+                                                             : nullptr;
+    FuncDecl* Selected = FindBestFuncCallCanidate(FuncName,
+                                                  Canidates,
+                                                  Args,
+                                                  NamedArgs,
+                                                  VarArgsPassAlong,
+                                                  AllBindableTypes,
+                                                  AllQualTypes,
+                                                  StructBindableTypes);
     if (!Selected) {
-        DisplayErrorForNoMatchingFuncCall(ErrorLoc, Canidates, Args, NamedArgs);
+        DisplayErrorForNoMatchingFuncCall(ErrorLoc,
+                                          Canidates,
+                                          Args,
+                                          NamedArgs,
+                                          StructBindableTypes);
         return nullptr;
     }
     
     // If the call has named arguments the named arguments might conflict with the non-named
     // arguments so checking for that now.
     if (!NamedArgs.empty()) {
+        bool MoreErrors = false;
         // Need to lookup the paramters again because there might have been multiple overloaded functions.
         for (NamedValue& NamedArg : NamedArgs) {
             auto Itr = std::find_if(Selected->Params.begin(), Selected->Params.end(),
@@ -3072,6 +3291,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                     "Named argument '%s' already taken by non named argument at index: %s",
                     NamedArg.Name,
                     NamedArg.VarRef->ParamIdx + 1);
+                MoreErrors = true;
             }
         }
         if (Selected->NumDefaultArgs) {
@@ -3094,8 +3314,12 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                 if (Itr == NamedArgs.end()) {
                     // TODO: better error reporting.
                     Error(ErrorLoc, "Parameter '%s' recieved no argument", Param->Name);
+                    MoreErrors = true;
                 }
             }
+        }
+        if (MoreErrors) {
+            return nullptr;
         }
     }
     
@@ -3114,30 +3338,28 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
     }
     
     BindableList* BindableTypes = nullptr;
+    BindableList* QualTypes     = nullptr;
     if (Selected->IsGeneric()) {
         BindableTypes = &AllBindableTypes[GenericIdx];
+        QualTypes     = &AllQualTypes[GenericIdx];
         // Making sure all of the generic types have bindings.
         for (ulen i = 0; i < Selected->GenData->GenTys.size(); i++) {
             if ((*BindableTypes)[i] == nullptr) {
                 GenericType* GenTy = Selected->GenData->GenTys[i];
                 // TODO: Make debug message more explainable.
+                // TODO: Part of the explaination needs to include if the non-bound
+                //       type was part of the struct that the function belongs to or not
                 Error(ErrorLoc,
                     "Generic type '%s' did not recieve a binding type",
                     GenTy->ToString(false)
                     );
+                return nullptr;
             }
-        }
-
-        if (Selected->RetTy->ContainsGenerics) {
-            // TODO: optimize by storing the qualified return type.
-            RetTy = QualifyType(Selected->RetTy, *BindableTypes);
-        } else {
-            RetTy = Selected->RetTy;
         }
     } else {
         RetTy = Selected->RetTy;
     }
-    CreateCallCasts(Selected, Args, NamedArgs, VarArgsPassAlong, RetTy, BindableTypes);
+    CreateCallCasts(Selected, Args, NamedArgs, VarArgsPassAlong, QualTypes);
 
     if (!CatchingErrors && !Selected->RaisedErrors.empty()) {
         CheckIfErrorsAreCaptured(ErrorLoc, Selected);
@@ -3148,29 +3370,62 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
         // because interface functions are just pointers to functions not
         // actually functions themselves.
         if (Selected->IsGeneric()) {
-            
-            ulen NumGenerics = Selected->GenData->GenTys.size();
 
-            // Removing the qualification types so that all that is left is the bindable types.
-            // These will be what is used to bind the generic types.
-            BindableList& BindableTypesNoQuals = *BindableTypes;
-            BindableTypesNoQuals.resize(BindableTypesNoQuals.size() - Selected->GenData->NumQualifications);
-
-            Binding = GetExistingBinding(Selected, BindableTypesNoQuals);
+            Binding = GetExistingBinding(Selected, *BindableTypes, StructGenericBinding);
             if (!Binding) {
-                Binding = CreateNewBinding(Selected, std::move(BindableTypesNoQuals));
+                // TODO: Stilling the qualification types here needs to take into
+                // account that they may already have been set!
+
+                Binding = CreateNewBinding(Selected, std::move(*BindableTypes), StructGenericBinding);
+                Binding->FuncInfo = new GenericFuncInfo; // TODO: Use of new
+
+                // Need to set the qualifications of the parameters/return to generate
+                // the function correctly.
+                BindTypes(Selected, Binding);
+                for (VarDecl* Param : Selected->Params) {
+                    if (Param->Ty->ContainsGenerics)
+                        Param->Ty->SetQualType((*QualTypes)[Param->GenQualIdx]);
+                }
+                if (Selected->RetTy->ContainsGenerics) {
+                    RetTy = QualifyType(Selected->RetTy, Binding);
+                    Binding->FuncInfo->QualRetTy = RetTy;
+                } else {
+                    RetTy = Selected->RetTy;
+                }
+
+                if (Selected->RetTy->ContainsGenerics) {
+                    Selected->RetTy->SetQualType(RetTy);
+                }
+                Selected->GenData->CurBinding = Binding;
+
+
+                if (StructGenericBinding) {
+                    Binding->StructInfo = StructGenericBinding->StructInfo;
+                }
+
                 if (CFunc && CFunc->IsGeneric()) {
                     Binding->OriginalFile = CFunc->GenData->CurBinding->OriginalFile;
-                    Binding->OriginalLoc  = CFunc->GenData->CurBinding->OriginalLoc;
+                    Binding->OriginalLoc = CFunc->GenData->CurBinding->OriginalLoc;
                 } else {
                     Binding->OriginalFile = FScope;
                     Binding->OriginalLoc = ErrorLoc;
                 }
+
+                if (!FoundCompileError && !Context.CheckingUnhcecked) {
+                    IRGenerator IRGen(Context);
+                    IRGen.GenFuncDecl(Selected);
+                }
+                UnbindTypes(Selected);
                 Context.RequestGen(Selected, Binding);
+            } else {
+                RetTy = Binding->FuncInfo->QualRetTy;
             }
         } else {
-            Context.RequestGen(Selected);
+            RetTy = Selected->RetTy;
+            RequestGenNonGenericFunc(Selected);
         }
+    } else {
+        RetTy = Selected->RetTy;
     }
 
     return Selected;
@@ -3180,7 +3435,6 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
                                         llvm::SmallVector<NonNamedValue>& Args,
                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                         bool VarArgsPassAlong,
-                                        Type*& RetTy,
                                         const BindableList* QualifiedTypes) {
 
     ulen NumGenerics = Selected->IsGeneric() ? Selected->GenData->GenTys.size() : 0;
@@ -3190,7 +3444,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
             Expr* Arg = Args[i].E;
             VarDecl* Param = Selected->Params[i];
             if (Param->Ty->ContainsGenerics) {
-                CreateCast(Arg, (*QualifiedTypes)[NumGenerics + Param->GenericIdx]);
+                CreateCast(Arg, (*QualifiedTypes)[Param->GenQualIdx]);
             } else {
                 CreateCast(Arg, Param->Ty->UnboxGeneric());
             }
@@ -3201,7 +3455,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
             Expr* Arg = Args[i].E;
             VarDecl* Param = Selected->Params[i];
             if (Param->Ty->ContainsGenerics) {
-                CreateCast(Arg, (*QualifiedTypes)[NumGenerics + Param->GenericIdx]);
+                CreateCast(Arg, (*QualifiedTypes)[Param->GenQualIdx]);
             } else {
                 CreateCast(Arg, Param->Ty->UnboxGeneric());
             }
@@ -3212,7 +3466,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
             for (; i < Args.size(); i++) {
                 Expr* Arg = Args[i].E;
                 if (VarArgTy->ContainsGenerics) {
-                    CreateCast(Arg, (*QualifiedTypes)[NumGenerics + LastParam->GenericIdx]);
+                    CreateCast(Arg, (*QualifiedTypes)[LastParam->GenQualIdx]);
                 } else {
                     CreateCast(Arg, VarArgTy->UnboxGeneric());
                 }
@@ -3223,7 +3477,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
     for (NamedValue& NamedValue : NamedArgs) {
         VarDecl* Param = NamedValue.VarRef;
         if (Param->Ty->ContainsGenerics) {
-            CreateCast(NamedValue.AssignValue, (*QualifiedTypes)[NumGenerics + Param->GenericIdx]);
+            CreateCast(NamedValue.AssignValue, (*QualifiedTypes)[Param->GenQualIdx]);
         } else {
             CreateCast(NamedValue.AssignValue, Param->Ty->UnboxGeneric());
         }
@@ -3235,7 +3489,9 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
                                                             llvm::SmallVector<NonNamedValue>& Args,
                                                             llvm::SmallVector<NamedValue>& NamedArgs,
                                                             bool& SelectedVarArgsPassAlong,
-                                                            llvm::SmallVector<BindableList, 8>& AllBindableTypes) {
+                                                            llvm::SmallVector<BindableList, 8>& AllBindableTypes,
+                                                            llvm::SmallVector<BindableList, 8>& AllQualTypes,
+                                                            BindableList* StructBindableTypes) {
     if (!Canidates) return nullptr;
 
     FuncDecl* Selection = nullptr;
@@ -3252,8 +3508,11 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
     for (ulen i = 0; i < Canidates->size(); i++) {
         FuncDecl* Canidate = (*Canidates)[i];
         BindableList* BindableTypes = nullptr;
+        BindableList* QualTypes = nullptr;
         if (Canidate->IsGeneric()) {
-            BindableTypes = &AllBindableTypes[GenericFuncCount++];
+            BindableTypes = &AllBindableTypes[GenericFuncCount];
+            QualTypes     = &AllQualTypes[GenericFuncCount];
+            ++GenericFuncCount;
         }
         
         if (!Canidate->ParamTypesChecked) {
@@ -3286,7 +3545,9 @@ arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
                                NumSignConflicts,
                                VarArgsPassAlong,
                                HasAny,
-                               BindableTypes)) {
+                               BindableTypes,
+                               QualTypes,
+                               StructBindableTypes)) {
             continue;
         }
 
@@ -3331,7 +3592,9 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
                                           ulen& NumSignConflicts,
                                           bool& CanidateVarArgPassAlong,
                                           bool& HasAny,
-                                          BindableList* BindableTypes) {
+                                          BindableList* BindableTypes,
+                                          BindableList* QualTypes,
+                                          BindableList* StructBindableTypes) {
     // TODO: performance: all this awful variadic stuff can be optimized out by
     // using templating.
 
@@ -3356,7 +3619,6 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
         }
     }
 
-    ulen NumGenerics = Canidate->IsGeneric() ? Canidate->GenData->GenTys.size() : 0;
     for (ulen i = 0; i < Args.size(); i++) {
         Expr* Arg = Args[i].E;
         
@@ -3410,7 +3672,8 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
                           EnumImplicitConflicts,
                           NumSignConflicts,
                           BindableTypes,
-                          NumGenerics)) {
+                          QualTypes,
+                          StructBindableTypes)) {
             return false;
         }
     }
@@ -3443,7 +3706,8 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
                               EnumImplicitConflicts,
                               NumSignConflicts,
                               BindableTypes,
-                              NumGenerics)) {
+                              QualTypes,
+                              StructBindableTypes)) {
                 return false;
             }
         } else {
@@ -3471,25 +3735,27 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
                                      ulen& EnumImplicitConflicts,
                                      ulen& NumSignConflicts,
                                      BindableList* BindableTypes,
-                                     ulen NumGenerics) {
+                                     BindableList* QualTypes,
+                                     BindableList* StructBindableTypes) {
 
     Type* ComparibleParamType = ParamType;
-    bool HasConstAddress = Param->HasConstAddress;
     if (ParamType->ContainsGenerics) {
         Type* ExistingQualType = nullptr;
         auto Res = CheckCallArgGeneric(Arg->Ty->UnboxGeneric(),
                                        Param->ImplicitPtr,
                                        ParamType,
-                                       BindableTypes,
+                                       *BindableTypes,
+                                       *QualTypes,
+                                       *StructBindableTypes,
                                        ExistingQualType,
-                                       NumGenerics,
-                                       Param->GenericIdx,
+                                       Param->GenQualIdx,
                                        true);
         if (!Res) {
             return false;
         }
-        Type* QualType = (*BindableTypes)[NumGenerics + Param->GenericIdx];
-        HasConstAddress |= QualType->Equals(Context.CStrType);
+        Type* QualType = (*QualTypes)[Param->GenQualIdx];
+        bool HasConstAddress = Param->ExplicitlyMarkedConst ||
+                               QualType->GetKind() == TypeKind::CStr;
         
         ComparibleParamType = QualType;
 
@@ -3517,7 +3783,7 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
             return false;
         }
     }
-    if (ViolatesConstAssignment(ComparibleParamType, HasConstAddress, Arg)) {
+    if (ViolatesConstAssignment(ComparibleParamType, Param->HasConstAddress, Arg)) {
         return false;
     }
     if (!ComparibleParamType->Equals(Arg->Ty)) {
@@ -3540,10 +3806,11 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
 bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                                             bool AllowImplicitPointer,
                                             Type* ParamType,
-                                            BindableList* BindableTypesIn,
+                                            BindableList& BindableTypes,
+                                            BindableList& QualTypes,
+                                            BindableList& StructBindableTypes,
                                             Type*& QualType,
-                                            ulen NumGenerics,
-                                            ulen GenericIdx,
+                                            ulen QualIdx,
                                             bool IsRoot,
                                             bool FromPtr,
                                             ArgMismatchData* MismatchData) {
@@ -3553,11 +3820,6 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
     
     // The type is not bound yet so cannot rely on IsAssignableTo.
 
-    // TODO: Will want to check constraints once they are supported.
-    
-    BindableList& BindableTypes = *BindableTypesIn;
-    
-    ulen QualIdx = NumGenerics + GenericIdx;
     // TODO: For already bound types could potentially just optimize by calling IsAssignableTo
     // here rather than relying on passing the information up and working from there.
     switch (ParamType->GetRealKind()) {
@@ -3569,7 +3831,13 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         
         GenericType* GenTy = static_cast<GenericType*>(ParamType);
 
-        Type* ExistingBind = BindableTypes[GenTy->GetIdx()];
+        Type* ExistingBind;
+        if (GenTy->GetBoundToDecl()->Is(AstKind::FUNC_DECL)) {
+            ExistingBind = BindableTypes[GenTy->GetIdx()];
+        } else {
+            ExistingBind = StructBindableTypes[GenTy->GetIdx()];
+        }
+
         if (ExistingBind) {
             // Already bound for the generic! Needs to be qualified based
             // on the existing bound type.
@@ -3592,7 +3860,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                 }
             }
 
-            BindableTypes[GenTy->GetIdx()] = ArgTy;
+            if (GenTy->GetBoundToDecl()->Is(AstKind::FUNC_DECL)) {
+                BindableTypes[GenTy->GetIdx()] = ArgTy;
+            } else {
+                StructBindableTypes[GenTy->GetIdx()] = ArgTy;
+            }
         }
 
         break;
@@ -3609,10 +3881,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
             auto Res = CheckCallArgGeneric(ArgTy,
                                            false,
                                            ParamPtrTy->GetElementType(),
-                                           BindableTypesIn,
+                                           BindableTypes,
+                                           QualTypes,
+                                           StructBindableTypes,
                                            QualType,
-                                           NumGenerics,
-                                           GenericIdx,
+                                           QualIdx,
                                            false,
                                            true,
                                            MismatchData);
@@ -3644,9 +3917,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         auto Res = CheckCallArgGeneric(ArgPtrTy->GetElementType(),
                                        false,
                                        ParamPtrTy->GetElementType(),
-                                       BindableTypesIn,
+                                       BindableTypes,
+                                       QualTypes,
+                                       StructBindableTypes,
                                        QualType,
-                                       0, 0, false,
+                                       0, false,
                                        true,
                                        MismatchData);
         if (!Res) {
@@ -3672,9 +3947,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         auto Res = CheckCallArgGeneric(ArgSliceTy->GetElementType(),
                                        false,
                                        ParamSliceTy->GetElementType(),
-                                       BindableTypesIn,
+                                       BindableTypes,
+                                       QualTypes,
+                                       StructBindableTypes,
                                        QualType,
-                                       0, 0, false,
+                                       0, false,
                                        MismatchData);
         if (!Res) {
             ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
@@ -3703,9 +3980,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
         auto Res = CheckCallArgGeneric(ArgArrTy->GetElementType(),
                                        false,
                                        ParamArrTy->GetElementType(),
-                                       BindableTypesIn,
+                                       BindableTypes,
+                                       QualTypes,
+                                       StructBindableTypes,
                                        QualType,
-                                       0, 0, false,
+                                       0, false,
                                        MismatchData);
         if (!Res) {
             ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
@@ -3737,7 +4016,9 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
             auto Res = CheckCallArgGeneric(ArgFuncTy->RetTyInfo.Ty,
                                            false,
                                            ParamFuncTy->RetTyInfo.Ty,
-                                           BindableTypesIn,
+                                           BindableTypes,
+                                           QualTypes,
+                                           StructBindableTypes,
                                            QualType,
                                            0, 0, false,
                                            MismatchData);
@@ -3745,8 +4026,11 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                 ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
                 return false;
             }
+            FullyQualified &= QualType != nullptr;
+        } else if (!ParamFuncTy->RetTyInfo.Ty->Equals(ParamFuncTy->RetTyInfo.Ty)) {
+            ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
+            return false;
         }
-        FullyQualified &= QualType != nullptr;
         
         if (ArgFuncTy->RetTyInfo.ConstMemory != ParamFuncTy->RetTyInfo.ConstMemory) {
             ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
@@ -3760,7 +4044,9 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
                 auto Res = CheckCallArgGeneric(ArgPInfo.Ty,
                                                false,
                                                ParamPInfo.Ty,
-                                               BindableTypesIn,
+                                               BindableTypes,
+                                               QualTypes,
+                                               StructBindableTypes,
                                                QualType,
                                                0, 0, false,
                                                MismatchData);
@@ -3783,6 +4069,53 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
 
         break;
     }
+    case TypeKind::Struct: {
+        if (ArgTy->GetKind() != TypeKind::Struct) {
+            ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
+            return false;
+        }
+
+        StructType* ArgStructTy   = ArgTy->AsStructType();
+        StructType* ParamStructTy = static_cast<StructType*>(ParamType);
+        StructDecl* ArgStruct   = ArgStructTy->GetStruct();
+        StructDecl* ParamStruct = ParamStructTy->GetStruct();
+
+        if (ArgStruct != ParamStruct) {
+            ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
+            return false;
+        }
+
+        bool FullyQualified = true;
+        for (ulen i = 0; i < ArgStruct->GenData->GenTys.size(); i++) {
+            Type* ArgBoundTy = ArgStructTy->FoundBinding->BindableTypes[i];
+            Type* ParamGenTy = ParamStructTy->GetBindTypes()[i];
+            if (ParamGenTy->ContainsGenerics) {
+                auto Res = CheckCallArgGeneric(ArgBoundTy,
+                                               false,
+                                               ParamGenTy,
+                                               BindableTypes,
+                                               QualTypes,
+                                               StructBindableTypes,
+                                               QualType,
+                                               0, false,
+                                               MismatchData);
+                if (!Res) {
+                    ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
+                    return false;
+                }
+                FullyQualified &= QualType != nullptr;
+            } else if (!ParamGenTy->Equals(ArgBoundTy)) {
+                ShowMismatchInfoForBindFail(IsRoot, ArgTy, ParamType, MismatchData);
+                return false;
+            }
+        }
+
+        if (FullyQualified) {
+            QualType = ArgTy;
+        }
+
+        break;
+    }
     default:
         assert(!"unreachable");
         break;
@@ -3790,9 +4123,9 @@ bool arco::SemAnalyzer::CheckCallArgGeneric(Type* ArgTy,
 
     if (IsRoot) {
         if (QualType) {
-            BindableTypes[QualIdx] = QualType;
+            QualTypes[QualIdx] = QualType;
         } else {
-            BindableTypes[QualIdx] = ArgTy;
+            QualTypes[QualIdx] = ArgTy;
         }
     }
 
@@ -3847,21 +4180,24 @@ bool arco::SemAnalyzer::CheckGenericConstraint(FuncDecl* Canidate,
         return false;
     }
 
-    GenericBinding* Binding = GetExistingBinding(Constraint->Var, ConstraintBindTypes);
+    // TODO: Generic parent!
+    GenericBinding* Binding = GetExistingBinding(Constraint->Var, ConstraintBindTypes, nullptr);
     if (!Binding) {
-        Binding = CreateNewBinding(VarRef, std::move(ConstraintBindTypes));
+        Binding = CreateNewBinding(VarRef, std::move(ConstraintBindTypes), nullptr);
         BindTypes(VarRef, Binding);
         // TODO: Deal with the location meaning to be local since
         // it is used to check circularity.
         EnsureChecked(VarRef->Loc, VarRef);
-        Type* QualType = VarRef->GenData->CurBinding->QualifiedType;
+        UnbindTypes(VarRef);
+
+        Type* QualType = Binding->QualifiedType;
         // First time check of the particular constraint so need
         // to make sure that the constraint is a bool type and
         // if not then produce an error.
         if (VarRef->Ty == Context.ErrorType) {
             return false;
         }
-        if (QualType != Context.BoolType) {
+        if (!QualType ->Equals(Context.BoolType)) {
             Logger Log(Canidate->FScope, Canidate->FScope->Buffer);
             std::string TypeSs;
             for (ulen i = 0; i < Binding->BindableTypes.size(); i++) {
@@ -3879,19 +4215,17 @@ bool arco::SemAnalyzer::CheckGenericConstraint(FuncDecl* Canidate,
                 );
             Log.EndError();
         }
-    } else {
-        BindTypes(VarRef, Binding);
     }
 
-    Type* QualType = VarRef->GenData->CurBinding->QualifiedType;
+    Type* QualType = Binding->QualifiedType;
     if (QualType == Context.ErrorType) {
         return false;
     }
-    if (QualType != Context.BoolType) {
+    if (!QualType->Equals(Context.BoolType)) {
         return false;
     }
 
-    llvm::ConstantInt* LLBool = llvm::cast<llvm::ConstantInt>(VarRef->GenData->CurBinding->LLValue);
+    llvm::ConstantInt* LLBool = llvm::cast<llvm::ConstantInt>(Binding->LLValue);
     bool Tof = LLBool->isZero();
     if (GenTy->ShouldInvertConstraint()) {
         Tof = !Tof;
@@ -3910,15 +4244,14 @@ bool arco::SemAnalyzer::CheckGenericConstraint(FuncDecl* Canidate,
         return false;
     }
 
-    UnbindTypes(VarRef);
-    
     return true;
 }
 
 void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                           FuncsList* Canidates,
                                                           const llvm::SmallVector<NonNamedValue>& Args,
-                                                          const llvm::SmallVector<NamedValue>& NamedArgs) {
+                                                          const llvm::SmallVector<NamedValue>& NamedArgs,
+                                                          BindableList* StructBindableTypes) {
     
     const char* CallType = (*Canidates)[0]->IsConstructor ? "constructor" : "function";
 
@@ -3932,7 +4265,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                              Args,
                                              NamedArgs,
                                              SingleCanidate->NumDefaultArgs,
-                                             SingleCanidate);
+                                             SingleCanidate,
+                                             StructBindableTypes);
     } else {
         if (!Canidates) {
             Error(ErrorLoc, "Could not find %s for call", CallType);
@@ -3992,7 +4326,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                 NumGenerics = Canidate->GenData->GenTys.size();
                 NumQualifications = Canidate->GenData->NumQualifications;
             }
-            BindableList BindableTypes(NumGenerics + NumQualifications);
+            BindableList BindableTypes(NumGenerics);
+            BindableList QualTypes(NumQualifications);
 
             bool PreliminaryError = false;
             std::string MismatchInfo = GetCallMismatchInfo(CallType,
@@ -4004,6 +4339,8 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                            NumGenerics,
                                                            NumQualifications,
                                                            BindableTypes,
+                                                           QualTypes,
+                                                           StructBindableTypes,
                                                            Canidate,
                                                            PreliminaryError);
             // Need to check to make sure that the generic types actually computed
@@ -4043,7 +4380,8 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     const llvm::SmallVector<NonNamedValue>& Args,
     const llvm::SmallVector<NamedValue>& NamedArgs,
     ulen NumDefaultArgs,
-    FuncDecl* CalledFunc) {
+    FuncDecl* CalledFunc,
+    BindableList* StructBindableTypes) {
 
     if (CalledFunc && CalledFunc->ParsingError) {
         return;
@@ -4069,8 +4407,9 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
         NumGenerics = CalledFunc->GenData->GenTys.size();
         NumQualifications = CalledFunc->GenData->NumQualifications;
     }
-    BindableList BindableTypes(NumGenerics + NumQualifications);
-    
+    BindableList BindableTypes(NumGenerics);
+    BindableList QualTypes(NumQualifications);
+
     bool IsVariadic = CalledFunc ? CalledFunc->IsVariadic : false;
     bool PreliminaryError = false;
     std::string ExtMsg = GetCallMismatchInfo(CallType,
@@ -4082,6 +4421,8 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
                                              NumGenerics,
                                              NumQualifications,
                                              BindableTypes,
+                                             QualTypes,
+                                             StructBindableTypes,
                                              CalledFunc,
                                              PreliminaryError);
     if (CalledFunc && CalledFunc->IsGeneric() && !PreliminaryError) {
@@ -4117,13 +4458,14 @@ bool arco::SemAnalyzer::DidGenericConstraintsHaveErrors(FuncDecl* Canidate,
             return true;
         }
         
-        GenericBinding* Binding = GetExistingBinding(Constraint->Var, ConstraintBindTypes);
+        // TODO: parent binding
+        GenericBinding* Binding = GetExistingBinding(Constraint->Var, ConstraintBindTypes, nullptr);
         BindTypes(VarRef, Binding);
         Type* QualType = VarRef->GenData->CurBinding->QualifiedType;
         if (QualType == Context.ErrorType) {
             return true;
         }
-        if (QualType != Context.BoolType) {
+        if (!QualType->Equals(Context.BoolType)) {
             return true;
         }
         UnbindTypes(VarRef);
@@ -4170,6 +4512,8 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
                                                    ulen NumGenerics,
                                                    ulen NumQualifications,
                                                    BindableList& BindableTypes,
+                                                   BindableList& QualTypes,
+                                                   BindableList* StructBindableTypes,
                                                    FuncDecl* Canidate,
                                                    bool& PreliminaryError) {
 
@@ -4225,7 +4569,7 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     }
 
     // One or more of the arguments are incorrect.
-    ulen GenericIdx = 0;
+    ulen GenQualIdx = 0;
     bool EncounteredError = false;
     for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
         Expr* Arg = Args[ArgCount].E;
@@ -4261,9 +4605,9 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
             AllowImplicitPtr,
             ParamConstMemory,
             BindableTypes,
-            NumGenerics,
-            NumQualifications,
-            GenericIdx,
+            QualTypes,
+            StructBindableTypes,
+            GenQualIdx,
             ArgData
         );
     }
@@ -4299,9 +4643,9 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
                 Param->ImplicitPtr,
                 ParamConstMemory,
                 BindableTypes,
-                NumGenerics,
-                NumQualifications,
-                GenericIdx,
+                QualTypes,
+                StructBindableTypes,
+                GenQualIdx,
                 ArgData
             );
         }
@@ -4321,9 +4665,9 @@ void arco::SemAnalyzer::GetCallMismatchInfoForArg(Type* ParamTy,
                                                   bool AllowImplicitPtr,
                                                   bool ParamConstMemory,
                                                   BindableList& BindableTypes,
-                                                  ulen NumGenerics,
-                                                  ulen NumQualifications,
-                                                  ulen GenericIdx,
+                                                  BindableList& QualTypes,
+                                                  BindableList* StructBindableTypes,
+                                                  ulen& QualIdx,
                                                   ArgMismatchData& MismatchData) {
     Type* QualType = nullptr;
     bool IsAssignable = true;
@@ -4333,10 +4677,11 @@ void arco::SemAnalyzer::GetCallMismatchInfoForArg(Type* ParamTy,
         GenRes = CheckCallArgGeneric(Arg->Ty->UnboxGeneric(),
                                      AllowImplicitPtr,
                                      ParamTy,
-                                     &BindableTypes,
+                                     BindableTypes,
+                                     QualTypes,                         
+                                     *StructBindableTypes,
                                      ExistingQualType,
-                                     NumGenerics,
-                                     GenericIdx,
+                                     QualIdx,
                                      true,
                                      false,
                                      &MismatchData);
@@ -4345,7 +4690,7 @@ void arco::SemAnalyzer::GetCallMismatchInfoForArg(Type* ParamTy,
             IsAssignable = IsAssignableTo(ExistingQualType, Arg->Ty, Arg);
         }
 
-        QualType = BindableTypes[NumGenerics + GenericIdx];
+        QualType = QualTypes[QualIdx];
         if (QualType) {
             ParamConstMemory |= QualType->Equals(Context.CStrType);
         }
@@ -4358,7 +4703,7 @@ void arco::SemAnalyzer::GetCallMismatchInfoForArg(Type* ParamTy,
 
         std::string ParamTyString;
         if (ParamTy->ContainsGenerics) {
-            ParamTyString = ParamTy->ToString(false, &BindableTypes);
+            ParamTyString = ParamTy->ToString(false, &BindableTypes, StructBindableTypes);
         } else {
             ParamTyString = ParamTy->ToString();
         }
@@ -4378,7 +4723,7 @@ void arco::SemAnalyzer::GetCallMismatchInfoForArg(Type* ParamTy,
     }
 
     if (ParamTy->ContainsGenerics) {
-        ++GenericIdx;
+        ++QualIdx;
     }
 
     if (IsAssignable && GenRes) {
@@ -4612,7 +4957,7 @@ bool arco::SemAnalyzer::CheckStdPanicFuncExists() {
             return false;
         }
     }
-    Context.RequestGen(Context.StdErrorPanicFunc);
+    RequestGenNonGenericFunc(Context.StdErrorPanicFunc);
     return true;
 }
 
@@ -4768,18 +5113,16 @@ void arco::SemAnalyzer::CheckTypeBitCast(TypeBitCast* Cast) {
 
 void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
     StructType* StructTy = StructInit->Ty->AsStructType();
-    if (!FixupStructType(StructTy)) {
+    if (!FixupStructType(StructTy, false)) {
         YIELD_ERROR(StructInit);
     }
     if (StructTy->GetStruct()->ParsingError) {
         return;
     }
 
-    StructDecl* Struct = StructTy->GetStruct();
-
     // TODO: May want to allow if the fields are foldable!
     StructInit->IsFoldable = false;
-    StructInit->CalledConstructor = CheckStructInitArgs(Struct,
+    StructInit->CalledConstructor = CheckStructInitArgs(StructTy,
                                                         StructInit->Loc,
                                                         StructInit->Args,
                                                         StructInit->NamedArgs,
@@ -4787,7 +5130,7 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 
 }
 
-arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
+arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructType* StructTy,
                                                        SourceLoc ErrorLoc,
                                                        llvm::SmallVector<NonNamedValue>& Args,
                                                        llvm::SmallVector<NamedValue>& NamedArgs,
@@ -4808,6 +5151,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
         }
     }
 
+    StructDecl* Struct = StructTy->GetStruct();
     if (!Struct->Constructors.empty()) {
         // Calling constructor!
 
@@ -4825,7 +5169,9 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructDecl* Struct,
                 NamedArgs,
                 VarArgPassAlong,
                 Binding,
-                RetTy);
+                RetTy,
+                StructTy->FoundBinding
+            );
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
@@ -4914,7 +5260,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType) {
 
     if (TypeToAlloc->GetKind() == TypeKind::Struct) {
         StructType* StructTy = TypeToAlloc->AsStructType();
-        Alloc->CalledConstructor = CheckStructInitArgs(StructTy->GetStruct(),
+        Alloc->CalledConstructor = CheckStructInitArgs(StructTy,
                                                        Alloc->Loc,
                                                        Alloc->Values,
                                                        Alloc->NamedValues,
@@ -4956,7 +5302,7 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType) {
             
             PointerType* PtrTy = AssignToType->AsPointerTy();
             if (PtrTy->GetElementType()->Equals(ArrBaseTy)) {
-                if (ArrBaseTy->TypeNeedsDestruction()) {
+                if (!Alloc->LeaveUninitialized && ArrBaseTy->TypeNeedsDestruction()) {
                     Error(Alloc,
                         "Cannot allocate memory as type '%s' because the base type '%s' has destructors. Use type '%s' instead",
                         PtrTy, ArrBaseTy, SliceType::Create(ArrBaseTy, Context));
@@ -4988,15 +5334,32 @@ void arco::SemAnalyzer::CheckSizeOf(SizeOf* SOf) {
     if (!FixupType(SOf->TypeToGetSizeOf)) {
         YIELD_ERROR(SOf);
     }
-    
+
     // TODO: Does this need to check for incompleteness of enum and interface types as well?
     // what about arrays?
-    if (SOf->TypeToGetSizeOf->GetKind() == TypeKind::Struct) {
-        StructType* StructTy = SOf->TypeToGetSizeOf->AsStructType();
-        if (StructTy->GetStruct()->IsBeingChecked) {
-            Error(SOf, "Cannot get sizeof struct '%s' because the type is incomplete", StructTy);
-        }
+    if (!SOf->TypeToGetSizeOf->TypeHasStorage()) {
+        Error(SOf,
+            "Cannot get size of type '%s' because it has no size",
+            SOf->TypeToGetSizeOf);
     }
+
+
+    //TypeOrExpr* TOrE = SOf->TOrE;
+    //
+    //CheckTypeOrExpr(TOrE);
+    //YIELD_ERROR_WHEN(SOf, TOrE);
+    //
+    //if (TOrE->ResolvedType) {
+    //    SOf->TypeToGetSizeOf = TOrE->ResolvedType;
+    //} else {
+    //    if (!TOrE->ResolvedExpr->Ty->TypeHasStorage()) {
+    //        Error(TOrE,
+    //            "Cannot get size of type '%s' because it has no size",
+    //            TOrE->ResolvedExpr->Ty);
+    //    }
+    //
+    //    SOf->TypeToGetSizeOf = TOrE->ResolvedExpr->Ty;
+    //}
 }
 
 void arco::SemAnalyzer::CheckTypeOf(TypeOf* TOf) {
@@ -5010,7 +5373,7 @@ void arco::SemAnalyzer::CheckTypeOf(TypeOf* TOf) {
     }
     
     FixupType(TOf->TypeToGetTypeOf);
-    TOf->Ty = PointerType::Create(StructType::Create(Context.StdTypeStruct, Context), Context);
+    TOf->Ty = PointerType::Create(StructType::Create(Context.StdTypeStruct, {}, Context), Context);
     TOf->HasConstAddress = true;
     TOf->IsFoldable = false;
 }
@@ -5146,6 +5509,46 @@ void arco::SemAnalyzer::CheckCatchError(CatchError* Catch, VarDecl* CaptureVar) 
 
     CatchingErrors = false;
 
+}
+
+void arco::SemAnalyzer::CheckTypeOrExpr(TypeOrExpr* TOrE) {
+    if (TOrE->ResolvedType) {
+        if (!FixupType(TOrE->ResolvedType)) {
+            TOrE->Ty = Context.ErrorType;
+        }
+        return;
+    } else if (TOrE->ResolvedExpr) {
+        CheckNode(TOrE->ResolvedExpr);
+        YIELD_ERROR_WHEN(TOrE, TOrE->ResolvedExpr);
+        return;
+    }
+
+    CheckIdentRef<false>(TOrE->AmbIdentRef, false, nullptr);
+    YIELD_ERROR_WHEN(TOrE, TOrE->AmbIdentRef);
+
+    if (TOrE->AmbIdentRef->RefKind == IdentRef::RK::Struct) {
+        // NOTE: If AmbTyOfE was a type it would just resolve to a type during
+        // parsing.
+
+        StructType* StructTy = StructType::Create(TOrE->AmbIdentRef->Struct, {}, Context);
+        if (!FixupType(StructTy)) {
+            YIELD_ERROR(TOrE);
+        }
+
+        // It is an array of struct types.
+
+        // TODO: It expects the expanded location.
+        TOrE->ResolvedType = ArrayType::Create(StructTy,
+                                               TOrE->AmbTyOfE->ResolvedExpr,
+                                               TOrE->AmbTyOfE->ResolvedExpr->Loc,
+                                               false,
+                                               Context);
+        if (!FixupType(TOrE->ResolvedType)) {
+            YIELD_ERROR(TOrE);
+        }
+    } else {
+
+    }
 }
 
 void arco::SemAnalyzer::CheckCondition(Expr* Cond, const char* PreErrorText) {
@@ -5462,6 +5865,12 @@ bool arco::SemAnalyzer::IsCastableTo(Type* ToTy, Type* FromTy) {
         // Prevent any craziness that might come with casting to Any
         return false;
         return false;
+    case TypeKind::Bool:
+        if (FromTy->IsNumber() || FromTy->IsQualifiedPointer() ||
+            FromTy->GetKind() == TypeKind::Bool) {
+            return true;
+        }
+        return false;
     default:
         return IsAssignableTo(ToTy, FromTy, nullptr);
     }
@@ -5479,20 +5888,30 @@ bool arco::SemAnalyzer::ViolatesConstAssignment(Type* DestTy, bool DestConstAddr
             DestTyKind == TypeKind::Array   || DestTyKind == TypeKind::Function);
 }
 
-bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
-    // NOTE: It should be safe here to just use the real kind since the if it
-    // is an enum the enum may be safely checked and have it's indexing type
-    // fixed up.
+bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays, bool PartialGenFixup) {
+    if (Ty->ContainsGenerics && !PartialGenFixup) {
+        
+        if (NotFullyQualifiedVarState) {
+            Error(CVar->Loc, "Cannot use generic types when using type inference since the generic type is not qualified");
+            return false;
+        }
+
+        // If the type contains generic information and we get to this point then
+        // the type should have already been qualified which means there is no reason
+        // to fix the type since all relevent information should have already been fixed.
+        return true;
+    }
+
     TypeKind Kind = Ty->GetRealKind();
 
     if (Kind == TypeKind::Array) {
-        return FixupArrayType(static_cast<ArrayType*>(Ty), AllowDynamicArrays);
+        return FixupArrayType(static_cast<ArrayType*>(Ty), PartialGenFixup);
     } else if (Kind == TypeKind::Struct || Kind == TypeKind::Interface || Kind == TypeKind::Enum) {
-        return FixupStructType(static_cast<StructType*>(Ty));
+        return FixupStructType(static_cast<StructType*>(Ty), PartialGenFixup);
     } else if (Kind == TypeKind::Pointer) {
         PointerType* PointerTy = static_cast<PointerType*>(Ty);
         Type* ElementType = PointerTy->GetElementType();
-        if (!FixupType(ElementType, AllowDynamicArrays)) {
+        if (!FixupType(ElementType, false, PartialGenFixup)) {
             return false;
         }
 
@@ -5515,7 +5934,7 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
     } else if (Kind == TypeKind::Slice) {
         SliceType* SliceTy = static_cast<SliceType*>(Ty);
         Type* ElementType = SliceTy->GetElementType();
-        if (!FixupType(ElementType, AllowDynamicArrays)) {
+        if (!FixupType(ElementType, false, PartialGenFixup)) {
             return false;
         }
 
@@ -5538,7 +5957,7 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
     } else if (Kind == TypeKind::Function) {
         FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
         for (auto ParamTy : FuncTy->ParamTypes) {
-            if (!FixupType(ParamTy.Ty)) {
+            if (!FixupType(ParamTy.Ty, false, PartialGenFixup)) {
                 return false;
             }
         }
@@ -5552,22 +5971,11 @@ bool arco::SemAnalyzer::FixupType(Type* Ty, bool AllowDynamicArrays) {
             Context.FunctionTyCache.insert({ UniqueKey, FuncTy });
         }
         return true;
-    } else if (Kind == TypeKind::Generic) {
-        // NOTE: The type should have already been fixed when it was
-        // bound because the bound type gets qualified.
-        // Trying to fix the type here would mean it would try and resolve
-        // struct type names that might not even be imported within the file
-        // that the generic type exists in.
-        //
-        /*GenericType* GenTy = static_cast<GenericType*>(Ty);
-        if (GenTy->GetBoundTy()) {
-            return FixupType(GenTy->GetBoundTy(), AllowDynamicArrays);
-        }*/
     }
     return true;
 }
 
-bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
+bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool PartialGenFixup, bool FixupElmTy) {
     Expr* LengthExpr = ArrayTy->GetLengthExpr();
     if (!LengthExpr) {
         // If the length expression is nullptr this means that the
@@ -5583,6 +5991,7 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
     if (!LengthExpr) return true;
     
     SourceLoc ErrorLoc = ArrayTy->GetLengthExprErrorLoc();
+    bool AllowDynamic = ArrayTy->AllowsForDynamic();
 
     if (!LengthExpr->IsFoldable && !AllowDynamic) {
         Error(ErrorLoc, "Could not compute the length of the array at compile time");
@@ -5612,8 +6021,10 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
     // NOTE: At this point the element type should have it's uniqueTypeId
     // correctly set.
     Type* ElementType = ArrayTy->GetElementType();
-    if (!FixupType(ElementType, AllowDynamic)) {
-        return false;
+    if (FixupElmTy) {
+        if (!FixupType(ElementType, AllowDynamic, PartialGenFixup)) {
+            return false;
+        }
     }
 
     // TODO: we could pass the type by reference and delete the
@@ -5631,7 +6042,7 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool AllowDynamic) {
     return true;
 }
 
-bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
+bool arco::SemAnalyzer::FixupStructType(StructType* StructTy, bool PartialGenFixup) {
     Identifier StructName = StructTy->GetStructName();
     Decl* FoundDecl = FindStructLikeTypeByName(StructName);
 
@@ -5640,27 +6051,155 @@ bool arco::SemAnalyzer::FixupStructType(StructType* StructTy) {
         return false;
     }
 
-    SemAnalyzer Analyzer(Context, FoundDecl);
     if (FoundDecl->Is(AstKind::STRUCT_DECL)) {
         StructDecl* Struct = static_cast<StructDecl*>(FoundDecl);
+
         StructTy->AssignStruct(Struct);
-        StructTy->SetUniqueId(Struct->UniqueTypeId);
-        Analyzer.CheckStructDecl(Struct);
+
+        // TODO: Fix this needs to store the found bindings within the
+        // qualified version!
+        if (Struct->IsGeneric()) {
+            
+            const BindableList& BindableTypes = StructTy->GetBindTypes();
+            for (Type* BindType : BindableTypes) {
+                if (!FixupType(BindType, false, PartialGenFixup)) {
+                    return false;
+                }
+            }
+
+            // TODO: This displays the wrong error location!
+            if (BindableTypes.empty()) {
+                Error(StructTy->GetErrorLoc(), "Missing type bindings for generic struct");
+                return false;
+            } else if (BindableTypes.size() != Struct->GenData->GenTys.size()) {
+                Error(StructTy->GetErrorLoc(),
+                    "Incorrect number of type bindings for generic struct. Expected %s. Got %s",
+                    Struct->GenData->GenTys.size(), StructTy->GetBindTypes().size());
+                return false;
+            }
+
+            if (PartialGenFixup && StructTy->ContainsGenerics) {
+                // Don't know the generic information yet.
+                return true;
+            }
+
+            FinishGenericStructType(StructTy);
+
+        } else if (!StructTy->GetBindTypes().empty()) {
+            Error(StructTy->GetErrorLoc(),
+                  "The struct type '%s' does not have generics",
+                  StructTy->GetStructName());
+            return false;
+        } else {
+            FinishNonGenericStructType(Context, StructTy);
+        }
     } else if (FoundDecl->Is(AstKind::ENUM_DECL)) {
         EnumDecl* Enum = static_cast<EnumDecl*>(FoundDecl);
         StructTy->AssignEnum(Enum);
         StructTy->SetUniqueId(Enum->UniqueTypeId);
+        SemAnalyzer Analyzer(Context, FoundDecl);
         Analyzer.CheckEnumDecl(Enum);
     } else if (FoundDecl->Is(AstKind::INTERFACE_DECL)) {
         InterfaceDecl* Interface = static_cast<InterfaceDecl*>(FoundDecl);
         StructTy->AssignInterface(Interface);
         StructTy->SetUniqueId(Interface->UniqueTypeId);
+        SemAnalyzer Analyzer(Context, FoundDecl);
         Analyzer.CheckInterfaceDecl(Interface);
     } else {
         assert(!"Not handled");
     }
     
     return true;
+}
+
+void arco::SemAnalyzer::FinishNonGenericStructType(ArcoContext& Context, StructType* StructTy) {
+    StructDecl* Struct = StructTy->GetStruct();
+
+    StructTy->SetUniqueId(Struct->UniqueTypeId);
+    llvm::StructType* LLStructTy = nullptr;
+    if (!Struct->LLStructTy) {
+        LLStructTy = GenForwardDeclStructType(Context);
+        Struct->LLStructTy = LLStructTy;
+        StructTy->LLStructType = LLStructTy;
+    } else {
+        StructTy->LLStructType = Struct->LLStructTy;
+    }
+    Struct->StructTy = StructTy;
+    SemAnalyzer Analyzer(Context, Struct);
+    Analyzer.CheckStructDecl(Struct);
+    if (!FoundCompileError && !Context.CheckingUnhcecked) {
+        // NOTE: see comment above for generic binding case.
+        if (LLStructTy) {
+            GenStructType(Context, StructTy, LLStructTy);
+
+            IRGenerator IRGen(Context);
+            if (StructTy->DoesNeedsDestruction() && !Struct->Destructor) {
+                IRGen.GenImplicitDestructor(StructTy);
+            }
+
+            if (StructTy->DoesFieldsHaveAssignment() && !Struct->DefaultConstructor) {
+                IRGen.GenImplicitDefaultConstructor(StructTy);
+            }
+        }
+    }
+}
+
+void arco::SemAnalyzer::FinishGenericStructType(StructType* StructTy) {
+    
+    StructDecl* Struct = StructTy->GetStruct();
+    const BindableList& BindableTypes = StructTy->GetBindTypes();
+
+    GenericBinding* Binding = GetExistingBinding(Struct, BindableTypes, nullptr);
+    if (!Binding) {
+        Binding = CreateNewBinding(Struct, BindableTypes, nullptr);
+        Binding->StructInfo = new GenericStructInfo; // TODO: Use of new
+        Binding->StructInfo->UniqueTypeId = Context.UniqueTypeIdCounter++;
+        Binding->StructInfo->QualStructTy = StructTy; // At this point the struct type must be qualified.
+        StructTy->FoundBinding = Binding;
+        StructTy->SetUniqueId(Binding->StructInfo->UniqueTypeId);
+
+        llvm::SmallVector<Type*> PrevQualTypes;
+        if (!Struct->GenData->BindingStack.empty()) {
+            PrevQualTypes = Struct->GenData->TypesNeedingQualification;
+        }
+        BindTypes(Struct, Binding);
+        if (!Context.CheckingUnhcecked) {
+            llvm::StructType* LLStructType = GenForwardDeclStructType(Context);
+            Binding->StructInfo->LLStructType = LLStructType;
+        }
+
+        SemAnalyzer Analyzer(Context, Struct);
+        Analyzer.CheckStructDecl(Struct);
+
+        if (!FoundCompileError && !Context.CheckingUnhcecked) {
+            // Creating the llvm struct type here because generating on demand causes
+            // complications with generics due to needing the qualification information.
+            GenStructType(Context, StructTy, Binding->StructInfo->LLStructType);
+
+            // TODO: This will not need to be ran if there are no constructors!
+            IRGenerator IRGen(Context);
+            IRGen.GenGenericStructConstructorSharedInstructions(StructTy);
+
+            if (StructTy->DoesNeedsDestruction() && !Struct->Destructor) {
+                IRGen.GenImplicitDestructor(StructTy);
+            }
+
+            if (StructTy->DoesFieldsHaveAssignment() && !Struct->DefaultConstructor) {
+                IRGen.GenImplicitDefaultConstructor(StructTy);
+            }
+        }
+
+        if (!PrevQualTypes.empty()) {
+            Struct->GenData->TypesNeedingQualification = PrevQualTypes;
+        }
+
+        UnbindTypes(Struct);
+    } else {
+        // else already checked.
+        StructTy->SetUniqueId(Binding->StructInfo->UniqueTypeId);
+        StructTy->FoundBinding = Binding;
+        StructTy->LLStructType = Binding->StructInfo->LLStructType;
+    }
 }
 
 arco::Decl* arco::SemAnalyzer::FindStructLikeTypeByName(Identifier Name) {
@@ -5697,35 +6236,50 @@ arco::Decl* arco::SemAnalyzer::FindStructLikeTypeByName(Identifier Name) {
     return FoundDecl;
 }
 
-arco::Type* arco::SemAnalyzer::QualifyType(Type* Ty, const BindableList& BindableTypes) {
+arco::Type* arco::SemAnalyzer::QualifyType(Type* Ty, const GenericBinding* Binding) {
     switch (Ty->GetRealKind()) {
     case TypeKind::Generic: {
         GenericType* GenTy = static_cast<GenericType*>(Ty);
-        return BindableTypes[GenTy->GetIdx()];
+        Decl* BoundToDec = GenTy->GetBoundToDecl();
+        while (Binding->Dec != BoundToDec) {
+            Binding = Binding->ParentBinding;
+        }
+        
+        return GenTy->GetBoundTy();
     }
     case TypeKind::Pointer: {
         PointerType* PtrTy = static_cast<PointerType*>(Ty);
-        Type* QualElmTy = QualifyType(PtrTy->GetElementType(), BindableTypes);
+        Type* QualElmTy = QualifyType(PtrTy->GetElementType(), Binding);
         return PointerType::Create(QualElmTy, Context);
     }
     case TypeKind::Slice: {
         SliceType* SliceTy = static_cast<SliceType*>(Ty);
-        Type* QualElmTy = QualifyType(SliceTy->GetElementType(), BindableTypes);
+        Type* QualElmTy = QualifyType(SliceTy->GetElementType(), Binding);
         return SliceType::Create(QualElmTy, Context);
     }
     case TypeKind::Array: {
         ArrayType* ArrTy = static_cast<ArrayType*>(Ty);
-        Type* QualElmTy = QualifyType(ArrTy->GetElementType(), BindableTypes);
-        return ArrayType::Create(QualElmTy, ArrTy->GetLength(), Context);
+        Type* QualElmTy = QualifyType(ArrTy->GetElementType(), Binding);
+        
+        ArrayType* QualArrTy = ArrayType::Create(QualElmTy,
+                                                 ArrTy->GetLengthExpr(),
+                                                 ArrTy->GetLengthExprErrorLoc(),
+                                                 ArrTy->AllowsForDynamic(),
+                                                 Context);
+        FixupArrayType(QualArrTy, false, false);
+        return QualArrTy;
     }
     case TypeKind::Function: {
         FunctionType* FuncTy = static_cast<FunctionType*>(Ty);
-        Type* QualRetTy = QualifyType(FuncTy->RetTyInfo.Ty, BindableTypes);
+        Type* RetTy = FuncTy->RetTyInfo.Ty;
+        Type* QualRetTy = RetTy->ContainsGenerics ? QualifyType(RetTy, Binding)
+                                                  : RetTy;
 
         llvm::SmallVector<TypeInfo> ParamTypes;
         ParamTypes.reserve(FuncTy->ParamTypes.size());
         for (const TypeInfo& PInfo : FuncTy->ParamTypes) {
-            Type* QualParamTy = QualifyType(PInfo.Ty, BindableTypes);
+            Type* QualParamTy = PInfo.Ty->ContainsGenerics ? QualifyType(PInfo.Ty, Binding)
+                                                           : PInfo.Ty;
             ParamTypes.push_back(TypeInfo{
                 QualParamTy,
                 PInfo.ConstMemory
@@ -5736,6 +6290,26 @@ arco::Type* arco::SemAnalyzer::QualifyType(Type* Ty, const BindableList& Bindabl
             TypeInfo{ QualRetTy, FuncTy->RetTyInfo.ConstMemory },
             std::move(ParamTypes),
             Context);
+    }
+    case TypeKind::Struct: {
+        StructType* StructTy = static_cast<StructType*>(Ty);
+
+        llvm::SmallVector<Type*, 8> QualifiedBindTypes;
+        for (Type* BindType : StructTy->GetBindTypes()) {
+            if (BindType->ContainsGenerics) {
+                QualifiedBindTypes.push_back(QualifyType(BindType, Binding));
+            } else {
+                QualifiedBindTypes.push_back(BindType);
+            }
+        }
+
+        if (!StructTy->GetStruct()) {
+            FixupStructType(StructTy, true);
+        }
+
+        StructType* QualStructTy = StructType::Create(StructTy->GetStruct(), QualifiedBindTypes, Context);
+        FinishGenericStructType(QualStructTy);
+        return QualStructTy;
     }
     default:
         assert(!"unreachable");
@@ -5748,18 +6322,18 @@ void arco::SemAnalyzer::CheckModifibility(Expr* LValue) {
         Error(LValue, "Expected to be a modifiable value");
     } else {
         if (LValue->HasConstAddress) {
-            // We only want to prevent modification of underlying memory.
-            if (LValue->Is(AstKind::FIELD_ACCESSOR)) {
-                Error(LValue, "Cannot modify field of const memory");
-                return;
-            }
-
             TypeKind K = LValue->Ty->GetKind();
-            if (K != TypeKind::Pointer &&
-                K != TypeKind::CStr &&
-                K != TypeKind::Array
-                ) {
-                Error(LValue, "Cannot modify a variable with const memory");
+            bool HasIndirectMemory = K == TypeKind::Pointer ||
+                                     K == TypeKind::CStr    ||
+                                     K == TypeKind::Array   ||
+                                     K == TypeKind::Slice;
+
+            if (!HasIndirectMemory) {
+                if (LValue->Is(AstKind::FIELD_ACCESSOR)) {
+                    Error(LValue, "Cannot modify field with const memory");
+                } else {
+                    Error(LValue, "Cannot modify a variable with const memory");
+                }
             }
         }
     }
@@ -5948,4 +6522,48 @@ llvm::Value* arco::SemAnalyzer::GenFoldable(SourceLoc ErrorLoc, Expr* E) {
         return nullptr;
     }
     return LLValue;
+}
+
+void arco::SemAnalyzer::RequestGenNonGenericFunc(FuncDecl* Func) {
+    if (!FoundCompileError && !Context.CheckingUnhcecked) {
+        if (!Func->GenRequestedAlready) {
+            IRGenerator IRGen(Context);
+            IRGen.GenFuncDecl(Func);
+        }
+    }
+    Context.RequestGen(Func);
+}
+
+void arco::SemAnalyzer::AddGenericErrorInfo() {
+    if (CFunc && CFunc->IsGeneric()) {
+        if (CFunc->GenData->CurBinding) {
+            //Log.AddMarkMessage(
+            //    CFunc->GenData->CurBinding->OriginalFile,
+            //    CFunc->GenData->CurBinding->OriginalLoc,
+            //    "Original bind location");
+        }
+    }
+}
+
+void arco::SemAnalyzer::CreateQualifications(Decl* D) {
+    GenericBinding* Binding = D->GenData->CurBinding;
+    GenericData* GenData = D->GenData;
+    do {
+        // TODO: This is broken still because it tries to qualify based on
+        // the bindable types of the function but it may be referencing
+        // the bindable types of the parent declaration to try and bind.
+        for (Type* UnqualifiedType : GenData->TypesNeedingQualification) {
+            Type* QualType = QualifyType(UnqualifiedType, Binding);
+            UnqualifiedType->SetQualType(QualType);
+        }
+        for (VarDecl* VarNeedingConstQual : GenData->VarsNeedingConstQualification) {
+            bool HasConstAddress = VarNeedingConstQual->Ty->GetKind() == TypeKind::CStr ||
+                                    VarNeedingConstQual->ExplicitlyMarkedConst;
+            VarNeedingConstQual->HasConstAddress = HasConstAddress;
+        }
+        Binding = Binding->ParentBinding;
+        if (Binding) {
+            GenData = GenData->ParentGenData;
+        }
+    } while (Binding);
 }

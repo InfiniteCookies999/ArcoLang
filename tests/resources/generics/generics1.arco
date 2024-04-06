@@ -1,6 +1,6 @@
 import std;
 
-generics\T\
+generics<T>
 fn foo(a T) {
     std.print(a);
 }

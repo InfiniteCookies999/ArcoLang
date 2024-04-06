@@ -1,13 +1,13 @@
 import std;
 import std.reflect.TypeId;
 
-generics\T\
+generics<T>
 my_constraint2 :: typeid(T) == TypeId.INT;
 
-generics\T\
-my_constraint :: my_constraint2\T\;
+generics<T>
+my_constraint :: my_constraint2$<T>;
 
-generics\my_constraint T\
+generics<my_constraint T>
 fn foo(a T) {
     std.print("constrait foo");
 }

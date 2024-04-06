@@ -84,7 +84,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 		//                     or not matter though since it increases the node size).
 		//
 		
-		             StructTy = StructType::Create(Func->Struct, Context);
+		             StructTy = Func->GetParentStructType();
 		PointerType* LLThisTy = PointerType::Create(StructTy, Context);
 
 		ulen PtrSizeInBits = Context.LLArcoModule
@@ -123,7 +123,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 	llvm::DISubprogram* DIFunc = DBuilder->createFunction(
 		Scope,
 		Func->Name.Text,
-		Func->GetLLFunction()->getName(), // Linkage name
+		Func->LLFunction->getName(), // Linkage name
 		DebugUnit->getFile(),
 		Func->Loc.LineNumber,
 		DIFuncTy,
@@ -134,14 +134,14 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 		nullptr //DIForwardDeclaredFunc // There might have been a forward declaration!
 	);
 
-	Func->GetLLFunction()->setSubprogram(DIFunc);
+	Func->LLFunction->setSubprogram(DIFunc);
 	DILexicalScopes.push_back(DIFunc);
 	return DIFunc;
 }
 
 void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder) {
 	
-	llvm::DIScope* DIScope = Func->GetLLFunction()->getSubprogram();
+	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
 
 	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
 		DIScope,
@@ -169,7 +169,7 @@ void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRB
 
 void arco::DebugInfoEmitter::EmitFuncEnd(FuncDecl* Func) {
 	DILexicalScopes.clear();
-	llvm::DISubprogram* DIFunc = Func->GetLLFunction()->getSubprogram();
+	llvm::DISubprogram* DIFunc = Func->LLFunction->getSubprogram();
 
 	// !! IF THE PROGRAM HAS A FORWARD DECLARATION YOU STILL HAVE TO FINALIZE IT OR THE RETAINED
 	// NODES WILL BE TEMPORARY !!
@@ -205,9 +205,9 @@ void arco::DebugInfoEmitter::EmitLocalVar(VarDecl* Var, llvm::IRBuilder<>& IRBui
 }
 
 void arco::DebugInfoEmitter::EmitThisVar(llvm::Value* LLThisAddr, FuncDecl* Func, llvm::IRBuilder<>& IRBuilder) {
-	llvm::DIScope* DIScope = Func->GetLLFunction()->getSubprogram();
+	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
 
-	StructType* StructTy = StructType::Create(Func->Struct, Context);
+	StructType* StructTy  = Func->GetParentStructType();
 	PointerType* LLThisTy = PointerType::Create(StructTy, Context);
 
 	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
@@ -483,12 +483,12 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 		return DIFuncTy;
 	}
 	case TypeKind::Struct: {
-		StructDecl* Struct = Ty->AsStructType()->GetStruct();
-		GenStructType(Context, Struct);
+		StructType* StructTy = Ty->AsStructType();
+		StructDecl* Struct = StructTy->GetStruct();
 		
 		const llvm::StructLayout* LLLayout = Context.LLArcoModule
 			                                        .getDataLayout()
-			                                        .getStructLayout(Struct->LLStructTy);
+			                                        .getStructLayout(StructTy->LLStructType);
 
 		u64 SizeInBits = LLLayout->getSizeInBits();
 
@@ -526,7 +526,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 			llvm::DINodeArray(),
 			0, // lang clang ignores so we ignore.
 			nullptr,
-			Struct->LLStructTy->getName()
+			StructTy->LLStructType->getName()
 		);
 		Context.LLDITypeCache.insert({ Ty->GetUniqueId(), DIStructTy });
 

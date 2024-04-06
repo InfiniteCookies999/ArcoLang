@@ -9,16 +9,20 @@
 
 namespace llvm {
     class Module;
+    class StructType;
 }
 
 namespace arco {
 
     class ArcoContext;
+    struct Decl;
+    struct FuncDecl;
     struct Expr;
     struct StructDecl;
     struct EnumDecl;
     struct IdentRef;
     struct InterfaceDecl;
+    struct GenericBinding;
     class ContainerType;
     class ImplPointerType;
     class PointerType;
@@ -26,6 +30,7 @@ namespace arco {
     class ArrayType;
     class StructType;
     class FunctionType;
+    class GenericType;
 
     enum class TypeKind {
 
@@ -111,7 +116,7 @@ namespace arco {
         
         Type* Unbox();
         Type* UnboxGeneric();
-
+        
         const ContainerType* AsContainerType() const;
         const PointerType* AsPointerTy() const;
         const SliceType* AsSliceTy() const;
@@ -132,8 +137,9 @@ namespace arco {
         static Type* GetIntTypeBasedOnByteSize(ulen Size, bool Signed, ArcoContext& Context);
         static Type* GetFloatTypeBasedOnByteSize(ulen Size, ArcoContext& Context);
 
-        std::string ToString(bool                               ShowFullGenericTy = true,
-                             const llvm::SmallVector<Type*, 8>* PartiallyBoundTys = nullptr,
+        std::string ToString(bool                               ShowFullGenericTy       = true,
+                             const llvm::SmallVector<Type*, 8>* PartiallyBoundFuncTys   = nullptr,
+                             const llvm::SmallVector<Type*, 8>* PartiallyBoundStructTys = nullptr,
                              bool                               ReplaceGenTyWithBoundTy = false) const;
 
         inline void SetUniqueId(u32 Id) {
@@ -144,12 +150,21 @@ namespace arco {
             return UniqueId;
         }
 
-    private:
-        bool GenericsEquals(const Type* Ty) const;
+        inline void SetQualType(Type* QualTy) {
+            QualType = QualTy;
+        }
 
-        bool HasTypeBound(const llvm::SmallVector<Type*, 8>& PartiallyBoundTys) const;
+        inline Type* GetQualType() {
+            return QualType;
+        }
+
+    private:
+        
+        bool HasTypeBound(const llvm::SmallVector<Type*, 8>* PartiallyBoundFuncTys,
+                          const llvm::SmallVector<Type*, 8>* PartiallyBoundStructTys) const;
 
     protected:
+        Type* QualType;
         TypeKind Kind;
         u32      UniqueId = 0;
     };
@@ -207,9 +222,10 @@ namespace arco {
     public:
 
         static ArrayType* Create(Type* ElmTy, ulen Length, ArcoContext& Context);
-        static ArrayType* Create(Type* ElmTy,
-                                 Expr* LengthExpr,
-                                 SourceLoc LengthExprErrorLoc,
+        static ArrayType* Create(Type*        ElmTy,
+                                 Expr*        LengthExpr,
+                                 SourceLoc    LengthExprErrorLoc,
+                                 bool         AllowDynamic,
                                  ArcoContext& Context);
 
         ulen GetLength() const { return Length; }
@@ -222,8 +238,12 @@ namespace arco {
         /// of the dimensions of the array.
         ulen GetTotalLinearLength() const;
 
-        void AssignLength(ulen Length) {
+        inline void AssignLength(ulen Length) {
             this->Length = Length;
+        }
+
+        inline bool AllowsForDynamic() const {
+            return AllowDynamic;
         }
 
     private:
@@ -233,13 +253,14 @@ namespace arco {
         SourceLoc LengthExprErrorLoc;
         Expr*     LengthExpr = nullptr;
         ulen      Length;
+        bool      AllowDynamic;
     };
 
     class StructType : public Type {
     public:
-
-        static StructType* Create(Identifier StructName, SourceLoc ErrorLoc, ArcoContext& Context);
-        static StructType* Create(StructDecl* Struct, ArcoContext& Context);
+        
+        static StructType* Create(Identifier StructName, llvm::SmallVector<Type*, 8> BindTypes, SourceLoc ErrorLoc, ArcoContext& Context);
+        static StructType* Create(StructDecl* Struct, llvm::SmallVector<Type*, 8> BindTypes, ArcoContext& Context);
         static StructType* Create(EnumDecl* Enum, ArcoContext& Context);
         static StructType* Create(InterfaceDecl* Interface, ArcoContext& Context);
 
@@ -258,9 +279,20 @@ namespace arco {
             Kind = TypeKind::Interface;
         }
 
-        Identifier GetStructName() const { return StructName; }
+        inline Identifier GetStructName() const { return StructName; }
 
-        SourceLoc GetErrorLoc() const { return ErrorLoc; }
+        inline SourceLoc GetErrorLoc() const { return ErrorLoc; }
+
+        inline const llvm::SmallVector<Type*, 8>& GetBindTypes() const {
+            return BindTypes;
+        }
+
+        bool DoesFieldsHaveAssignment() const;
+        bool DoesNeedsDestruction() const;
+        bool DoesMustForceRaise() const;
+
+        llvm::StructType* LLStructType;
+        GenericBinding*   FoundBinding;
 
     private:
         StructType(TypeKind Kind)
@@ -268,8 +300,10 @@ namespace arco {
         
         SourceLoc   ErrorLoc;
         Identifier  StructName;
+
+        llvm::SmallVector<Type*, 8> BindTypes;
         union {
-            StructDecl*    Struct;
+            StructDecl*    Struct = nullptr;
             EnumDecl*      Enum;
             InterfaceDecl* Interface;
         };
@@ -298,6 +332,7 @@ namespace arco {
                                    IdentRef* ConstraintRef,
                                    bool InvertConstraint,
                                    ulen Idx,
+                                   SourceLoc ErrorLoc,
                                    ArcoContext& Context);
 
         const Identifier& GetName() const {
@@ -332,12 +367,26 @@ namespace arco {
             return InvertConstraint;
         }
 
+        inline Decl* GetBoundToDecl() const {
+            return BoundToDecl;
+        }
+
+        inline void SetBoundToDecl(Decl* D) {
+            BoundToDecl = D;
+        }
+
+        SourceLoc GetErrorLoc() const {
+            return ErrorLoc;
+        }
+
     private:
         Identifier Name;
         IdentRef*  ConstraintRef;
         bool       InvertConstraint;
         ulen       Idx = 0;
         Type*      BoundTy = nullptr;
+        Decl*      BoundToDecl;
+        SourceLoc  ErrorLoc;
 
         GenericType()
             : Type(TypeKind::Generic) {}
