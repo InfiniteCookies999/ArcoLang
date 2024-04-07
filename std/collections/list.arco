@@ -58,4 +58,14 @@ List struct {
     fn get(index int) T {
         return buckets[index];
     }
+
+    // TODO: Replace with overloaded [] once supported!
+    fn get_ref(index int) T* {
+        return &buckets[index];
+    }
+
+    fn clear() {
+        // TODO: call destructors!
+        length = 0;
+    }
 }

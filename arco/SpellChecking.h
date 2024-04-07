@@ -39,7 +39,6 @@ namespace arco {
     private:
         llvm::SmallVector<std::string, 64> AllSearches;
     };
-
 }
 
 #endif // ARCO_SPELL_CHECKING_H
