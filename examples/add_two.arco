@@ -2,11 +2,10 @@ import std;
 
 fn read_value() int {
     loop {
-        val, err := std.read_int();
-        if err {
+        val := std.read_int() catch err {
             std.println("Please input a valid number");
             continue;
-        }
+        };
         return val;
     }
     return 0;

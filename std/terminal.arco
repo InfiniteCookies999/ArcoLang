@@ -12,36 +12,35 @@ err := OutStream{ &err_file_handle };
 
 in  := TokenStream{ &in_file_handle };
 
-// TODO: since print functions are called so frequently it may
-//       be better to at some point not use generics at all.
-//
-// Used to determine if the value can be printed using
-// a generic function or if it would be better to fallback
-// on the function which uses an Any type.
-generics<T>
-private requires_any :: typeid(T) == TypeId.ARRAY ||
-                        typeid(T) == TypeId.SLICE ||
-                        typeid(T) == TypeId.ENUM  ||
-                        typeid(T) == TypeId.STRUCT;
-
 // Functions for writing to std out.
 //----------------------------------------------
 
-fn print(i int64, base int) {
+fn print(i int64, base := 10) {
     try out.write(i, base);
 }
 
-fn print(i uint64, base int) {
+fn print(i uint64, base := 10) {
     try out.write(i, base);
 }
 
-fn print(i int, base int) {
+fn print(i int, base := 10) {
     try out.write(i, base);
 }
 
-generics<!requires_any T>
-fn print(value T) {
-    try out.write(value);
+fn print(msg cstr) {
+    try out.write(msg);
+}
+fn print(b bool) {
+    try out.write(b);
+}
+fn print(c char) {
+    try out.write(c);
+}
+fn print(f float32) {
+    try out.write(f);
+}
+fn print(f float64) {
+    try out.write(f);
 }
 
 fn print(any Any) {
@@ -56,25 +55,34 @@ fn print(fmt cstr, args Any...) {
     try out.write(fmt, args);
 }
 
+
+
+fn println(i int64, base := 10) {
+    try out.writeln(i, base);
+}
+
+fn println(i uint64, base := 10) {
+    try out.writeln(i, base);
+}
+
+fn println(i int, base := 10) {
+    try out.writeln(i, base);
+}
+
 fn println(msg cstr) {
     try out.writeln(msg);
 }
-
-fn println(i int64, base int) {
-    try out.writeln(i, base);
+fn println(b bool) {
+    try out.writeln(b);
 }
-
-fn println(i uint64, base int) {
-    try out.writeln(i, base);
+fn println(c char) {
+    try out.writeln(c);
 }
-
-fn println(i int, base int) {
-    try out.writeln(i);
+fn println(f float32) {
+    try out.writeln(f);
 }
-
-generics<!requires_any T>
-fn println(value T) {
-    try out.writeln(value);
+fn println(f float64) {
+    try out.writeln(f);
 }
 
 fn println(any Any) {
@@ -89,6 +97,10 @@ fn println(fmt cstr, args Any...) {
     try out.writeln(fmt, args);
 }
 
+fn println() {
+    try out.writeln();
+}
+
 // Functions for writing to std err.
 //
 // Ignore errors since panicing requires the error
@@ -97,9 +109,36 @@ fn println(fmt cstr, args Any...) {
 //
 //----------------------------------------------
 
-generics<!requires_any T>
-fn eprint(value T) {
-    err.write(value) catch _ {};
+fn eprint(i int64, base := 10) {
+    err.write(i, base) catch _ {};
+}
+
+fn eprint(i uint64, base := 10) {
+    err.write(i, base) catch _ {};
+}
+
+fn eprint(i int, base := 10) {
+    err.write(i, base) catch _ {};
+}
+
+fn eprint(msg cstr) {
+    err.write(msg) catch _ {};
+}
+fn eprint(b bool) {
+    err.write(b) catch _ {};
+}
+fn eprint(c char) {
+    err.write(c) catch _ {};
+}
+fn eprint(f float32) {
+    err.write(f) catch _ {};
+}
+fn eprint(f float64) {
+    err.write(f) catch _ {};
+}
+
+fn eprint(any Any) {
+    err.write(any) catch _ {};
 }
 
 /*
@@ -110,9 +149,38 @@ fn eprint(fmt cstr, args Any...) {
     err.write(fmt, args) catch _ {};
 }
 
-generics<!requires_any T>
-fn eprintln(value T) {
-    err.writeln(value) catch _ {};
+
+
+fn eprintln(i int64, base := 10) {
+    err.writeln(i, base) catch _ {};
+}
+
+fn eprintln(i uint64, base := 10) {
+    err.writeln(i, base) catch _ {};
+}
+
+fn eprintln(i int, base := 10) {
+    err.writeln(i, base) catch _ {};
+}
+
+fn eprintln(msg cstr) {
+    err.writeln(msg) catch _ {};
+}
+fn eprintln(b bool) {
+    err.writeln(b) catch _ {};
+}
+fn eprintln(c char) {
+    err.writeln(c) catch _ {};
+}
+fn eprintln(f float32) {
+    err.writeln(f) catch _ {};
+}
+fn eprintln(f float64) {
+    err.writeln(f) catch _ {};
+}
+
+fn eprintln(any Any) {
+    err.writeln(any) catch _ {};
 }
 
 /*

@@ -3561,12 +3561,8 @@ BestIsPrivate              = IsPrivate;             \
 BestIsHasAny               = HasAny;                \
 HasGenerics = Canidate->IsGeneric()
 
-        // TODO: What will be the performance on all this?
-        if (!HasAny && BestIsHasAny) {
-            // Any type is always the last path taken even over generics.
-            SET_BEST;
-        } else if (!Canidate->IsGeneric() && HasGenerics) {
-            // Always select generic functions over non-generic except for if it has Any.
+        if (!Canidate->IsGeneric() && HasGenerics) {
+            // Always select non-generic functions over generic except.
             SET_BEST;
         } else if (NumConflicts < LeastConflicts) {
             SET_BEST;
@@ -3739,6 +3735,7 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
                                      BindableList* StructBindableTypes) {
 
     Type* ComparibleParamType = ParamType;
+    bool HasConstAddress = Param->HasConstAddress;
     if (ParamType->ContainsGenerics) {
         Type* ExistingQualType = nullptr;
         auto Res = CheckCallArgGeneric(Arg->Ty->UnboxGeneric(),
@@ -3754,8 +3751,8 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
             return false;
         }
         Type* QualType = (*QualTypes)[Param->GenQualIdx];
-        bool HasConstAddress = Param->ExplicitlyMarkedConst ||
-                               QualType->GetKind() == TypeKind::CStr;
+        HasConstAddress = Param->ExplicitlyMarkedConst ||
+                          QualType->GetKind() == TypeKind::CStr;
         
         ComparibleParamType = QualType;
 
@@ -3783,13 +3780,33 @@ bool arco::SemAnalyzer::CheckCallArg(Expr* Arg,
             return false;
         }
     }
-    if (ViolatesConstAssignment(ComparibleParamType, Param->HasConstAddress, Arg)) {
+    if (ViolatesConstAssignment(ComparibleParamType, HasConstAddress, Arg)) {
         return false;
     }
     if (!ComparibleParamType->Equals(Arg->Ty)) {
         ++NumConflicts;
+        // TODO: Doesn't this need to unbox the generic? Has it already been unboxed?
         if (Arg->Ty->GetRealKind() == TypeKind::Enum) {
-                
+            if (ComparibleParamType->Equals(Context.AnyType)) {
+                // TODO: Hacky, this probably is not what we want but for now we consider
+                // calling a function that takes type Any to be considered not a conflict
+                // in types. Although this would imply that calling a function with Any
+                // vs. the function which explicitly takes the enum type to be equivalent.
+                --NumConflicts;
+                return true;
+            }
+
+            // This happens so it can resolve stuff like:
+            // Day enum : int {
+            //     MONDAY;
+            //     TUESDAY;
+            //     ...
+            // }
+            // 
+            // fn foo(a int) {}
+            // fn foo(a float32) {}
+            //
+            // foo(Day.TUESDAY); // Calls int version!
             EnumDecl* Enum = static_cast<StructType*>(Arg->Ty)->GetEnum();
             if (!Enum->ValuesType->Equals(ComparibleParamType)) {
                 ++EnumImplicitConflicts;
