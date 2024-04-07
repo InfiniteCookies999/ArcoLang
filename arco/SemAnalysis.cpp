@@ -1405,6 +1405,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
             case TokenKind::POST_PLUS_PLUS:
             case TokenKind::MINUS_MINUS:
             case TokenKind::POST_MINUS_MINUS:
+            case TokenKind::TLD_DOT:
                 break;
             default:
                 Error(Stmt, "Incomplete statement");
@@ -2552,6 +2553,14 @@ YIELD_ERROR(UniOp);
         }
 
         UniOp->Ty = Context.BoolType;
+        break;
+    }
+    case TokenKind::TLD_DOT: {
+        CheckModifibility(UniOp->Value);
+
+        UniOp->HasConstAddress = true;
+        UniOp->Ty = Context.VoidType;
+        
         break;
     }
     default:

@@ -37,6 +37,7 @@ std::string arco::Token::TokenKindToString(u16 Kind, ArcoContext& Context) {
     case TokenKind::COL_EQ:         return ":=";
     case TokenKind::COL_COL:        return "::";
     case TokenKind::DOT_DOT:        return "..";
+    case TokenKind::TLD_DOT:        return "~.";
     case TokenKind::DOT_DOT_DOT:    return "...";
     case TokenKind::DOT_DOT_EQ:     return "..=";
     case TokenKind::DOT_DOT_LT:     return "..<";

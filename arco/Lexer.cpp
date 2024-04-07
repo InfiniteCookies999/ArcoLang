@@ -118,7 +118,9 @@ restartLex:
     case '^':
         if (*CurPtr == '=') return CreateTokenAndEat(TokenKind::CRT_EQ, TokStart);
         else                return CreateToken('^', TokStart);
-    case '~': return CreateToken('~', TokStart);
+    case '~':
+        if (*CurPtr == '.') return CreateTokenAndEat(TokenKind::TLD_DOT, TokStart);
+        else                return CreateToken('~', TokStart);
     case '<':
         if (*CurPtr == '<') {
             ++CurPtr;

@@ -125,6 +125,7 @@ namespace arco {
         DOT_DOT,           // ..
         DOT_DOT_LT,        // ..<
         DOT_DOT_EQ,        // ..=
+        TLD_DOT,           // ~.
         DOT_DOT_DOT,       // ...
         MINUS_MINUS_MINUS, // ---
 

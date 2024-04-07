@@ -1395,6 +1395,10 @@ arco::DeleteStmt* arco::Parser::ParseDelete() {
     DeleteStmt* Delete = NewNode<DeleteStmt>(CTok);
     NextToken(); // Consuming 'delete' token.
     Delete->Value = ParseExpr();
+    if (CTok.Is(TokenKind::MINUS_MINUS_MINUS)) {
+        NextToken();
+        Delete->NoDestructorsCall = true;
+    }
     return Delete;
 }
 
@@ -2104,7 +2108,8 @@ arco::Expr* arco::Parser::ParsePrimaryExpr() {
         return UniOP;
     }
     case '&': case '*': case '!': case '~':
-    case TokenKind::PLUS_PLUS: case MINUS_MINUS: {
+    case TokenKind::PLUS_PLUS: case MINUS_MINUS:
+    case TokenKind::TLD_DOT: {
         if ((CTok.Kind == '*' && PeekToken(1).Kind == '&') ||
             (CTok.Kind == '&' && PeekToken(1).Kind == '*')
             ) {

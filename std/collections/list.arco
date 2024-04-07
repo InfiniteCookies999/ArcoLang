@@ -8,7 +8,7 @@ List struct {
     readonly length   int;
 
     ~List() {
-        delete buckets;
+        delete buckets ---;
         buckets  = null;
         length   = 0;
         capacity = 0;
@@ -39,7 +39,7 @@ List struct {
         memcpy(buckets, old_buckets, length * sizeof(T));
 
         capacity = new_capacity;
-        delete old_buckets;
+        delete old_buckets ---;
     }
 
     private fn ensure_capacity(new_capacity int) {
@@ -65,7 +65,9 @@ List struct {
     }
 
     fn clear() {
-        // TODO: call destructors!
+        loop i : 0 ..< length {
+            ~.buckets[i];
+        }
         length = 0;
     }
 }

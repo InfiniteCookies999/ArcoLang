@@ -1623,12 +1623,14 @@ llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
         llvm::Value* LLSliceAddr = GenNode(Delete->Value);
         llvm::Value* LLArrayPtr = CreateLoad(CreateStructGEP(LLSliceAddr, 1));
 
-        if (ElmTys->TypeNeedsDestruction()) {
-            llvm::Value* LLLength = CreateLoad(CreateStructGEP(LLSliceAddr, 0));
-            GenInternalArrayLoop(ElmTys, LLArrayPtr, LLLength,
-                [this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
-                    CallDestructors(BaseTy, LLElmAddr);
-                });
+        if (!Delete->NoDestructorsCall) {
+            if (ElmTys->TypeNeedsDestruction()) {
+                llvm::Value* LLLength = CreateLoad(CreateStructGEP(LLSliceAddr, 0));
+                GenInternalArrayLoop(ElmTys, LLArrayPtr, LLLength,
+                    [this](llvm::PHINode* LLElmAddr, Type* BaseTy) {
+                        CallDestructors(BaseTy, LLElmAddr);
+                    });
+            }
         }
         
         llvm::Value* LLFree = llvm::CallInst::CreateFree(LLArrayPtr, Builder.GetInsertBlock());
@@ -1636,8 +1638,11 @@ llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
     } else {
         llvm::Value* LLValue = GenRValue(Delete->Value);
         Type* ElmTys = Delete->Value->Ty->AsPointerTy()->GetElementType();
-        if (ElmTys->TypeNeedsDestruction()) {
-            CallDestructors(ElmTys, LLValue);
+
+        if (!Delete->NoDestructorsCall) {
+            if (ElmTys->TypeNeedsDestruction()) {
+                CallDestructors(ElmTys, LLValue);
+            }
         }
 
         llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
@@ -2402,6 +2407,13 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
     }
     case '~':
         return Builder.CreateNot(GenRValue(UniOp->Value));
+    case TokenKind::TLD_DOT: {
+        if (UniOp->Value->Ty->TypeNeedsDestruction()) {
+            llvm::Value* LLAddr = GenNode(UniOp->Value);
+            CallDestructors(UniOp->Value->Ty, LLAddr);
+        }
+        return nullptr;
+    }
     default:
         assert(!"Failed to implement GenUnaryOp() case!");
         return nullptr;
@@ -3418,8 +3430,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
                 if (!Alloc->Values.empty()) {
                     GenStructInitArgs(LLMalloc, Struct, StructTy, Alloc->Values, Alloc->NamedValues);
                 } else if (!Alloc->LeaveUninitialized) {
-                    // Need to initialize fields so calling the default constructor.
-                    CallDefaultConstructor(LLMalloc, TypeToAlloc->AsStructType());
+                    GenDefaultValue(StructTy, LLMalloc);
                 }
             }
         } else {

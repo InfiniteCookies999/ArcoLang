@@ -544,6 +544,7 @@ namespace arco {
     struct DeleteStmt : AstNode {
         DeleteStmt() : AstNode(AstKind::DELETE) {}
         
+        bool  NoDestructorsCall = false;
         Expr* Value;
 
     };
