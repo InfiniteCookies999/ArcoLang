@@ -58,6 +58,7 @@ namespace arco {
         NESTED_SCOPE,
         DELETE,
         RAISE,
+        INITOBJ,
 
         NUMBER_LITERAL,
         STRING_LITERAL,
@@ -564,6 +565,13 @@ namespace arco {
         ulen               RaisedIdx = 0;
         StructInitializer* StructInit;
 
+    };
+
+    struct InitObjStmt : AstNode {
+        InitObjStmt() : AstNode(AstKind::INITOBJ) {}
+
+        Expr* Address;
+        Expr* Value;
     };
 
     struct Expr : AstNode {

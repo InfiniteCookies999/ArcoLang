@@ -58,6 +58,7 @@ namespace arco {
         KW_TYPEID,
         KW_COPYOBJ,
         KW_MOVEOBJ,
+        KW_INITOBJ,
         KW_NULL,
         KW_TRY,
         KW_FN,

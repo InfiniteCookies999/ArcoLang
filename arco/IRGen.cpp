@@ -927,6 +927,8 @@ llvm::Value* arco::IRGenerator::GenNode(AstNode* Node) {
         return GenDelete(static_cast<DeleteStmt*>(Node));
     case AstKind::RAISE:
         return GenRaise(static_cast<RaiseStmt*>(Node));
+    case AstKind::INITOBJ:
+        return GenInitObj(static_cast<InitObjStmt*>(Node));
     case AstKind::IF:
         return GenIf(static_cast<IfStmt*>(Node));
     case AstKind::NESTED_SCOPE:
@@ -1739,6 +1741,14 @@ llvm::Value* arco::IRGenerator::GenRaise(RaiseStmt* Raise) {
         // Prevent issues with possible lack of terminator.
         GenRaiseReturnZeroedValue();
     }
+
+    return nullptr;
+}
+
+llvm::Value* arco::IRGenerator::GenInitObj(InitObjStmt* InitObj) {
+
+    llvm::Value* LLAddr = GenNode(InitObj->Address);
+    GenAssignment(LLAddr, InitObj->Address->Ty, InitObj->Value, InitObj->Value->HasConstAddress);
 
     return nullptr;
 }

@@ -119,6 +119,7 @@ namespace arco {
         NestedScopeStmt* ParseNestedScope();
         DeleteStmt* ParseDelete();
         RaiseStmt* ParseRaise();
+        InitObjStmt* ParseInitObj();
 
         Modifiers ParseModifiers();
         Type* ParseType(bool IsRoot,

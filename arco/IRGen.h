@@ -151,6 +151,7 @@ namespace arco {
         llvm::Value* GenIf(IfStmt* If);
         llvm::Value* GenNestedScope(NestedScopeStmt* NestedScope);
         llvm::Value* GenRaise(RaiseStmt* Raise);
+        llvm::Value* GenInitObj(InitObjStmt* InitObj);
         void GenRaiseReturnZeroedValue();
 
         //===-------------------------------===//
@@ -316,10 +317,10 @@ namespace arco {
         void GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, llvm::BasicBlock* LLFalseBB);
 
         void GenAssignment(llvm::Value* LLAddress,
-            Type* AddrTy,
-            Expr* Value,
-            bool IsConstAddress,
-            bool DestroyIfNeeded = false);
+                           Type* AddrTy,
+                           Expr* Value,
+                           bool IsConstAddress,
+                           bool DestroyIfNeeded = false);
         void GenDefaultValue(Type* Ty, llvm::Value* LLAddr);
 
         void GenSliceToSlice(llvm::Value* LLToAddr, Expr* Assignment);

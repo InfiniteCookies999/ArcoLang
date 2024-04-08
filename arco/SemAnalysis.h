@@ -236,6 +236,7 @@ namespace arco {
         void CheckTypeId(TypeId* TId);
         void CheckRange(Range* Rg);
         void CheckMoveObj(MoveObj* Move);
+        void CheckInitObj(InitObjStmt* Init);
         void CheckTernary(Ternary* Tern);
         void CheckVarDeclList(VarDeclList* List);
         void CheckCatchError(CatchError* Catch, VarDecl* CaptureVar);

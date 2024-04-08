@@ -1,5 +1,6 @@
 import win32;
-import reflect.Any;
+import win32.PROCESS_INFORMATION;
+import win32.STARTUPINFOA;
 
 /*
  * Terminates the application with an exit code.
@@ -22,4 +23,41 @@ fn time_in_nanosecs() int64 {
 
 fn time_in_millisecs() int64 {
     return time_in_nanosecs() / cast(int64) 1e+6;
+}
+
+fn exe_process(process String^, process_dir cstr = null, seperate_window := false) int {
+    return exe_process(process.buffer, process_dir, seperate_window);
+}
+
+fn exe_process(process cstr, process_dir cstr = null, seperate_window := false) int {
+    // No need to use inherited handles since this does not capture
+    // the program's output.
+
+    process_info PROCESS_INFORMATION = ---;
+    startup_info STARTUPINFOA;
+    startup_info.cb = cast(uint32) sizeof(STARTUPINFOA);
+    success := win32.CreateProcessA(
+        null,
+        process,
+        null,
+        null,
+        0,
+        seperate_window ? win32.CREATE_NEW_CONSOLE : 0,
+        null,
+        process_dir,
+        &startup_info,
+        &process_info
+    );
+    if success == 0 {
+        raise BadStateError{ "Failed to execute process: %s", process };
+    }
+    win32.WaitForSingleObject(process_info.hProcess, win32.INFINITE);
+
+    exit_code uint32;
+    win32.GetExitCodeProcess(process_info.hProcess, &exit_code);
+
+    win32.CloseHandle(process_info.hProcess);
+    win32.CloseHandle(process_info.hThread);
+
+    return cast(int) exit_code;
 }

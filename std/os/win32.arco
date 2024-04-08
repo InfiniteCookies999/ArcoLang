@@ -50,6 +50,40 @@ native dllimport fn GetStdHandle(nStdHandle uint32) void*;
 // ------------------------------------------------
 // Win32: winbase.h
 
+DEBUG_PROCESS                    :: 0x00000001'u32;
+DEBUG_ONLY_THIS_PROCESS          :: 0x00000002'u32;
+CREATE_SUSPENDED                 :: 0x00000004'u32;
+DETACHED_PROCESS                 :: 0x00000008'u32;
+CREATE_NEW_CONSOLE               :: 0x00000010'u32;
+NORMAL_PRIORITY_CLASS            :: 0x00000020'u32;
+IDLE_PRIORITY_CLASS              :: 0x00000040'u32;
+HIGH_PRIORITY_CLASS              :: 0x00000080'u32;
+REALTIME_PRIORITY_CLASS          :: 0x00000100'u32;
+CREATE_NEW_PROCESS_GROUP         :: 0x00000200'u32;
+CREATE_UNICODE_ENVIRONMENT       :: 0x00000400'u32;
+CREATE_SEPARATE_WOW_VDM          :: 0x00000800'u32;
+CREATE_SHARED_WOW_VDM            :: 0x00001000'u32;
+CREATE_FORCEDOS                  :: 0x00002000'u32;
+BELOW_NORMAL_PRIORITY_CLASS      :: 0x00004000'u32;
+ABOVE_NORMAL_PRIORITY_CLASS      :: 0x00008000'u32;
+INHERIT_PARENT_AFFINITY          :: 0x00010000'u32;
+INHERIT_CALLER_PRIORITY          :: 0x00020000'u32;    // Deprecated
+CREATE_PROTECTED_PROCESS         :: 0x00040000'u32;
+EXTENDED_STARTUPINFO_PRESENT     :: 0x00080000'u32;
+PROCESS_MODE_BACKGROUND_BEGIN    :: 0x00100000'u32;
+PROCESS_MODE_BACKGROUND_END      :: 0x00200000'u32;
+CREATE_SECURE_PROCESS            :: 0x00400000'u32;
+CREATE_BREAKAWAY_FROM_JOB        :: 0x01000000'u32;
+CREATE_PRESERVE_CODE_AUTHZ_LEVEL :: 0x02000000'u32;
+CREATE_DEFAULT_ERROR_MODE        :: 0x04000000'u32;
+CREATE_NO_WINDOW                 :: 0x08000000'u32;
+PROFILE_USER                     :: 0x10000000'u32;
+PROFILE_KERNEL                   :: 0x20000000'u32;
+PROFILE_SERVER                   :: 0x40000000'u32;
+CREATE_IGNORE_SYSTEM_DEFAULT     :: 0x80000000'u32;
+
+INFINITE :: 0xFFFFFFFF'u32;
+
 native dllimport fn CreateDirectoryA(lpPathName cstr, lpSecurityAttributes void*) int32;
 
 native dllimport fn DeleteFileA(lpFileName cstr) int32;
@@ -202,4 +236,51 @@ native dllimport fn QueryPerformanceCounter(lpPerformanceCount int64*) bool;
 // ------------------------------------------------
 // Processthreadsapi.h
 
+// TODO: C-struct alignment?
+PROCESS_INFORMATION struct {
+    hProcess    void*;
+    hThread     void*;
+    dwProcessId uint32;
+    dwThreadId  uint32;
+}
+
+// TODO: C-struct alignment?
+STARTUPINFOA struct {
+    cb              uint32;
+    lpReserved      char*;
+    lpDesktop       char*;
+    lpTitle         char*;
+    dwX             uint32;
+    dwY             uint32;
+    dwXSize         uint32;
+    dwYSize         uint32;
+    dwXCountChars   uint32;
+    dwYCountChars   uint32;
+    dwFillAttribute uint32;
+    dwFlags         uint32;
+    wShowWindow     uint16;
+    cbReserved2     uint16;
+    lpReserved2     uint8*;
+    hStdInput       void*;
+    hStdOutput      void*;
+    hStdError       void*;
+}
+
 native dllimport fn GetCurrentProcess() void*;
+
+native dllimport fn CreateProcessA(
+    lpApplicationName    cstr,
+    lpCommandLine        cstr,
+    lpProcessAttributes  void*,
+    lpThreadAttributes   void*,
+    bInheritHandles      int32,
+    dwCreationFlags      uint32,
+    lpEnvironment        void*,
+    lpCurrentDirectory   cstr,
+    lpStartupInfo        STARTUPINFOA*,
+    lpProcessInformation PROCESS_INFORMATION*
+) int32;
+
+native dllimport fn WaitForSingleObject(hHandle void*, dwMilliseconds uint32) uint32;
+
+native dllimport fn GetExitCodeProcess(hProcess void*, lpExitCode uint32*) int32;

@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION ${PROJECT_CMAKE_VERSION})
 set(CMAKE_CXX_STANDARD ${PROJECT_CXX_STANDARD})
 
-add_executable (driver "Driver.cpp" "Options.h" "Options.cpp")
+add_executable (driver "Driver.cpp" "Options.h" "Options.cpp" "picosha3.h")
 set_target_properties (
     driver
     PROPERTIES

@@ -51,7 +51,7 @@ List struct {
 
     fn add(value T) {
         ensure_capacity(length + 1);
-        buckets[length] = moveobj(value);
+        initobj(buckets[length], moveobj(value));
         ++length;
     }
 

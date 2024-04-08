@@ -13,21 +13,7 @@
 #include "FloatConversions.h"
 #include "EmitDebugInfo.h"
 #include "Generics.h"
-
-static bool ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
-    std::ifstream Stream(Path, std::ios::binary | std::ios::in);
-    if (!Stream.good()) {
-        return false;
-    }
-    Stream.seekg(0, std::ios::end);
-    Size = Stream.tellg();
-    Buffer = new char[Size + 1];
-    Stream.seekg(0, std::ios::beg);
-    Stream.read(Buffer, Size);
-    Buffer[Size] = 0; // Null termination
-    return true;
-}
-
+#include "Files.h"
 
 static i64 GetTimeInMilliseconds() {
     using std::chrono::duration_cast;
@@ -64,19 +50,8 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     i64 ParseTimeBegin = GetTimeInMilliseconds();
 
     if (!OutputDirectory.empty()) {
-        std::error_code EC;
-        if (!std::filesystem::exists(OutputDirectory, EC)) {
-            if (!std::filesystem::create_directories(OutputDirectory, EC) || EC) {
-                Logger::GlobalError(llvm::errs(), "Failed to create the output directory: '%s'",
-                    OutputDirectory);
-                return 1;
-            }
-        } else if (EC) {
-            Logger::GlobalError(llvm::errs(), "Failed to check if the output directory exists");
+        if (!CreateDirectories(OutputDirectory, "output")) {
             return 1;
-        }
-        if (OutputDirectory.ends_with('/')) {
-            OutputDirectory = OutputDirectory.substr(0, OutputDirectory.size() - 2);
         }
     }
 
@@ -124,7 +99,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     i64 EmiteMachineCodeTimeBegin = GetTimeInMilliseconds();
 
     // -- DEBUG
-    llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
+    // llvm::verifyModule(Context.LLArcoModule, &llvm::errs());
 
     if (FoundCompileError) {
         return 1;

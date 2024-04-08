@@ -831,6 +831,9 @@ void arco::SemAnalyzer::CheckNode(AstNode* Node) {
     case AstKind::RAISE:
         CheckRaiseStmt(static_cast<RaiseStmt*>(Node));
         break;
+    case AstKind::INITOBJ:
+        CheckInitObj(static_cast<InitObjStmt*>(Node));
+        break;
     case AstKind::IF: {
         bool Ignore1, Ignore2;
         CheckIf(static_cast<IfStmt*>(Node), Ignore1, Ignore2);
@@ -1379,6 +1382,7 @@ void arco::SemAnalyzer::CheckScopeStmts(LexScope& LScope, Scope& NewScope) {
         case AstKind::RAISE:
         case AstKind::TRY_ERROR:
         case AstKind::CATCH_ERROR:
+        case AstKind::INITOBJ:
             break;
         case AstKind::BINARY_OP:
             switch (static_cast<BinaryOp*>(Stmt)->Op) {
@@ -5472,6 +5476,17 @@ void arco::SemAnalyzer::CheckMoveObj(MoveObj* Move) {
         Error(Move, "Expected to be a modifiable value for move");
     } else if (Move->HasConstAddress) {
         Error(Move, "Cannot move constant memory");
+    }
+}
+
+void arco::SemAnalyzer::CheckInitObj(InitObjStmt* Init) {
+    CheckNode(Init->Address);
+    CheckNode(Init->Value);
+    YIELD_IF_ERROR(Init->Address);
+    YIELD_IF_ERROR(Init->Value);
+
+    if (!IsLValue(Init->Address)) {
+        Error(Init, "Expected to be a modifiable value for init");
     }
 }
 

@@ -165,6 +165,7 @@ void arco::ArcoContext::Initialize() {
     TokenKeywordMap.insert({ "typeid"   , TokenKind::KW_TYPEID    });
     TokenKeywordMap.insert({ "copyobj"  , TokenKind::KW_COPYOBJ   });
     TokenKeywordMap.insert({ "moveobj"  , TokenKind::KW_MOVEOBJ   });
+    TokenKeywordMap.insert({ "initobj"  , TokenKind::KW_INITOBJ   });
     TokenKeywordMap.insert({ "null"     , TokenKind::KW_NULL      });
     TokenKeywordMap.insert({ "try"      , TokenKind::KW_TRY       });
     TokenKeywordMap.insert({ "fn"       , TokenKind::KW_FN        });

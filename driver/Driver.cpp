@@ -4,7 +4,9 @@
 #include "SpellChecking.h"
 
 #include "Options.h"
+#include "picosha3.h"
 
+#include "Files.h"
 #include <filesystem>
 
 const char* HELP_MESSAGE =
@@ -18,17 +20,19 @@ Basic Options (for more options use -more-options):
     -emit-debug
         Emits debug information.
 
-    -run
-        Executes the program after it is compiled and linked.
-        Or use -run-seperate to run in a seperate terminal.
+    -proj <project dir>
+        Creates a new project using arco's build system.
+
+    -build
+        Builds an existing arco project.
 
     -more-options
         Show more options that can be ran with arco.
 
 Sources:
-    Sources may either be absolute paths to a file or
-    a directory in which case all .arco files within the
-    directory and sub-directories will be included.
+    Sources may either be a path to a file or a directory
+    in which case all .arco files within the directory
+    and sub-directories will be included.
 
 Examples:
     arco .          # Compile files in current directory
@@ -52,12 +56,18 @@ Possible options:
         the executable. Will create the needed directories
         if they do not exists.
 
+    -proj <project dir>
+        Creates a new project using arco's build system.
+
+    -build
+        Builds an existing arco project.
+
     -run
         Executes the program after it is compiled and linked.
 
     -run-seperate
         Executes the program after it is compiled and linked
-        within a seperate termainl.
+        within a seperate terminal.
 
     -show-link-command
         Displays the command executed for linking the program.
@@ -205,6 +215,169 @@ i32 ParseIntegerValue(llvm::StringRef ValPart, bool& ParseError) {
     return IsNeg ? -IntValue : +IntValue;
 }
 
+void CreateNewProject(const char* ProjDir) {
+    if (std::filesystem::exists(ProjDir)) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "Could not create project because the provided directory '%s' already exists",
+            ProjDir);
+        return;
+    }
+
+    std::string ProjDirStr = std::string(ProjDir);
+    if (ProjDirStr.ends_with("/")) {
+        ProjDirStr = ProjDirStr.substr(0, ProjDirStr.size() - 1);
+    }
+
+    if (!arco::CreateDirectories(ProjDirStr, "project")) {
+        return;
+    }
+    if (!arco::CreateDirectories(ProjDirStr + "/.arco_build", "hidden project")) {
+        return;
+    }
+    if (!arco::CreateDirectories(ProjDirStr + "/src", "project src")) {
+        return;
+    }
+    
+    const char* MainFileContents =
+R"(import std;
+
+fn main() {
+    std.println("Hello from arco!");
+})";
+
+    std::string MainFilePath = ProjDirStr + "/src/main.arco";
+    std::ofstream ProjMainFileStream(MainFilePath);
+    if (ProjMainFileStream.fail()) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "Failed to create project because creating file 'main.arco' failed");
+        return;
+    }
+    ProjMainFileStream << "import std;\n";
+    ProjMainFileStream << "\n";
+    ProjMainFileStream << "fn main() {\n";
+    ProjMainFileStream << "    std.println(\"Hello from arco!\");\n";
+    ProjMainFileStream << "}";
+
+    std::string BuildFilePath = ProjDirStr + "/build.arco";
+    std::ofstream ProjBuildFileStream(BuildFilePath);
+    if (ProjBuildFileStream.fail()) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "Failed to create project because creating file '%s' failed", BuildFilePath);
+        return;
+    }
+
+    const char* BuildFileContents =
+R"(import std;
+import std.build;
+
+OUTPUT_NAME :: "program";
+
+fn main(argc int, argv char**) {
+    
+    build.output_name = String{ OUTPUT_NAME };
+
+    build.add_source(String{ "src" });
+
+    build.execute(argc, argv);
+
+})";
+
+    ProjBuildFileStream << BuildFileContents;
+
+    std::string HashLockPath = ProjDirStr + "/.arco_build/build_hash.txt";
+    std::ofstream HashLockFileStream(HashLockPath);
+    if (HashLockFileStream.fail()) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "Failed to create project because creating file '%s' failed", HashLockPath);
+        return;
+    }
+
+    llvm::outs() << "Created a new project at: " << ProjDir << "\n";
+
+}
+
+std::string CreateBuildHash(llvm::StringRef Contents) {
+    std::vector<unsigned char> HashBytes(picosha2::k_digest_size);
+    picosha2::hash256(Contents.begin() , Contents.end(),
+                      HashBytes.begin(), HashBytes.end());
+    return picosha2::bytes_to_hex_string(HashBytes.begin(), HashBytes.end());
+}
+
+void RunBuildCommand(int argc, char* argv[], int i) {
+
+    if (!std::filesystem::exists("build.arco")) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "This directory is not a valid build directory since it is missing 'build.arco' file");
+        return;
+    }
+
+    if (!std::filesystem::exists(".arco_build")) {
+        // TODO: Create the directory. The user might have deleted it in an attempt
+        // to clear the cache or something.
+        if (!arco::CreateDirectories(".arco_build", "hidden project")) {
+            return;
+        }
+    }
+
+    std::string OriginalHash;
+#ifdef _WIN32
+    std::string BuildExePath = ".arco_build/build.exe";
+#endif
+
+    if (std::filesystem::exists(".arco_build/build_hash.txt") &&
+        std::filesystem::exists(BuildExePath)) {
+
+        std::ifstream HashFileStream(".arco_build/build_hash.txt");
+        if (HashFileStream.fail()) {
+            arco::Logger::GlobalError(llvm::errs(),
+                "Failed to build because the '.arco_build/build_hash.txt' file failed to open");
+            return;
+        }
+        HashFileStream >> OriginalHash;
+    } // else just let it be empty and it will recreate the hash.
+
+    char* BuildFileBuffer;
+    u64  BuildFileSize;
+    if (!arco::ReadFile("build.arco", BuildFileBuffer, BuildFileSize)) {
+        arco::Logger::GlobalError(llvm::errs(),
+            "Failed to build because the 'build.arco' file failed to open");
+        return;
+    }
+
+    llvm::StringRef BuildFileContents = llvm::StringRef(BuildFileBuffer, BuildFileSize);
+    std::string Hash = CreateBuildHash(BuildFileContents);
+    
+    if (Hash != OriginalHash) {
+        // Different hashes so have to recompile!
+        llvm::outs() << ">> Building build.arco\n\n";
+
+        std::string Result;
+        arco::ExeHiddenProcess("arco build.arco -out=build -out-dir=.arco_build", Result);
+        if (Result.find("error") != std::string::npos) {
+            // NOTE: Hacky, just rerunning the process but as non-hidden
+            // to get the result of the error :)
+            arco::ExeProcess("arco build.arco -out=build -out-dir=.arco_build", nullptr, false);
+            return;
+        }
+
+        std::ofstream OutHashFileStream(".arco_build/build_hash.txt");
+        if (OutHashFileStream.fail()) {
+            arco::Logger::GlobalError(llvm::errs(),
+                "Failed to build because the '.arco_build/build_hash.txt' file failed to open to write the hash!");
+            return;
+        }
+        OutHashFileStream << Hash;
+
+    }
+
+    std::string Cmd = ".arco_build/build ";
+    ++i;
+    for (; i < argc; i++) {
+        Cmd += argv[i] + std::string(" ");
+    }
+    arco::ExeProcess(Cmd.c_str(), nullptr, false);
+}
+
 int main(int argc, char* argv[]) {
     ArgC     = argc;
     UserArgs = argv;
@@ -285,6 +458,17 @@ int main(int argc, char* argv[]) {
                 return 0;
             } else if (Opt == "more-options" || Opt == "more-help") {
                 llvm::outs() << EXTENDED_HELP_MESSAGE;
+                return 0;
+            } else if (Opt == "proj" || Opt == "project") {
+                if (i+1 == argc) {
+                    DriverError(i, "Expected directory for new project");
+                    return 0;
+                }
+                const char* ProjDir = argv[i+1];
+                CreateNewProject(ProjDir);
+                return 0;
+            } else if (Opt == "build") {
+                RunBuildCommand(argc, argv, i);
                 return 0;
             } else if (Opt.empty()) {
                 DriverError(i, "Empty option");

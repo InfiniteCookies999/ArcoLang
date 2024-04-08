@@ -302,13 +302,14 @@ arco::AstNode* arco::Parser::ParseStmt() {
     AstNode* Stmt;
     llvm::SmallVector<GenericType*> GenTys;
     switch (CTok.Kind) {
-    case TokenKind::KW_RETURN: Stmt = ParseReturn(); Match(';');      break;
-    case TokenKind::KW_IF:     Stmt = ParseIf();                      break;
-    case TokenKind::KW_LOOP:   Stmt = ParseLoop();                    break;
+    case TokenKind::KW_RETURN:  Stmt = ParseReturn(); Match(';');      break;
+    case TokenKind::KW_IF:      Stmt = ParseIf();                      break;
+    case TokenKind::KW_LOOP:    Stmt = ParseLoop();                    break;
     case TokenKind::KW_CONTINUE:
-    case TokenKind::KW_BREAK:  Stmt = ParseLoopControl(); Match(';'); break;
-    case TokenKind::KW_DELETE: Stmt = ParseDelete(); Match(';');      break;
-    case TokenKind::KW_RAISE:  Stmt = ParseRaise(); Match(';');       break;
+    case TokenKind::KW_BREAK:   Stmt = ParseLoopControl(); Match(';'); break;
+    case TokenKind::KW_DELETE:  Stmt = ParseDelete(); Match(';');      break;
+    case TokenKind::KW_RAISE:   Stmt = ParseRaise(); Match(';');       break;
+    case TokenKind::KW_INITOBJ: Stmt = ParseInitObj(); Match(';'); break;
     case TokenKind::KW_GENERICS: {
         // TODO: likely copying?
         GenTys = ParseGenerics();
@@ -1416,6 +1417,17 @@ arco::RaiseStmt* arco::Parser::ParseRaise() {
         CFunc->HasRaiseStmt = true;
     }
     return Raise;
+}
+
+arco::InitObjStmt* arco::Parser::ParseInitObj() {
+    InitObjStmt* Init = NewNode<InitObjStmt>(CTok);
+    NextToken();
+    Match('(');
+    Init->Address = ParsePrimaryExpr();
+    Match(',');
+    Init->Value = ParseExpr();
+    Match(')');
+    return Init;
 }
 
 arco::Modifiers arco::Parser::ParseModifiers() {
@@ -3288,6 +3300,7 @@ void arco::Parser::SkipRecovery(llvm::DenseSet<u16> IncludeSet) {
     case TokenKind::KW_CONTINUE:
     case TokenKind::KW_DELETE:
     case TokenKind::KW_RAISE:
+    case TokenKind::KW_INITOBJ:
 
     case TokenKind::KW_NATIVE:
     case TokenKind::KW_PRIVATE:

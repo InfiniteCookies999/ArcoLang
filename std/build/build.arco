@@ -1,0 +1,143 @@
+namespace build;
+
+private sources       List<String>;
+private libraries     List<String>;
+private library_paths List<String>;
+
+// The name of the compiled program.
+output_name String;
+
+// Should the compiler emit debug information so that
+// the program may be stepped through with breakpoints.
+emit_debug_info := false;
+
+// The directory to put the output files such as
+// the executable. Will create the needed directories
+// if they do not exists.
+output_directory := String{ "" };
+
+// Executes the program after it is compiled and linked.
+run_after_build := false;
+
+// Executes the program after it is compiled and linked
+// within a seperate terminal.
+run_seperate_window := false;
+
+// Displays the command executed for linking the program.
+show_link_command := false;
+
+// Turns off showing the message for where the program wrote
+// files to.
+no_wroteto_display := false;
+
+// Display how long different stages took.
+show_times := false;
+
+// Excludes compiling with the standard library.
+stand_alone := false;
+
+// Displays the LLVM IR generated from source code.
+// !! Warning !! This can generate a huge amount of
+// output depending on what is compiled.
+show_llvm := false;
+
+// By default the object files created by the compiler are
+// deleted after linking. When this option is turned on the
+// compiler does not delete the object files.
+keep_obj_files := false;
+
+// Disables displaying information with colors.
+disable_colors := false;
+
+// If set to true it will not display a visual indication of
+// where the error occured but instead only show the message.
+short_errors := false;
+
+// Error messages will display full paths of the file locations
+// where errors occured. Normally it will only show the path
+// information relative to the modules' folders.
+full_paths := false;
+
+// Sets how many errors will be displayed to the user before
+// giving up and exiting compilation.
+//
+// Keep as -1 if you wish to use the default number.
+max_errors := -1;
+
+/*
+ * Add a source for the project. This may either
+ * be a .arco file or a directory containing .arco
+ * files.
+ */
+fn add_source(source String) {
+    sources.add(moveobj(source));
+}
+
+/*
+ * Adds an external library to be linked against.
+ */
+fn add_library(library String) {
+    libraries.add(library);
+}
+
+/*
+ * Adds a path to search for external libraries which
+ * may then be linked against with build.add_library.
+ */
+fn add_library_path(path String) {
+    library_paths.add(path);
+}
+
+private fn add_flag(command String*, flag cstr) {
+    command.append("-").append(flag).append(" ");
+}
+
+/*
+ * This should be called last. Will execute the command
+ * to compile all the provided sources with arco.
+ */
+fn execute(argc int, argv char**, show_cmd := false) {
+    command := String{ "arco " };
+    loop i : 0 ..< sources.length {
+        command.append(sources.get_ref(i)).append(" ");
+    }
+
+    if !output_name.empty() {
+        command.append("-out=").append(output_name).append(" ");
+    }
+    if !output_directory.empty() {
+        command.append("-out-dir=").append(output_directory).append(" ");
+    }
+
+    if emit_debug_info      add_flag(&command, "emit-debug");
+    if run_after_build      add_flag(&command, "run");
+    if run_seperate_window  add_flag(&command, "run-seperate");
+    if show_link_command    add_flag(&command, "show-link-command");
+    if no_wroteto_display   add_flag(&command, "no-wroteto-display");
+    if show_times           add_flag(&command, "show-times");
+    if stand_alone          add_flag(&command, "stand-alone");
+    if show_llvm            add_flag(&command, "show-llvm");
+    if keep_obj_files       add_flag(&command, "keep-obj-files");
+    if disable_colors       add_flag(&command, "disable-colors");
+    if short_errors         add_flag(&command, "short-errors");
+    if full_paths           add_flag(&command, "full-paths");
+
+    loop i : 0 ..< libraries.length {
+        command.append("-l").append(libraries.get_ref(i)).append(" ");
+    }
+    loop i : 0 ..< library_paths.length {
+        command.append("-L").append(library_paths.get_ref(i)).append(" ");
+    }
+    if max_errors != -1 {
+        command.append("-max-errors=").append(to_string(max_errors)).append(" ");
+    }
+    loop i : 1 ..< argc {
+        command.append(argv[i]).append(" ");
+    }
+
+    if show_cmd {
+        println(command);
+    }
+
+    exe_process(command);
+}
