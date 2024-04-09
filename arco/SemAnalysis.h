@@ -30,6 +30,8 @@ namespace arco {
 
         void CheckVarDecl(VarDecl* Var, bool PartialGenFixup = false, bool ForceCheck = false);
 
+        static void RequestGenNonGenericFunc(ArcoContext& Context, FuncDecl* Func);
+
     private:
         ArcoContext& Context;
         Module*      Mod;
@@ -286,8 +288,6 @@ namespace arco {
         /// as signed overflow (unhelpfully called "poision" value by LLVM).
         /// 
         llvm::Value* GenFoldable(SourceLoc ErrorLoc, Expr* E);
-
-        void RequestGenNonGenericFunc(FuncDecl* Func);
 
         void AddGenericErrorInfo();
 

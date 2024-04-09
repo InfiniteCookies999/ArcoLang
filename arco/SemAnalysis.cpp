@@ -531,7 +531,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
                 Context.RequestGen(Struct->DefaultConstructor, Binding);
             }
         } else {
-            RequestGenNonGenericFunc(Struct->DefaultConstructor);
+            RequestGenNonGenericFunc(Context, Struct->DefaultConstructor);
             Struct->LLDefaultConstructor = Struct->DefaultConstructor->LLFunction;
         }
     }
@@ -549,7 +549,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
             }
             Context.RequestGen(Struct->Destructor, Binding);
         } else {
-            RequestGenNonGenericFunc(Struct->Destructor);
+            RequestGenNonGenericFunc(Context, Struct->Destructor);
             Struct->LLDestructor = Struct->Destructor->LLFunction;
         }
     }
@@ -616,7 +616,7 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
         } else {
             A.CheckFuncParams(Func);
             CheckMoveOrCopyConstructor(Func, IsCopy ? "Copy" : "Move");
-            RequestGenNonGenericFunc(Func);
+            RequestGenNonGenericFunc(Context, Func);
         }
     };
 
@@ -1055,7 +1055,7 @@ void arco::SemAnalyzer::FixupInterface(StructDecl* Struct, const StructDecl::Int
 
             FoundFunc->MappedInterfaceFunc = InterfaceFunc;
 
-            RequestGenNonGenericFunc(FoundFunc);
+            RequestGenNonGenericFunc(Context, FoundFunc);
         } else {
             Error(InterfaceHook.ErrorLoc, "Struct must implement function '%s' of interface '%s'",
                 GetFuncDefForError(ParamsToTypeInfo(InterfaceFunc), InterfaceFunc), Interface->Name);
@@ -2504,7 +2504,7 @@ YIELD_ERROR(UniOp);
             }
             
             // TODO: Deal with generic bindings.
-            RequestGenNonGenericFunc(Func);
+            RequestGenNonGenericFunc(Context, Func);
 
             UniOp->HasConstAddress = false;
             UniOp->Ty = FunctionType::Create(TypeInfo{ Func->RetTy, Func->ReturnsConstAddress },
@@ -3435,7 +3435,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
             }
         } else {
             RetTy = Selected->RetTy;
-            RequestGenNonGenericFunc(Selected);
+            RequestGenNonGenericFunc(Context, Selected);
         }
     } else {
         RetTy = Selected->RetTy;
@@ -4987,7 +4987,7 @@ bool arco::SemAnalyzer::CheckStdPanicFuncExists() {
             return false;
         }
     }
-    RequestGenNonGenericFunc(Context.StdErrorPanicFunc);
+    RequestGenNonGenericFunc(Context, Context.StdErrorPanicFunc);
     return true;
 }
 
@@ -5857,13 +5857,18 @@ bool arco::SemAnalyzer::IsAssignableTo(Type* ToTy, Type* FromTy, Expr* FromExpr)
         );
     }
     case TypeKind::Struct: {
-        if (Context.StdAnyStruct) {
+        if (!Context.StandAlone) {
             StructDecl* Struct = ToTy->AsStructType()->GetStruct();
             if (Struct == Context.StdAnyStruct) {
                 if (!FromTy->TypeHasStorage()) {
                     return false;
                 }
                 return true;
+            }
+            if (Struct == Context.StdStringStruct) {
+                if (FromTy->GetKind() == TypeKind::CStr) {
+                    return true;
+                }
             }
         }
 
@@ -6565,7 +6570,7 @@ llvm::Value* arco::SemAnalyzer::GenFoldable(SourceLoc ErrorLoc, Expr* E) {
     return LLValue;
 }
 
-void arco::SemAnalyzer::RequestGenNonGenericFunc(FuncDecl* Func) {
+void arco::SemAnalyzer::RequestGenNonGenericFunc(ArcoContext& Context, FuncDecl* Func) {
     if (!FoundCompileError && !Context.CheckingUnhcecked) {
         if (!Func->GenRequestedAlready) {
             IRGenerator IRGen(Context);

@@ -113,7 +113,7 @@ namespace arco {
         StructDecl* StdStructTypeStruct  = nullptr;
         StructDecl* StdFieldTypeStruct   = nullptr;
         StructDecl* StdEnumTypeStruct    = nullptr;
-        EnumDecl*   StdTypeIdEnum      = nullptr;
+        EnumDecl*   StdTypeIdEnum        = nullptr;
         InterfaceDecl* StdErrorInterface = nullptr;
         FuncDecl* StdErrorPanicFunc = nullptr;
         FuncDecl* InitializeErrorHandlingFunc = nullptr;
@@ -124,6 +124,7 @@ namespace arco {
         StructType* StdStructTypeStructType;
         StructType* StdFieldTypeStructType;
         StructType* StdEnumTypeStructType;
+        FuncDecl* StdStringCStrConstructor;
 
         Type* IntType;
         Type* PtrsizeType;

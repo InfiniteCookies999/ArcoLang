@@ -274,9 +274,9 @@ OUTPUT_NAME :: "program";
 
 fn main(argc int, argv char**) {
     
-    build.output_name = String{ OUTPUT_NAME };
+    build.output_name = OUTPUT_NAME;
 
-    build.add_source(String{ "src" });
+    build.add_source("src");
 
     build.execute(argc, argv);
 

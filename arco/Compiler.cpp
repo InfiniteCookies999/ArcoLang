@@ -536,6 +536,15 @@ bool arco::Compiler::FindStdLibStructs() {
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdFieldTypeStructType);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdEnumTypeStructType);
     
+        // Finding the constructor of StdStringStruct which takes the cstr as an argument.
+        for (FuncDecl* Constructor : Context.StdStringStruct->Constructors) {
+            if (Constructor->Params.size() != 1) continue;
+            if (Constructor->Params[0]->Ty->Equals(Context.CStrType)) {
+                Context.StdStringCStrConstructor = Constructor;
+                SemAnalyzer::RequestGenNonGenericFunc(Context, Context.StdStringCStrConstructor);
+                break;
+            }
+        }
     }
 
     return NumErrs == TotalAccumulatedErrors;

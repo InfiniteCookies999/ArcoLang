@@ -2988,6 +2988,13 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
                 llvm::Value* LLValue = CreateLoad(GenCast(Arg->CastTy, Arg->Ty, LLArg));
                 Arg->CastTy = nullptr; // Reset in case of generics.
                 return LLValue;
+            } else if (Arg->Ty->Equals(Context.CStrType) &&
+                       Arg->CastTy->Equals(Context.StdStringStructType)) {
+                llvm::Value* LLArg = CreateUnseenAlloca(Context.StdStringStructType->LLStructType, "arg.tmp");
+                llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
+                Arg->CastTy = nullptr;
+                Builder.CreateCall(LLFunc, { LLArg, GenRValue(Arg) });
+                return CreateLoad(LLArg);
             } else {
                 // Cast to any so nothing below applies.
                 return GenRValue(Arg);
@@ -4063,10 +4070,22 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
         goto missingCaseLab;
     }
     case TypeKind::Struct: {
-        // This happens when casting to the Any struct.
-        llvm::Value* LLAny = CreateUnseenAlloca(Context.StdAnyStructType->LLStructType, "tmp.any");
-        GenToAny(LLAny, LLValue, FromType);
-        return LLAny;
+        if (ToType->Equals(Context.AnyType)) {
+            llvm::Value* LLAny = CreateUnseenAlloca(Context.StdAnyStructType->LLStructType, "tmp.any");
+            GenToAny(LLAny, LLValue, FromType);
+            return LLAny;
+        }
+        if (ToType->Equals(Context.StdStringStructType)) {
+            // This happens when casting from cstr.
+            // TODO: Need to make sure this constructor is actually requested for
+            // generation
+            // 
+            llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
+            llvm::Value* LLString = CreateUnseenAlloca(GenType(ToType), "s");
+            Builder.CreateCall(LLFunc, { LLString, LLValue });
+            return LLString;
+        }
+        goto missingCaseLab;
     }
     default: {
 missingCaseLab:
@@ -4953,9 +4972,8 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
         Value->CastTy = nullptr; // Reset of generics
     } else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
         StructType* StructTy = AddrTy->AsStructType();
-        StructDecl* Struct = StructTy->GetStruct();
-
-        if (Struct->Destructor && DestroyIfNeeded) {
+        
+        if (StructTy->TypeNeedsDestruction() && DestroyIfNeeded) {
             // Need a temporary struct so the the original memory isn't overwritten and
             // the destructor delete the original memory.
             llvm::Value* LLTempAddr =
@@ -5034,10 +5052,9 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
         llvm::BasicBlock* LLCatchEndBlock = GenTryErrorPrelude(Try);
         GenAssignment(LLAddress, AddrTy, Try->Value, IsConstAddress, DestroyIfNeeded);
         GenTryErrorBody(Try, LLCatchEndBlock);
-    } else if (Value->Ty->GetKind() == TypeKind::Struct) { 
+    } else if (Value->Ty->GetKind() == TypeKind::Struct) {
         StructType* StructTy = AddrTy->AsStructType();
-        StructDecl* Struct = StructTy->GetStruct();
-        if (Struct->Destructor && DestroyIfNeeded) {
+        if (StructTy->DoesNeedsDestruction() && DestroyIfNeeded) {
             // See comments for struct initializer for explaination.
             llvm::Value* LLTempAddr =
                 CreateUnseenAlloca(LLAddress->getType()->getPointerElementType(), "tmp");
@@ -5054,10 +5071,29 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
             if (Value->Is(AstKind::MOVEOBJ)) {
                 CopyOrMoveStructObject(LLAddress, GenNode(static_cast<MoveObj*>(Value)), StructTy);
             } else {
-                // TODO: This is inefficient for try expressions because it can cause
-                // undo copying when the address could have just been passed.
                 CopyStructObject(LLAddress, GenNode(Value), StructTy);
             }
+        }
+    } else if (Value->Ty->Equals(Context.CStrType) &&
+               AddrTy->Equals(Context.StdStringStructType)) {
+        Value->CastTy = nullptr;
+        if (DestroyIfNeeded) {
+            StructType* StructTy = AddrTy->AsStructType();
+            // Need a temporary struct so the the original memory isn't overwritten and
+            // the destructor delete the original memory.
+            llvm::Value* LLTempAddr =
+                CreateUnseenAlloca(LLAddress->getType()->getPointerElementType(), "tmp");
+            llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
+            Builder.CreateCall(LLFunc, { LLAddress, GenRValue(Value) });
+            // Destroy the original memory.
+            CallDestructors(AddrTy, LLAddress);
+            // Copy/move the new value.
+            CopyOrMoveStructObject(LLAddress, LLTempAddr, StructTy);
+        } else {
+            // Casting from cstr to String. Want to use the address so that
+            // it doesn't reallocate memory.
+            llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
+            Builder.CreateCall(LLFunc, { LLAddress, GenRValue(Value) });
         }
     } else if (Value->Is(AstKind::HEAP_ALLOC)) {
         HeapAlloc* Alloc = static_cast<HeapAlloc*>(Value);
@@ -5166,7 +5202,7 @@ void arco::IRGenerator::CallDefaultConstructor(llvm::Value* LLAddr, StructType* 
     Builder.CreateCall(LLDefaultConstructor, { LLAddr });
 }
 
-llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char* Name, bool IsErrCond) {
+llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char* Name) {
     llvm::BasicBlock* BackupInsertBlock = Builder.GetInsertBlock();
     llvm::BasicBlock* LLEntryBlock = &LLFunc->getEntryBlock();
     if (LLEntryBlock->getInstList().empty()) {
@@ -5175,9 +5211,6 @@ llvm::Value* arco::IRGenerator::CreateUnseenAlloca(llvm::Type* LLTy, const char*
         Builder.SetInsertPoint(&LLEntryBlock->getInstList().front());
     }
     llvm::Value* LLAddr = Builder.CreateAlloca(LLTy, nullptr);
-    if (IsErrCond) {
-        Builder.CreateStore(llvm::ConstantInt::getFalse(LLContext), LLAddr);
-    }
     LLAddr->setName(Name);
     Builder.SetInsertPoint(BackupInsertBlock);
     return LLAddr;

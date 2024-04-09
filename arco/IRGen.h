@@ -327,7 +327,7 @@ namespace arco {
 
         void CallDefaultConstructor(llvm::Value* LLAddr, StructType* StructTy);
 
-        llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name, bool IsErrCond = false);
+        llvm::Value* CreateUnseenAlloca(llvm::Type* LLTy, const char* Name);
 
         llvm::Value* GetElisionRetSlotAddr(FuncDecl* Func);
         llvm::Value* GetErrorRetAddr(FuncDecl* Func);
