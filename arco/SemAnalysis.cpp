@@ -1850,9 +1850,11 @@ void arco::SemAnalyzer::CheckIteratorLoop(IteratorLoopStmt* Loop) {
         }
     } else {
         // Type is infered.
-        // TODO: Should this select for pointer types if the type is a structure
-        // and a large enough to not want to copy?
-        Loop->VarVal->Ty = IterOnType;
+        if (Loop->InfersPtrTy) {
+            Loop->VarVal->Ty = PointerType::Create(IterOnType, Context);
+        } else {
+            Loop->VarVal->Ty = IterOnType;
+        }
     }
 
     ++LoopDepth;

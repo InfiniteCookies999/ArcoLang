@@ -527,6 +527,7 @@ namespace arco {
     struct IteratorLoopStmt : AstNode {
         IteratorLoopStmt() : AstNode(AstKind::ITERATOR_LOOP) {}
 
+        bool     InfersPtrTy = false;
         VarDecl* VarVal;
         Expr*    IterOnExpr;
 

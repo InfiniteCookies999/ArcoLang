@@ -1223,6 +1223,13 @@ arco::AstNode* arco::Parser::ParseLoop() {
             // part is infered.
             return ParseIteratorLoop(LoopTok, nullptr);
         }
+        case '*': {
+            if (PeekToken(2).Is(':')) {
+                return ParseIteratorLoop(LoopTok, nullptr);
+            } else {
+                return ParsePredicateLoop(LoopTok);
+            }
+        }
         case '=': {
             // loop ident = 
 
@@ -1353,6 +1360,7 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok, VarDeclLi
 
     
     // TODO: Deal with multiple declarations.
+    
     if (List) {
         Loop->VarVal = List->Decls[0];
     } else if (CTok.Is(TokenKind::IDENT)) {
@@ -1361,6 +1369,10 @@ arco::IteratorLoopStmt* arco::Parser::ParseIteratorLoop(Token LoopTok, VarDeclLi
         FinishVarDecl(Loop->VarVal);
         Loop->VarVal->Ty = nullptr;
         NextToken();
+        if (CTok.Is('*')) {
+            NextToken();
+            Loop->InfersPtrTy = true;
+        }
     }
 
     Match(':', "for iteration loop");
