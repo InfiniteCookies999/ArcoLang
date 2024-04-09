@@ -2603,7 +2603,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call,
     }
     
     for (ulen i = 0; i < Call->Args.size(); i++) {
-        LLArgs[ArgIdx++] = GenCallArg(Call->Args[i].E, false);
+        LLArgs[ArgIdx++] = GenCallArg(Call->Args[i], false);
     }
     
     llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(
@@ -2633,7 +2633,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call,
 
 llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    FuncDecl* CalledFunc,
-                                                   llvm::SmallVector<NonNamedValue>& Args,
+                                                   llvm::SmallVector<Expr*>&      Args,
                                                    llvm::SmallVector<NamedValue>& NamedArgs,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong) {
@@ -2756,7 +2756,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     if (!CalledFunc->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
             VarDecl* Param = CalledFunc->Params[i];
-            LLArgs[ArgOffset + i] = GenCallArg(Args[i].E, Param->ImplicitPtr);
+            LLArgs[ArgOffset + i] = GenCallArg(Args[i], Param->ImplicitPtr);
         }
         for (NamedValue& NamedArg : NamedArgs) {
             VarDecl* Param = NamedArg.VarRef;
@@ -2766,10 +2766,10 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         ulen i = 0;
         for (; i < CalledFunc->Params.size() - 1; i++) {
             VarDecl* Param = CalledFunc->Params[i];
-            LLArgs[ArgOffset++] = GenCallArg(Args[i].E, Param->ImplicitPtr);
+            LLArgs[ArgOffset++] = GenCallArg(Args[i], Param->ImplicitPtr);
         }
         if (VarArgsPassAlong) {
-            LLArgs[ArgOffset++] = GenRValue(Args[i].E); // TODO: implicit pointer here?
+            LLArgs[ArgOffset++] = GenRValue(Args[i]); // TODO: implicit pointer here?
         } else {
             ulen NumVarArgs = Args.size() - (CalledFunc->Params.size() - 1);
             VarDecl* LastParam = CalledFunc->Params[CalledFunc->Params.size() - 1];
@@ -2784,7 +2784,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             ulen ArrayIdx = 0;
             for (; i < Args.size(); i++, ArrayIdx++) {
                 llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx));
-                Builder.CreateStore(GenCallArg(Args[i].E, ImplicitPtr), LLElmAddr);
+                Builder.CreateStore(GenCallArg(Args[i], ImplicitPtr), LLElmAddr);
             }
         
             llvm::Value* LLVarArgs = CreateUnseenAlloca(GenType(LastParam->Ty), "tmp.varargs");
@@ -3318,7 +3318,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
 void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                                           StructDecl* Struct,
                                           StructType* StructTy,
-                                          llvm::SmallVector<NonNamedValue>& Args,
+                                          llvm::SmallVector<Expr*>&      Args,
                                           llvm::SmallVector<NamedValue>& NamedArgs) {
 
     // Initializing the VTable and storing pointers to it.
@@ -3331,12 +3331,12 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
 
     ulen i = 0;
     for (i = 0; i < Args.size(); i++) {
-        NonNamedValue Value = Args[i];
+        Expr* Value = Args[i];
         VarDecl* Field = Struct->Fields[i];
         if (Field->IsComptime()) continue;
         
         llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
-        GenAssignment(LLFieldAddr, Field->Ty, Value.E, Field->HasConstAddress);
+        GenAssignment(LLFieldAddr, Field->Ty, Value, Field->HasConstAddress);
     }
     for (NamedValue& Arg : NamedArgs) {
         VarDecl* Field = Arg.VarRef;
@@ -3398,7 +3398,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
         llvm::Value* LLArrStartPtr = GenMalloc(LLBaseTy, LLTotalLinearLength);
         
         if (!Alloc->Values.empty()) {
-            GenAssignment(LLArrStartPtr, BaseTy, Alloc->Values[0].E, false);
+            GenAssignment(LLArrStartPtr, BaseTy, Alloc->Values[0], false);
         } else if (BaseTy->GetKind() == TypeKind::Struct) {
             // Need to initialize fields so calling the default constructor.
             if (!Alloc->LeaveUninitialized) {
@@ -3452,7 +3452,7 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
             }
         } else {
             if (!Alloc->Values.empty()) {
-                GenAssignment(LLMalloc, TypeToAlloc, Alloc->Values[0].E, false);
+                GenAssignment(LLMalloc, TypeToAlloc, Alloc->Values[0], false);
             } else if (!Alloc->LeaveUninitialized) {
                 GenDefaultValue(TypeToAlloc, LLMalloc);
             }
@@ -5252,7 +5252,7 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
 // https://github.com/google/swiftshader/blob/master/src/Reactor/LLVMReactor.cpp
 llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                                      FuncDecl* CalledFunc,
-                                                     const llvm::SmallVector<NonNamedValue>& Args,
+                                                     const llvm::SmallVector<Expr*>&      Args,
                                                      const llvm::SmallVector<NamedValue>& NamedArgs) {
 #define CALL_GET_DECL1(Name)                                          \
 llvm::Value* Arg0 = GenRValue(GetArg(0));                             \
@@ -5271,7 +5271,7 @@ break;
 
     auto GetArg = [&Args, &NamedArgs](ulen Idx) {
         if (Idx < Args.size()) {
-            return Args[Idx].E;
+            return Args[Idx];
         }
         for (const NamedValue& NamedArg : NamedArgs) {
             const VarDecl* Param = NamedArg.VarRef;

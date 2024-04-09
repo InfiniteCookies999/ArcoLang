@@ -5,6 +5,7 @@
 #include "SpellChecking.h"
 #include "TermColors.h"
 #include "Generics.h"
+#include "ExpandedLoc.h"
 
 #include <sstream>
 
@@ -3109,8 +3110,8 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
     
     bool ArgHasError = false;
     for (auto& Arg : Call->Args) {
-        CheckNode(Arg.E);
-        if (Arg.E->Ty == Context.ErrorType)
+        CheckNode(Arg);
+        if (Arg->Ty == Context.ErrorType)
             ArgHasError = true;
     }
     for (auto& Arg : Call->NamedArgs) {
@@ -3156,7 +3157,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
         }
 
         for (ulen i = 0; i < Call->Args.size(); i++) {
-            Expr*    Arg         = Call->Args[i].E;
+            Expr*    Arg         = Call->Args[i];
             TypeInfo ParamTyInfo = FuncTy->ParamTypes[i];
 
             if (!IsAssignableTo(ParamTyInfo.Ty, Arg) ||
@@ -3173,7 +3174,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 
         // Creating casts for the arguments.
         for (ulen i = 0; i < Call->Args.size(); i++) {
-            Expr*    Arg         = Call->Args[i].E;
+            Expr*    Arg         = Call->Args[i];
             TypeInfo ParamTyInfo = FuncTy->ParamTypes[i];
             CreateCast(Arg, ParamTyInfo.Ty);
         }
@@ -3247,7 +3248,7 @@ void arco::SemAnalyzer::CheckFuncCall(FuncCall* Call) {
 arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
                                                         SourceLoc ErrorLoc,
                                                         FuncsList* Canidates,
-                                                        llvm::SmallVector<NonNamedValue>& Args,
+                                                        llvm::SmallVector<Expr*>&      Args,
                                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                                         bool& VarArgsPassAlong,
                                                         GenericBinding*& Binding,
@@ -3447,7 +3448,7 @@ arco::FuncDecl* arco::SemAnalyzer::CheckCallToCanidates(Identifier FuncName,
 }
 
 void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
-                                        llvm::SmallVector<NonNamedValue>& Args,
+                                        llvm::SmallVector<Expr*>&      Args,
                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                         bool VarArgsPassAlong,
                                         const BindableList* QualifiedTypes) {
@@ -3456,7 +3457,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
 
     if (!Selected->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
-            Expr* Arg = Args[i].E;
+            Expr* Arg = Args[i];
             VarDecl* Param = Selected->Params[i];
             if (Param->Ty->ContainsGenerics) {
                 CreateCast(Arg, (*QualifiedTypes)[Param->GenQualIdx]);
@@ -3467,7 +3468,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
     } else {
         ulen i = 0;
         for (; i < Selected->Params.size() - 1; i++) {
-            Expr* Arg = Args[i].E;
+            Expr* Arg = Args[i];
             VarDecl* Param = Selected->Params[i];
             if (Param->Ty->ContainsGenerics) {
                 CreateCast(Arg, (*QualifiedTypes)[Param->GenQualIdx]);
@@ -3479,7 +3480,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
             VarDecl* LastParam = Selected->Params[i];
             Type* VarArgTy = LastParam->Ty->AsSliceTy()->GetElementType();
             for (; i < Args.size(); i++) {
-                Expr* Arg = Args[i].E;
+                Expr* Arg = Args[i];
                 if (VarArgTy->ContainsGenerics) {
                     CreateCast(Arg, (*QualifiedTypes)[LastParam->GenQualIdx]);
                 } else {
@@ -3501,7 +3502,7 @@ void arco::SemAnalyzer::CreateCallCasts(FuncDecl* Selected,
 
 arco::FuncDecl* arco::SemAnalyzer::FindBestFuncCallCanidate(Identifier FuncName,
                                                             FuncsList* Canidates,
-                                                            llvm::SmallVector<NonNamedValue>& Args,
+                                                            llvm::SmallVector<Expr*>&      Args,
                                                             llvm::SmallVector<NamedValue>& NamedArgs,
                                                             bool& SelectedVarArgsPassAlong,
                                                             llvm::SmallVector<BindableList, 8>& AllBindableTypes,
@@ -3596,7 +3597,7 @@ HasGenerics = Canidate->IsGeneric()
 }
 
 bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
-                                          llvm::SmallVector<NonNamedValue>& Args,
+                                          llvm::SmallVector<Expr*>&      Args,
                                           llvm::SmallVector<NamedValue>& NamedArgs,
                                           ulen& NumConflicts,
                                           ulen& EnumImplicitConflicts,
@@ -3631,7 +3632,7 @@ bool arco::SemAnalyzer::CompareAsCanidate(FuncDecl* Canidate,
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
-        Expr* Arg = Args[i].E;
+        Expr* Arg = Args[i];
         
         VarDecl* Param;
         Type*    ParamType;
@@ -4281,7 +4282,7 @@ bool arco::SemAnalyzer::CheckGenericConstraint(FuncDecl* Canidate,
 
 void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
                                                           FuncsList* Canidates,
-                                                          const llvm::SmallVector<NonNamedValue>& Args,
+                                                          const llvm::SmallVector<Expr*>&      Args,
                                                           const llvm::SmallVector<NamedValue>& NamedArgs,
                                                           BindableList* StructBindableTypes) {
     
@@ -4319,10 +4320,10 @@ void arco::SemAnalyzer::DisplayErrorForNoMatchingFuncCall(SourceLoc ErrorLoc,
 
         llvm::SmallVector<TypeInfo> ArgTypes;
         ArgTypes.reserve(Args.size());
-        for (NonNamedValue Arg : Args) {
+        for (Expr* Arg : Args) {
             ArgTypes.push_back(TypeInfo{
-                Arg.E->Ty,
-                Arg.E->HasConstAddress
+                Arg->Ty,
+                Arg->HasConstAddress
                 });
         }
         std::string ErrorMsg = "Could not find overloaded " + std::string(CallType)
@@ -4409,7 +4410,7 @@ void arco::SemAnalyzer::DisplayErrorForSingleFuncForFuncCall(
     const char* CallType,
     SourceLoc CallLoc,
     llvm::SmallVector<TypeInfo>& ParamTypes,
-    const llvm::SmallVector<NonNamedValue>& Args,
+    const llvm::SmallVector<Expr*>&      Args,
     const llvm::SmallVector<NamedValue>& NamedArgs,
     ulen NumDefaultArgs,
     FuncDecl* CalledFunc,
@@ -4537,7 +4538,7 @@ std::string arco::SemAnalyzer::GetFuncDefForError(const llvm::SmallVector<TypeIn
 
 std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
                                                    llvm::SmallVector<TypeInfo>& ParamTypes,
-                                                   const llvm::SmallVector<NonNamedValue>& Args,
+                                                   const llvm::SmallVector<Expr*>&      Args,
                                                    const llvm::SmallVector<NamedValue>& NamedArgs,
                                                    ulen NumDefaultArgs,
                                                    bool IsVariadic,
@@ -4604,7 +4605,7 @@ std::string arco::SemAnalyzer::GetCallMismatchInfo(const char* CallType,
     ulen GenQualIdx = 0;
     bool EncounteredError = false;
     for (ulen ArgCount = 0; ArgCount < Args.size(); ArgCount++) {
-        Expr* Arg = Args[ArgCount].E;
+        Expr* Arg = Args[ArgCount];
         bool  ParamConstMemory, AllowImplicitPtr;
         Type* ParamTy;
         if (IsVariadic) {
@@ -4825,13 +4826,13 @@ void arco::SemAnalyzer::DisplayErrorForBadCallSiteType(FuncCall* Call) {
                 const char* TextPtr = BeginText.data();
 
                 llvm::SmallVector<std::pair<const char*, ulen>> ArgRangePairs;
-                for (NonNamedValue& Arg : Call->Args) {
-                    SourceLoc ArgLoc = Arg.ExpandedLoc;
+                for (Expr* Arg : Call->Args) {
+                    SourceLoc ArgLoc = GetExpandedLoc(Arg);
                     const char* TextStart = ArgLoc.Text.data();
                     ArgRangePairs.push_back({ TextStart, ArgLoc.Text.size() });
                 }
                 for (NamedValue& Arg : Call->NamedArgs) {
-                    SourceLoc ArgLoc = Arg.ExpandedLoc;
+                    SourceLoc ArgLoc = GetExpandedLoc(Arg.AssignValue);
                     const char* TextStart = ArgLoc.Text.data();
                     ArgRangePairs.push_back({ TextStart, ArgLoc.Text.size() });
                 }
@@ -5164,15 +5165,15 @@ void arco::SemAnalyzer::CheckStructInitializer(StructInitializer* StructInit) {
 
 arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructType* StructTy,
                                                        SourceLoc ErrorLoc,
-                                                       llvm::SmallVector<NonNamedValue>& Args,
+                                                       llvm::SmallVector<Expr*>&      Args,
                                                        llvm::SmallVector<NamedValue>& NamedArgs,
                                                        bool& VarArgPassAlong) {
 
     bool ArgsHaveErrors = false;
     for (ulen i = 0; i < Args.size(); i++) {
-        NonNamedValue Value = Args[i];
-        CheckNode(Value.E);
-        if (Value.E->Ty == Context.ErrorType) {
+        Expr* Value = Args[i];
+        CheckNode(Value);
+        if (Value->Ty == Context.ErrorType) {
             ArgsHaveErrors = true;
         }
     }
@@ -5207,14 +5208,14 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructType* StructTy,
     }
 
     for (ulen i = 0; i < Args.size(); i++) {
-        NonNamedValue Value = Args[i];
+        Expr* Value = Args[i];
         
         if (i >= Struct->Fields.size()) {
-            Error(Value.ExpandedLoc, "Too many fields in initializer");
+            Error(GetExpandedLoc(Value), "Too many fields in initializer");
             return nullptr;
         }
 
-        if (Value.E->Ty == Context.ErrorType) {
+        if (Value->Ty == Context.ErrorType) {
             continue;
         }
 
@@ -5228,16 +5229,16 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructType* StructTy,
             }
         }
         
-        if (!IsAssignableTo(FieldTy, Value.E)) {
+        if (!IsAssignableTo(FieldTy, Value)) {
             DisplayErrorForTypeMismatch(
                 "Cannot assign value of type '%s' to field of type '%s'",
-                Value.ExpandedLoc,
-                Value.E,
+                GetExpandedLoc(Value),
+                Value,
                 FieldTy);
-        } else if (ViolatesConstAssignment(Field, Value.E)) {
-            Error(Value.ExpandedLoc, "Cannot assign argument with const memory to non-const field");
+        } else if (ViolatesConstAssignment(Field, Value)) {
+            Error(GetExpandedLoc(Value), "Cannot assign argument with const memory to non-const field");
         } else {
-            CreateCast(Value.E, FieldTy);
+            CreateCast(Value, FieldTy);
         }
     }
     for (NamedValue& NamedArg : NamedArgs) {
@@ -5264,11 +5265,11 @@ arco::FuncDecl* arco::SemAnalyzer::CheckStructInitArgs(StructType* StructTy,
             if (!IsAssignableTo(Field->Ty, NamedArg.AssignValue)) {
                 DisplayErrorForTypeMismatch(
                     "Cannot assign value of type '%s' to field of type '%s'",
-                    NamedArg.ExpandedLoc,
+                    GetExpandedLoc(NamedArg.AssignValue),
                     NamedArg.AssignValue,
                     Field->Ty);
             } else if (ViolatesConstAssignment(Field, NamedArg.AssignValue)) {
-                Error(NamedArg.ExpandedLoc, "Cannot assign argument with const memory to non-const field");
+                Error(GetExpandedLoc(NamedArg.AssignValue), "Cannot assign argument with const memory to non-const field");
             } else {
                 CreateCast(NamedArg.AssignValue, Field->Ty);
             }
@@ -5301,19 +5302,19 @@ void arco::SemAnalyzer::CheckHeapAlloc(HeapAlloc* Alloc, Type* AssignToType) {
         if (Alloc->Values.size() > 1) {
             Error(Alloc->Loc, "Too many values to initialize type '%s'", Alloc->TypeToAlloc);
         } else {
-            CheckNode(Alloc->Values[0].E);
-            if (Alloc->Values[0].E->Ty != Context.ErrorType) {
-                if (TypeToAlloc->GetKind() == TypeKind::Array && Alloc->Values[0].E->IsNot(AstKind::ARRAY)) {
-                    Error(Alloc->Values[0].ExpandedLoc, "The array must be created inline");
+            CheckNode(Alloc->Values[0]);
+            if (Alloc->Values[0]->Ty != Context.ErrorType) {
+                if (TypeToAlloc->GetKind() == TypeKind::Array && Alloc->Values[0]->IsNot(AstKind::ARRAY)) {
+                    Error(GetExpandedLoc(Alloc->Values[0]), "The array must be created inline");
                 }
 
-                if (!IsAssignableTo(Alloc->TypeToAlloc, Alloc->Values[0].E)) {
-                    Error(Alloc->Values[0].ExpandedLoc,
+                if (!IsAssignableTo(Alloc->TypeToAlloc, Alloc->Values[0])) {
+                    Error(GetExpandedLoc(Alloc->Values[0]),
                         "Cannot initialize allocation of type '%s' with type '%s'",
                         Alloc->TypeToAlloc,
-                        Alloc->Values[0].E->Ty);
+                        Alloc->Values[0]->Ty);
                 } else {
-                    CreateCast(Alloc->Values[0].E, Alloc->TypeToAlloc);
+                    CreateCast(Alloc->Values[0], Alloc->TypeToAlloc);
                 }
             }
         }
@@ -5580,10 +5581,8 @@ void arco::SemAnalyzer::CheckTypeOrExpr(TypeOrExpr* TOrE) {
 
         // It is an array of struct types.
 
-        // TODO: It expects the expanded location.
         TOrE->ResolvedType = ArrayType::Create(StructTy,
                                                TOrE->AmbTyOfE->ResolvedExpr,
-                                               TOrE->AmbTyOfE->ResolvedExpr->Loc,
                                                false,
                                                Context);
         if (!FixupType(TOrE->ResolvedType)) {
@@ -6038,28 +6037,27 @@ bool arco::SemAnalyzer::FixupArrayType(ArrayType* ArrayTy, bool PartialGenFixup,
 
     if (!LengthExpr) return true;
     
-    SourceLoc ErrorLoc = ArrayTy->GetLengthExprErrorLoc();
     bool AllowDynamic = ArrayTy->AllowsForDynamic();
 
     if (!LengthExpr->IsFoldable && !AllowDynamic) {
-        Error(ErrorLoc, "Could not compute the length of the array at compile time");
+        Error(GetExpandedLoc(LengthExpr), "Could not compute the length of the array at compile time");
         return false;
     } else if (!LengthExpr->Ty->IsInt()) {
-        Error(ErrorLoc, "The length of the array is expected to be an integer");
+        Error(GetExpandedLoc(LengthExpr), "The length of the array is expected to be an integer");
         return false;
     }
 
     if (LengthExpr->IsFoldable) {
-        llvm::Value* LLValue = GenFoldable(ErrorLoc, LengthExpr);
+        llvm::Value* LLValue = GenFoldable(GetExpandedLoc(LengthExpr), LengthExpr);
         if (!LLValue) return false;
         
         llvm::ConstantInt* LLInt = llvm::cast<llvm::ConstantInt>(LLValue);
 
         if (LLInt->isZero()) {
-            Error(ErrorLoc, "The length of the array cannot be zero");
+            Error(GetExpandedLoc(LengthExpr), "The length of the array cannot be zero");
             return false;
         } else if (LengthExpr->Ty->IsSigned() && LLInt->isNegative()) {
-            Error(ErrorLoc, "The length of the array cannot be negative");
+            Error(GetExpandedLoc(LengthExpr), "The length of the array cannot be negative");
             return false;
         }
 
@@ -6311,7 +6309,6 @@ arco::Type* arco::SemAnalyzer::QualifyType(Type* Ty, const GenericBinding* Bindi
         
         ArrayType* QualArrTy = ArrayType::Create(QualElmTy,
                                                  ArrTy->GetLengthExpr(),
-                                                 ArrTy->GetLengthExprErrorLoc(),
                                                  ArrTy->AllowsForDynamic(),
                                                  Context);
         FixupArrayType(QualArrTy, false, false);

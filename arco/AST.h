@@ -738,17 +738,11 @@ namespace arco {
         ThisRef() : Expr(AstKind::THIS_REF) {}
     };
 
-    struct NonNamedValue {
-        SourceLoc ExpandedLoc; // Start to end of the expression.
-        Expr*     E;
-    };
-
     // This structure represents when calling a function
     // or initializing a struct by including explicitly
     // which parameter/field the value is to be associated
     // with by the name of the parameter/field.
     struct NamedValue {
-        SourceLoc  ExpandedLoc;
         SourceLoc  NameLoc;
         Identifier Name;
         Expr*      AssignValue;
@@ -758,8 +752,8 @@ namespace arco {
     struct FuncCall : Expr {
         FuncCall() : Expr(AstKind::FUNC_CALL) {}
     
-        llvm::SmallVector<NonNamedValue> Args;
-        llvm::SmallVector<NamedValue>    NamedArgs;
+        llvm::SmallVector<Expr*>      Args;
+        llvm::SmallVector<NamedValue> NamedArgs;
 
         // What is being "called". For example,
         // "func(4)" is a call on the site "func"
@@ -839,8 +833,8 @@ namespace arco {
         FuncDecl* CalledConstructor = nullptr;
         bool VarArgsPassAlong = false;
 
-        llvm::SmallVector<NonNamedValue> Args;
-        llvm::SmallVector<NamedValue>    NamedArgs;
+        llvm::SmallVector<Expr*>      Args;
+        llvm::SmallVector<NamedValue> NamedArgs;
 
     };
 
@@ -857,8 +851,8 @@ namespace arco {
         // to a default value.
         bool LeaveUninitialized = false;
 
-        llvm::SmallVector<NonNamedValue> Values;
-        llvm::SmallVector<NamedValue>    NamedValues;
+        llvm::SmallVector<Expr*>      Values;
+        llvm::SmallVector<NamedValue> NamedValues;
 
     };
 

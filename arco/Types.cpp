@@ -810,7 +810,6 @@ arco::ArrayType* arco::ArrayType::Create(Type* ElmTy, ulen Length, ArcoContext& 
 
 arco::ArrayType* arco::ArrayType::Create(Type*        ElmTy,
                                          Expr*        LengthExpr,
-                                         SourceLoc    LengthExprErrorLoc,
                                          bool         AllowDynamic,
                                          ArcoContext& Context) {
     ArrayType* Ty = new ArrayType;
@@ -818,8 +817,8 @@ arco::ArrayType* arco::ArrayType::Create(Type*        ElmTy,
     if (Ty->ElmTy->ContainsGenerics) {
         Ty->ContainsGenerics = true;
     }
-    Ty->LengthExprErrorLoc = LengthExprErrorLoc;
-    Ty->LengthExpr         = LengthExpr;
+    Ty->AllowDynamic = AllowDynamic;
+    Ty->LengthExpr   = LengthExpr;
     return Ty;
 }
 

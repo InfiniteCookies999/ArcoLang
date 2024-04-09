@@ -169,7 +169,7 @@ namespace arco {
                                  llvm::Value* LLAddr);
         llvm::Value* GenFuncCallGeneral(Expr* CallNode,
                                         FuncDecl* CalledFunc,
-                                        llvm::SmallVector<NonNamedValue>& Args,
+                                        llvm::SmallVector<Expr*>&      Args,
                                         llvm::SmallVector<NamedValue>& NamedArgs,
                                         llvm::Value* LLAddr,
                                         bool VarArgsPassAlong);
@@ -186,7 +186,7 @@ namespace arco {
         void GenStructInitArgs(llvm::Value* LLAddr,
                                StructDecl* Struct,
                                StructType* StructTy,
-                               llvm::SmallVector<NonNamedValue>& Args,
+                               llvm::SmallVector<Expr*>&      Args,
                                llvm::SmallVector<NamedValue>& NamedArgs);
         llvm::Value* GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAddr);
         llvm::Value* GenTypeOf(TypeOf* TOf);
@@ -336,7 +336,7 @@ namespace arco {
 
         llvm::Value* GenLLVMIntrinsicCall(SourceLoc CallLoc,
                                           FuncDecl* CalledFunc,
-                                          const llvm::SmallVector<NonNamedValue>& Args,
+                                          const llvm::SmallVector<Expr*>&      Args,
                                           const llvm::SmallVector<NamedValue>& NamedArgs);
 
         using ReplaceInstList = llvm::SmallVector<std::pair<llvm::Instruction*, llvm::Instruction*>, 64>;

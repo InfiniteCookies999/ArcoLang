@@ -6,6 +6,7 @@
 #include "Context.h"
 #include "FloatConversions.h"
 #include "Generics.h"
+#include "ExpandedLoc.h"
 
 namespace arco {
     
@@ -64,16 +65,6 @@ case TokenKind::KW_CSTR     \
 #define TYPE_KW_START_CASES \
 TYPE_KW_START_CASES_BUT_FN: \
 case TokenKind::KW_FN
-
-// P - Parsing code.
-// L - The Source location to assign to.
-#define CREATE_EXPANDED_SOURCE_LOC(P, L)           \
-SourceLoc ExpandedStartLoc = CTok.Loc;             \
-P;                                                 \
-L.LineNumber = ExpandedStartLoc.LineNumber;        \
-L.Text =                                           \
-    llvm::StringRef(ExpandedStartLoc.Text.begin(), \
-             PrevToken.GetText().end() - ExpandedStartLoc.Text.begin());
    
 
 arco::Parser::Parser(ArcoContext& Context, FileScope* FScope, Module* Mod, const SourceBuf FileBuffer)
@@ -1566,7 +1557,6 @@ arco::Type* arco::Parser::ParseType(bool IsRoot,
     } else if (CTok.Is('[')) {
 
         llvm::SmallVector<Expr*, 2>     LengthExprs;
-        llvm::SmallVector<SourceLoc, 2> ExpandedErrorLocs;
 
         bool IsImplicit = false;
         bool AlreadyReportedImplicitError = false, EncounteredNonImplicit = false;
@@ -1582,19 +1572,13 @@ arco::Type* arco::Parser::ParseType(bool IsRoot,
                 }
 
                 LengthExprs.push_back(nullptr);
-                ExpandedErrorLocs.push_back(SourceLoc{});
 
                 // Size information will be taken on implicitly.
                 NextToken(); // Consuming ']' token
             } else {
                 EncounteredNonImplicit = true;
 
-                SourceLoc ExpandedErrorLoc;
-                CREATE_EXPANDED_SOURCE_LOC(
-                    LengthExprs.push_back(ParseExpr()),
-                    ExpandedErrorLoc
-                )
-                    ExpandedErrorLocs.push_back(ExpandedErrorLoc);
+                LengthExprs.push_back(ParseExpr());
 
                 if (IsImplicit && !AlreadyReportedImplicitError) {
                     Error(CTok, "Implicit array subscripts require all subscripts to be implicit.");
@@ -1606,7 +1590,7 @@ arco::Type* arco::Parser::ParseType(bool IsRoot,
         }
 
         for (long long i = LengthExprs.size() - 1; i >= 0; i--) {
-            Ty = ArrayType::Create(Ty, LengthExprs[i], ExpandedErrorLocs[i], AllowDynamicArray, Context);
+            Ty = ArrayType::Create(Ty, LengthExprs[i], AllowDynamicArray, Context);
         }
     }
 
@@ -2757,7 +2741,7 @@ void arco::Parser::SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth) 
     }
 }
 
-void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
+void arco::Parser::ParseAggregatedValues(llvm::SmallVector<Expr*>&      Values,
                                          llvm::SmallVector<NamedValue>& NamedValues,
                                          RecoveryStrat Strat) {
     u16 EndDelimTok = Strat == RecoveryStrat::CallArgs ? ')' : '}';
@@ -2774,35 +2758,27 @@ void arco::Parser::ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Value
 
             NamedValue NamedVal;
             NamedVal.NameLoc = CTok.Loc;
-            CREATE_EXPANDED_SOURCE_LOC(
-                NamedVal.Name = ParseIdentifier("Expected identifier for argument name");
-                NextToken(); // Consuming '=' token.
-                NamedVal.AssignValue = ParseExpr();,
-                NamedVal.ExpandedLoc
-            );
+            NamedVal.Name = ParseIdentifier("Expected identifier for argument name");
+            NextToken(); // Consuming '=' token.
+            NamedVal.AssignValue = ParseExpr();
 
             auto Itr = std::find_if(NamedValues.begin(), NamedValues.end(),
                 [&NamedVal](const NamedValue& V) {
                     return V.Name == NamedVal.Name;
                 });
             if (Itr != NamedValues.end()) {
-                Error(NamedVal.ExpandedLoc, "Duplicate named value");
+                Error(NamedVal.NameLoc, "Duplicate named value");
             }
 
             NamedValues.push_back(NamedVal);
         } else {
 
-            NonNamedValue NonNamedVal;
-            CREATE_EXPANDED_SOURCE_LOC(
-                NonNamedVal.E = ParseExpr(),
-                NonNamedVal.ExpandedLoc
-            );
-
+            Expr* NonNamedVal = ParseExpr();
             Values.push_back(NonNamedVal);
 
-            if (!NamedValues.empty() && NonNamedVal.E->Ty != Context.ErrorType &&
+            if (!NamedValues.empty() && NonNamedVal->Ty != Context.ErrorType &&
                 !AlreadyReportedErrAboutNamedValuesOrder) {
-                Error(NonNamedVal.ExpandedLoc, "Non-named argumens should come before named arguments");
+                Error(GetExpandedLoc(NonNamedVal), "Non-named argumens should come before named arguments");
                 AlreadyReportedErrAboutNamedValuesOrder = true;
             }
         }
@@ -3056,11 +3032,21 @@ Result->V = FoldFunc(OpTok,  \
     RHS->V,                   \
     OpApplies);
     
+#define EXPAND_LOC(R)         \
+R->Loc.Text =                 \
+    llvm::StringRef(          \
+        LHS->Loc.Text.data(), \
+        (RHS->Loc.Text.data() + RHS->Loc.Text.size()) \
+- LHS->Loc.Text.data()        \
+        );                    \
+R->Loc.LineNumber = LHS->Loc.LineNumber;
 
-#define FOLD(V, FoldFunc) {  \
-    APPLY_OP(V, FoldFunc)    \
-if (OpApplies)               \
-    return Result; }
+
+#define FOLD(V, FoldFunc) { \
+    APPLY_OP(V, FoldFunc)   \
+if (OpApplies) {            \
+    EXPAND_LOC(Result)      \
+    return Result; } }
 
     Type* OrgLHSTy = LHS->Ty, * OrgRHSTy = RHS->Ty;
     switch (OrgLHSTy->GetKind()) {
@@ -3125,8 +3111,10 @@ if (OpApplies)               \
                     if (LHS->SignedIntValue > std::numeric_limits<i32>::max()) {
                         LHS->Ty = Context.Int64Type;
                     }
-                    if (OpApplies)
+                    if (OpApplies) {
+                        EXPAND_LOC(LHS);
                         return LHS;
+                    }
                     break;
                 }
                 case TypeKind::Int8:
@@ -3186,6 +3174,7 @@ if (OpApplies)               \
 
 #undef FOLD
 #undef APPLY_OP
+#undef EXPAND_LOC
 }
 
 arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
@@ -3193,6 +3182,12 @@ arco::Expr* arco::Parser::NewBinaryOp(Token OpTok, Expr* LHS, Expr* RHS) {
         // We fold the numbers!
         NumberLiteral* LHSNumber = static_cast<NumberLiteral*>(LHS);
         NumberLiteral* RHSNumber = static_cast<NumberLiteral*>(RHS);
+        if (LHSNumber->Ty == Context.ErrorType ||
+            RHSNumber->Ty == Context.ErrorType) {
+            ErrorNode* ErrNode = NewNode<ErrorNode>(SourceLoc{});
+            ErrNode->Ty = Context.ErrorType;
+            return ErrNode;
+        }
 
         if (!LHSNumber->TempFold) {
             return FoldNumbers(OpTok, LHSNumber, RHSNumber, LHSNumber);

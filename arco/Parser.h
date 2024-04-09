@@ -163,7 +163,7 @@ namespace arco {
         // array lengths at the given depths.
         void SetRequiredArrayLengthForArray(Array* Arr, ulen CArrayDepth = 0);
         
-        void ParseAggregatedValues(llvm::SmallVector<NonNamedValue>& Values,
+        void ParseAggregatedValues(llvm::SmallVector<Expr*>&      Values,
                                    llvm::SmallVector<NamedValue>& NamedValues,
                                    RecoveryStrat Strat);
 
