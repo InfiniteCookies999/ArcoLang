@@ -245,6 +245,8 @@ namespace arco {
         void SetFieldsHaveAssignment(bool Tof);
 
         void SetNeedsDestruction(bool Tof);
+        void SetNeedsMove(bool Tof);
+        void SetNeedsCopy(bool Tof);
 
         void SetMustForceRaise(bool Tof);
 
@@ -257,6 +259,8 @@ namespace arco {
         
         llvm::StructType* LLStructTy           = nullptr;
         llvm::Function*   LLDefaultConstructor = nullptr;
+        llvm::Function*   LLMoveConstructor    = nullptr;
+        llvm::Function*   LLCopyConstructor    = nullptr;
         llvm::Function*   LLDestructor         = nullptr;
         // Offset past the pointers into the vtable.
         ulen              VirtualOffset = 0;
@@ -273,6 +277,8 @@ namespace arco {
         // destructor or if the structure contains another
         // structure which needs destruction.
         bool NeedsDestruction;
+        bool NeedsMove;
+        bool NeedsCopy;
         // If the struct implements the Error interface and this
         // is set to false then the error may be raised without the
         // function having the error as one of its raised errors.

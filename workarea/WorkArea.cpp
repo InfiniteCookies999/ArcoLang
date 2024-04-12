@@ -24,16 +24,16 @@ int main() {
     
     if (!arco::FoundCompileError) {
         std::string StdOutResult;
-        int Ok = arco::ExeHiddenProcess("program", StdOutResult);
-        
-        if (!Ok) {
-            llvm::outs() << "Failed to run the compiled program\n";
-            return 1;
-        } else {
-            llvm::outs() << '\n';
-            llvm::outs() << "Program Standard Output: \"";
-            llvm::outs() << StdOutResult << "\"\n";
-        }
+        //int Ok = arco::ExeHiddenProcess("program", StdOutResult);
+        //
+        //if (!Ok) {
+        //    llvm::outs() << "Failed to run the compiled program\n";
+        //    return 1;
+        //} else {
+        //    llvm::outs() << '\n';
+        //    llvm::outs() << "Program Standard Output: \"";
+        //    llvm::outs() << StdOutResult << "\"\n";
+        //}
     }
     
     return 0;

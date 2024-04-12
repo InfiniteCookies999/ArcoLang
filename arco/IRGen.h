@@ -34,6 +34,8 @@ namespace arco {
         void GenGlobalVar(VarDecl* Global);
 
         void GenImplicitDefaultConstructor(StructType* StructTy);
+        void GenImplicitCopyConstructor(StructType* StructTy);
+        void GenImplicitMoveConstructor(StructType* StructTy);
         void GenImplicitDestructor(StructType* StructTy);
 
         void GenGenericStructConstructorSharedInstructions(StructType* StructTy);
@@ -283,7 +285,7 @@ namespace arco {
 
         void CallDestructors(llvm::SmallVector<DestroyObject>& Objects);
         void CallDestructors(Type* Ty, llvm::Value* LLAddr);
-        
+
         void DestroyLocScopeInitializedObjects();
         void DestroyCurrentlyInitializedObjects();
         

@@ -434,10 +434,18 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
     CStruct = Struct;
 
     bool NeedsDestruction     = false;
+    bool NeedsMove            = false;
+    bool NeedsCopy            = false;
     bool FieldsHaveAssignment = false;
 
     if (Struct->Destructor) {
         NeedsDestruction = true;
+    }
+    if (Struct->MoveConstructor) {
+        NeedsMove = true;
+    }
+    if (Struct->CopyConstructor) {
+        NeedsCopy = true;
     }
 
     // Skip over pointers to vtable.
@@ -465,18 +473,22 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
             StructDecl* OStruct = StructTy->GetStruct();
             if (OStruct) {
                 FieldsHaveAssignment |= StructTy->DoesFieldsHaveAssignment();
-                NeedsDestruction |= StructTy->DoesNeedsDestruction();
+                NeedsDestruction     |= StructTy->DoesNeedsDestruction();
+                NeedsMove            |= StructTy->DoesNeedsMove();
+                NeedsCopy            |= StructTy->DoesNeedsCopy();
             }
         } else if (Field->Ty->GetKind() == TypeKind::Array) {
             ArrayType* ArrayTy = Field->Ty->AsArrayTy();
 
             Type* BaseTy = ArrayTy->GetBaseType();
             if (BaseTy->GetKind() == TypeKind::Struct) {
-                StructType* StructTy = Field->Ty->AsStructType();
-                StructDecl* OStruct = StructTy->GetStruct();
+                StructType* StructTy = BaseTy->AsStructType();
+                StructDecl* OStruct  = StructTy->GetStruct();
                 if (OStruct) {
                     FieldsHaveAssignment |= StructTy->DoesFieldsHaveAssignment();
-                    NeedsDestruction |= StructTy->DoesNeedsDestruction();
+                    NeedsDestruction     |= StructTy->DoesNeedsDestruction();
+                    NeedsMove            |= StructTy->DoesNeedsMove();
+                    NeedsCopy            |= StructTy->DoesNeedsCopy();
                 }
             }
         }
@@ -484,6 +496,8 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
 
     Struct->SetFieldsHaveAssignment(FieldsHaveAssignment);
     Struct->SetNeedsDestruction(NeedsDestruction);
+    Struct->SetNeedsCopy(NeedsCopy);
+    Struct->SetNeedsMove(NeedsMove);
 
     // Keep this below checking fields because the the function may end up
     // being part of the function signature.
@@ -618,6 +632,11 @@ void arco::SemAnalyzer::CheckStructDecl(StructDecl* Struct) {
             A.CheckFuncParams(Func);
             CheckMoveOrCopyConstructor(Func, IsCopy ? "Copy" : "Move");
             RequestGenNonGenericFunc(Context, Func);
+            if (IsCopy) {
+                Struct->LLCopyConstructor = Func->LLFunction;
+            } else {
+                Struct->LLMoveConstructor = Func->LLFunction;
+            }
         }
     };
 
@@ -6185,6 +6204,14 @@ void arco::SemAnalyzer::FinishNonGenericStructType(ArcoContext& Context, StructT
 
             if (StructTy->DoesFieldsHaveAssignment() && !Struct->DefaultConstructor) {
                 IRGen.GenImplicitDefaultConstructor(StructTy);
+            }
+
+            if (StructTy->DoesNeedsMove() && !Struct->MoveConstructor) {
+                IRGen.GenImplicitMoveConstructor(StructTy);
+            }
+
+            if (StructTy->DoesNeedsCopy() && !Struct->CopyConstructor) {
+                IRGen.GenImplicitCopyConstructor(StructTy);
             }
         }
     }

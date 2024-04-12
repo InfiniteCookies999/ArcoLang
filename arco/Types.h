@@ -128,7 +128,7 @@ namespace arco {
         const Type* UnboxGeneric() const;
 
         bool TypeNeedsDestruction() const;
-
+       
         Type* GetPointerElementType(ArcoContext& Context) const;
 
         ulen GetTrivialTypeSizeInBytes() const;
@@ -285,6 +285,8 @@ namespace arco {
 
         bool DoesFieldsHaveAssignment() const;
         bool DoesNeedsDestruction() const;
+        bool DoesNeedsMove() const;
+        bool DoesNeedsCopy() const;
         bool DoesMustForceRaise() const;
 
         llvm::StructType* LLStructType;

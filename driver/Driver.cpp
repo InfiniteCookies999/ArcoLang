@@ -62,6 +62,10 @@ Possible options:
     -build
         Builds an existing arco project.
 
+    -mod=(<name>, <source>)
+        Adds a source (file or directory + sub-directories) under the
+        given module name.
+
     -run
         Executes the program after it is compiled and linked.
 
@@ -349,7 +353,7 @@ void RunBuildCommand(int argc, char* argv[], int i) {
     
     if (Hash != OriginalHash) {
         // Different hashes so have to recompile!
-        llvm::outs() << ">> Building build.arco\n\n";
+        llvm::outs() << ">> Building build.arco\n";
 
         std::string Result;
         arco::ExeHiddenProcess("arco build.arco -out=build -out-dir=.arco_build", Result);
@@ -368,6 +372,7 @@ void RunBuildCommand(int argc, char* argv[], int i) {
         }
         OutHashFileStream << Hash;
 
+        llvm::outs() << ">> Finished building build.arco\n\n";
     }
 
     std::string Cmd = ".arco_build/build ";
@@ -449,6 +454,62 @@ int main(int argc, char* argv[]) {
     });
 
     llvm::SmallVector<arco::Source> Sources;
+    OptManager.AddOption("mod", [&Compiler, &Sources](int ArgNum, llvm::StringRef ValPart) {
+        llvm::StringRef ModPair = GetOptValue(ArgNum, ValPart, "mod pair");
+        if (ModPair.empty()) return;
+
+        const char* Ptr = ModPair.data();
+        if (*Ptr != '(') {
+            DriverError(ArgNum, "Expected '(' character for module pair");
+            return;
+        }
+        ++Ptr;
+
+        const char* NameStartPtr = Ptr;
+#define IsIdentChar (arco::IsAlpha(*Ptr))
+        if (!IsIdentChar) {
+            DriverError(ArgNum, "Expected alphabetic character to start mod name");
+            return;
+        }
+
+        while (IsIdentChar) {
+            ++Ptr;
+        }
+
+        llvm::StringRef ModName =
+            llvm::StringRef(NameStartPtr, Ptr - NameStartPtr);
+        if (*Ptr != ',') {
+            DriverError(ArgNum, "Expected ',' character to seperate mod name from source");
+            return;
+        }
+        ++Ptr;
+
+        const char* PathStartPtr = Ptr;
+        const char* End = ModPair.end();
+        while (*Ptr != ')' && Ptr != End) {
+            ++Ptr;
+        }
+
+        if (PathStartPtr == Ptr) {
+            DriverError(ArgNum, "Path cannot be empty");
+            return;
+        }
+
+        llvm::StringRef Path =
+            llvm::StringRef(PathStartPtr, Ptr - PathStartPtr);
+        if (*Ptr != ')') {
+            DriverError(ArgNum, "Expected ')' character for module pair");
+            return;
+        }
+
+#undef IsIdentChar
+        Sources.push_back(arco::Source{
+            false,
+            ModName,
+            Path
+        });
+    });
+    
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
             llvm::StringRef Opt = llvm::StringRef(argv[i] + 1);

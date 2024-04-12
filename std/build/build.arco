@@ -1,6 +1,12 @@
 namespace build;
 
+private ModSource struct {
+    name String;
+    path String;
+}
+
 private sources       List<String>;
+private mod_sources   List<ModSource>;
 private libraries     List<String>;
 private library_paths List<String>;
 
@@ -14,7 +20,7 @@ emit_debug_info := false;
 // The directory to put the output files such as
 // the executable. Will create the needed directories
 // if they do not exists.
-output_directory := String{ "" };
+output_directory String;
 
 // Executes the program after it is compiled and linked.
 run_after_build := false;
@@ -74,6 +80,21 @@ fn add_source(source String) {
 }
 
 /*
+ * Add a source under the give module name.
+ *
+ * @Param name The module name for which module to add
+ *        the source to.
+ * @Param source A path to a .arco file or a directory
+ *               containing .arco files.
+ */
+fn add_module_source(name String, source String) {
+    mod_sources.add(ModSource{
+        moveobj(name),
+        moveobj(source)
+    });
+}
+
+/*
  * Adds an external library to be linked against.
  */
 fn add_library(library String) {
@@ -100,6 +121,14 @@ fn execute(argc int, argv char**, show_cmd := false) {
     command := String{ "arco " };
     loop i : 0 ..< sources.length {
         command.append(sources.get_ref(i)).append(" ");
+    }
+    loop i : 0 ..< mod_sources.length {
+        mod_source := mod_sources.get_ref(i);
+        command.append("-mod=(\"")
+               .append(mod_source.name)
+               .append("\",\"")
+               .append(mod_source.path)
+               .append("\") ");
     }
 
     if !output_name.empty() {

@@ -93,6 +93,14 @@ void arco::StructDecl::SetNeedsDestruction(bool Tof) {
     SET_STATE_INFO(NeedsDestruction, Tof);
 }
 
+void arco::StructDecl::SetNeedsMove(bool Tof) {
+    SET_STATE_INFO(NeedsMove, Tof);
+}
+
+void arco::StructDecl::SetNeedsCopy(bool Tof) {
+    SET_STATE_INFO(NeedsCopy, Tof);
+}
+
 void arco::StructDecl::SetMustForceRaise(bool Tof) {
     SET_STATE_INFO(MustForceRaise, Tof);
 }

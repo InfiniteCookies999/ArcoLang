@@ -199,36 +199,36 @@ void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
     namespace fs = std::filesystem;
     for (const Source& Source : Sources) {
         const char* FLPath = Source.Path.data();
-        fs::path Path = fs::path(FLPath);
+        fs::path Path = fs::path(std::string_view(FLPath, Source.Path.size()));
 
         std::error_code EC;
         if (!fs::exists(Path, EC) || EC) {
             if (EC) {
                 Logger::GlobalError(llvm::errs(),
-                    "Could not check if source \"%s\" exist. Please check permissions", FLPath);
+                    "Could not check if source \"%s\" exist. Please check permissions", Source.Path);
             } else {
                 Logger::GlobalError(llvm::errs(),
-                    "Source \"%s\" does not exist", FLPath);
+                    "Source \"%s\" does not exist", Source.Path);
             }
             continue;
         }
 
         Module* Mod = Context.ModNamesToMods[Source.ModName];
 
-        if (fs::is_directory(FLPath)) {
+        if (fs::is_directory(Path)) {
             if (Source.PartOfMainProject) {
                 std::string PathS = Path.generic_string();
-                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+                ParseDirectoryFiles(Mod, Path, PathS.length() + (PathS.back() == '/' ? 0 : 1));
             } else {
                 std::string PathS = Path.has_parent_path() ? Path.parent_path().generic_string()
                                                            : Path.generic_string();
-                ParseDirectoryFiles(Mod, FLPath, PathS.length() + (PathS.back() == '/' ? 0 : 1));
+                ParseDirectoryFiles(Mod, Path, PathS.length() + (PathS.back() == '/' ? 0 : 1));
             }
         } else {
             // The user specified an absolute path to a file.
             if (Path.extension() != ".arco") {
                 Logger::GlobalError(llvm::errs(),
-                        "Expected source file with extension type .arco for file: \"%s\"", FLPath);
+                        "Expected source file with extension type .arco for file: \"%s\"", Source.Path);
                 continue;
             }
 

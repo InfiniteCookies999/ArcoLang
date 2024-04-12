@@ -481,6 +481,226 @@ void arco::IRGenerator::GenImplicitDefaultConstructor(StructType* StructTy) {
     
 }
 
+void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
+
+    llvm::Type* LLStructTy = llvm::PointerType::get(StructTy->LLStructType, 0);
+    llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(LLContext),
+        { LLStructTy, LLStructTy },
+        false
+    );
+
+    StructDecl* Struct = StructTy->GetStruct();
+
+    LLFunc = llvm::Function::Create(
+        LLFuncType,
+        llvm::Function::ExternalLinkage,
+        std::string("copy.constructor.") + Struct->Name.Text,
+        LLModule
+    );
+    LLFunc->setDSOLocal(true);
+    if (Struct->IsGeneric()) {
+        StructTy->FoundBinding->StructInfo->LLCopyConstructor = LLFunc;
+    } else {
+        Struct->LLCopyConstructor = LLFunc;
+    }
+
+    llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
+    Builder.SetInsertPoint(LLEntryBlock);
+
+    LLThis = LLFunc->getArg(0);
+    LLThis->setName("this");
+
+    llvm::Value* LLOther = LLFunc->getArg(1);
+
+    for (VarDecl* Field : Struct->Fields) {
+        if (Field->IsComptime()) continue;
+
+        llvm::Value* LLFieldAddr      = CreateStructGEP(LLThis, Field->LLFieldIdx);
+        llvm::Value* LLOtherFieldAddr = CreateStructGEP(LLOther, Field->LLFieldIdx);
+        
+        if (Field->Ty->GetKind() == TypeKind::Struct) {
+            StructType* StructTy = Field->Ty->AsStructType();
+            CopyStructObject(LLFieldAddr, LLOtherFieldAddr, StructTy);
+        } else if (Field->Ty->GetKind() == TypeKind::Array) {
+            ArrayType* ArrayTy = Field->Ty->AsArrayTy();
+            Type* BaseTy = ArrayTy->GetBaseType();
+
+            if (BaseTy->GetKind() == TypeKind::Struct) {
+                StructType* StructTy = BaseTy->AsStructType();
+                if (StructTy->DoesNeedsCopy()) {
+
+                    llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
+                    
+                    llvm::Value* LLArrFromStartPtr   = MultiDimensionalArrayToPointerOnly(LLOtherFieldAddr, ArrayTy);
+                    llvm::Value* LLArrToStartPtr     = MultiDimensionalArrayToPointerOnly(LLFieldAddr, ArrayTy);
+
+                    llvm::BasicBlock* LoopBB    = llvm::BasicBlock::Create(LLContext, "array.loop", LLFunc);
+                    llvm::BasicBlock* LoopEndBB = llvm::BasicBlock::Create(LLContext, "array.end", LLFunc);
+                 
+                    llvm::BasicBlock* LLCurBlock = Builder.GetInsertBlock();
+
+                    Builder.CreateBr(LoopBB);
+                    Builder.SetInsertPoint(LoopBB);
+
+                    llvm::PHINode* LLArrayIdx =
+                        Builder.CreatePHI(GetSystemIntType(LLContext, LLModule), 2, "arr.idx");
+
+                    // Store zero to start the loop.
+                    LLArrayIdx->addIncoming(GetSystemUInt(0), LLCurBlock);
+                    
+                    llvm::Value* LLFromStructAddr = CreateInBoundsGEP(LLArrFromStartPtr, { LLArrayIdx });
+                    llvm::Value* LLToStructAddr   = CreateInBoundsGEP(LLArrToStartPtr  , { LLArrayIdx });
+
+                    StructDecl* Struct = StructTy->GetStruct();
+                    if (Struct->IsGeneric()) {
+                        Builder.CreateCall(StructTy->FoundBinding->StructInfo->LLCopyConstructor,
+                                           { LLToStructAddr, LLFromStructAddr });
+                    } else {
+                        Builder.CreateCall(Struct->LLCopyConstructor, { LLToStructAddr, LLFromStructAddr });
+                    }
+
+                    llvm::Value* LLAraryIdxNext  = Builder.CreateAdd(LLArrayIdx, GetSystemUInt(1), "arr.idx.next");
+                    llvm::Value* LLArrayInitDone = Builder.CreateICmpEQ(LLAraryIdxNext, LLTotalLinearLength, "arr.done.cond");
+                    
+                    // Store the next index for indexing the array.
+                    LLArrayIdx->addIncoming(LLAraryIdxNext, LoopBB);
+                    Builder.CreateCondBr(LLArrayInitDone, LoopEndBB, LoopBB);
+
+                    // End of loop
+                    Builder.SetInsertPoint(LoopEndBB);
+
+                    continue;
+                } // else fallback on memcpy
+            } 
+            
+            ulen TotalLinearLength = ArrayTy->GetTotalLinearLength();
+
+            llvm::Type* LLDestTy = GenType(BaseTy);
+            llvm::Align LLAlignment = GetAlignment(LLDestTy);
+            Builder.CreateMemCpy(
+                LLFieldAddr, LLAlignment,
+                LLOtherFieldAddr, LLAlignment,
+                TotalLinearLength * SizeOfTypeInBytes(LLDestTy)
+            );
+        } else {
+            Builder.CreateStore(CreateLoad(LLOtherFieldAddr), LLFieldAddr);
+        }
+    }
+
+    Builder.CreateRetVoid();
+
+}
+
+void arco::IRGenerator::GenImplicitMoveConstructor(StructType* StructTy) {
+
+    llvm::Type* LLStructTy = llvm::PointerType::get(StructTy->LLStructType, 0);
+    llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(LLContext),
+        { LLStructTy, LLStructTy },
+        false
+    );
+
+    StructDecl* Struct = StructTy->GetStruct();
+
+    LLFunc = llvm::Function::Create(
+        LLFuncType,
+        llvm::Function::ExternalLinkage,
+        std::string("move.constructor.") + Struct->Name.Text,
+        LLModule
+    );
+    LLFunc->setDSOLocal(true);
+    if (Struct->IsGeneric()) {
+        StructTy->FoundBinding->StructInfo->LLMoveConstructor = LLFunc;
+    } else {
+        Struct->LLMoveConstructor = LLFunc;
+    }
+
+    llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
+    Builder.SetInsertPoint(LLEntryBlock);
+
+    LLThis = LLFunc->getArg(0);
+    LLThis->setName("this");
+
+    llvm::Value* LLOther = LLFunc->getArg(1);
+
+    for (VarDecl* Field : Struct->Fields) {
+        if (Field->IsComptime()) continue;
+
+        llvm::Value* LLFieldAddr      = CreateStructGEP(LLThis, Field->LLFieldIdx);
+        llvm::Value* LLOtherFieldAddr = CreateStructGEP(LLOther, Field->LLFieldIdx);
+    
+        if (Field->Ty->GetKind() == TypeKind::Struct) {
+            StructType* StructTy = Field->Ty->AsStructType();
+            MoveStructObject(LLFieldAddr, LLOtherFieldAddr, StructTy);
+        } else if (Field->Ty->GetKind() == TypeKind::Array) {
+            ArrayType* ArrayTy = Field->Ty->AsArrayTy();
+            Type* BaseTy = ArrayTy->GetBaseType();
+            
+            if (BaseTy->GetKind() == TypeKind::Struct) {
+                StructType* StructTy = BaseTy->AsStructType();
+                if (StructTy->DoesNeedsCopy()) {
+                
+                    llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
+                    
+                    llvm::Value* LLArrFromStartPtr   = MultiDimensionalArrayToPointerOnly(LLOtherFieldAddr, ArrayTy);
+                    llvm::Value* LLArrToStartPtr     = MultiDimensionalArrayToPointerOnly(LLFieldAddr, ArrayTy);
+
+                    llvm::BasicBlock* LoopBB    = llvm::BasicBlock::Create(LLContext, "array.loop", LLFunc);
+                    llvm::BasicBlock* LoopEndBB = llvm::BasicBlock::Create(LLContext, "array.end", LLFunc);
+                 
+                    llvm::BasicBlock* LLCurBlock = Builder.GetInsertBlock();
+
+                    Builder.CreateBr(LoopBB);
+                    Builder.SetInsertPoint(LoopBB);
+
+                    llvm::PHINode* LLArrayIdx =
+                        Builder.CreatePHI(GetSystemIntType(LLContext, LLModule), 2, "arr.idx");
+
+                    // Store zero to start the loop.
+                    LLArrayIdx->addIncoming(GetSystemUInt(0), LLCurBlock);
+                    
+                    llvm::Value* LLFromStructAddr = CreateInBoundsGEP(LLArrFromStartPtr, { LLArrayIdx });
+                    llvm::Value* LLToStructAddr   = CreateInBoundsGEP(LLArrToStartPtr  , { LLArrayIdx });
+
+                    StructDecl* Struct = StructTy->GetStruct();
+                    if (Struct->IsGeneric()) {
+                        Builder.CreateCall(StructTy->FoundBinding->StructInfo->LLMoveConstructor,
+                                           { LLToStructAddr, LLFromStructAddr });
+                    } else {
+                        Builder.CreateCall(Struct->LLMoveConstructor, { LLToStructAddr, LLFromStructAddr });
+                    }
+
+                    llvm::Value* LLAraryIdxNext  = Builder.CreateAdd(LLArrayIdx, GetSystemUInt(1), "arr.idx.next");
+                    llvm::Value* LLArrayInitDone = Builder.CreateICmpEQ(LLAraryIdxNext, LLTotalLinearLength, "arr.done.cond");
+                    
+                    // Store the next index for indexing the array.
+                    LLArrayIdx->addIncoming(LLAraryIdxNext, LoopBB);
+                    Builder.CreateCondBr(LLArrayInitDone, LoopEndBB, LoopBB);
+
+                    // End of loop
+                    Builder.SetInsertPoint(LoopEndBB);
+
+                    continue;
+                } // else fallback on memcpy
+
+                ulen TotalLinearLength = ArrayTy->GetTotalLinearLength();
+
+                llvm::Type* LLDestTy = GenType(BaseTy);
+                llvm::Align LLAlignment = GetAlignment(LLDestTy);
+                Builder.CreateMemCpy(
+                    LLFieldAddr, LLAlignment,
+                    LLOtherFieldAddr, LLAlignment,
+                    TotalLinearLength * SizeOfTypeInBytes(LLDestTy)
+                );
+            }
+        }
+    }
+
+    Builder.CreateRetVoid();
+
+}
+
 void arco::IRGenerator::GenGenericStructConstructorSharedInstructions(StructType* StructTy) {
     StructDecl* Struct = StructTy->GetStruct();
 
@@ -4486,7 +4706,7 @@ void arco::IRGenerator::GenReturnByStoreToElisionRetSlot(Expr* Value, llvm::Valu
 void arco::IRGenerator::CopyOrMoveStructObject(llvm::Value* LLToAddr,
                                                llvm::Value* LLFromAddr,
                                                StructType*  StructTy) {
-    if (StructTy->GetStruct()->MoveConstructor) {
+    if (StructTy->DoesNeedsMove()) {
         MoveStructObject(LLToAddr, LLFromAddr, StructTy);
     } else {
         CopyStructObject(LLToAddr, LLFromAddr, StructTy);
@@ -4500,7 +4720,7 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
     // for the relevent fields.
 
     StructDecl* Struct = StructTy->GetStruct();
-    if (Struct->CopyConstructor) {
+    if (StructTy->DoesNeedsCopy()) {
         // It has a copy constructor let's use that.
         // -- DEBUG
         //llvm::outs() << "LLToAddr Type: "   << LLValTypePrinter(LLToAddr) << "\n";
@@ -4508,7 +4728,7 @@ void arco::IRGenerator::CopyStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
         if (Struct->IsGeneric()) {
             Builder.CreateCall(StructTy->FoundBinding->StructInfo->LLCopyConstructor, { LLToAddr, LLFromAddr });
         } else {
-            Builder.CreateCall(Struct->CopyConstructor->LLFunction, { LLToAddr, LLFromAddr });
+            Builder.CreateCall(Struct->LLCopyConstructor, { LLToAddr, LLFromAddr });
         }
     } else {
         // Fallback on memcopy if no copy constructor.
@@ -4532,7 +4752,7 @@ void arco::IRGenerator::MoveStructObject(llvm::Value* LLToAddr, llvm::Value* LLF
     if (Struct->IsGeneric()) {
         Builder.CreateCall(StructTy->FoundBinding->StructInfo->LLMoveConstructor, { LLToAddr, LLFromAddr });
     } else {
-        Builder.CreateCall(Struct->MoveConstructor->LLFunction, { LLToAddr, LLFromAddr });
+        Builder.CreateCall(Struct->LLMoveConstructor, { LLToAddr, LLFromAddr });
     }
 }
 
@@ -5084,7 +5304,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
             llvm::Value* LLTempAddr =
                 CreateUnseenAlloca(LLAddress->getType()->getPointerElementType(), "tmp");
             llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
-            Builder.CreateCall(LLFunc, { LLAddress, GenRValue(Value) });
+            Builder.CreateCall(LLFunc, { LLTempAddr, GenRValue(Value) });
             // Destroy the original memory.
             CallDestructors(AddrTy, LLAddress);
             // Copy/move the new value.
@@ -5231,7 +5451,6 @@ void arco::IRGenerator::GenStoreStructRetFromCall(FuncCall* Call, llvm::Value* L
     StructDecl* Struct = StructTy->GetStruct();
     llvm::StructType* LLStructTy = StructTy->LLStructType;
 
-    // TODO: Shouldn't this consider also consider the case of a copy constructor?
     ulen StructByteSize = SizeOfTypeInBytes(LLStructTy);
     if (!StructTy->DoesNeedsDestruction() &&
         StructByteSize <= LLModule.getDataLayout().getPointerSize()) {

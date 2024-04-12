@@ -47,6 +47,8 @@ namespace arco {
         // See StructDecl for explainations.
         bool FieldsHaveAssignment;
         bool NeedsDestruction;
+        bool NeedsMove;
+        bool NeedsCopy;
         bool MustForceRaise;
 
     };

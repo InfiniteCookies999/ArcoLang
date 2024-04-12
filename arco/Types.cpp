@@ -877,6 +877,13 @@ bool arco::StructType::DoesNeedsDestruction() const {
     GET_STATE_INFO(NeedsDestruction);
 }
 
+bool arco::StructType::DoesNeedsMove() const {
+    GET_STATE_INFO(NeedsMove);
+}
+bool arco::StructType::DoesNeedsCopy() const {
+    GET_STATE_INFO(NeedsCopy);
+}
+
 bool arco::StructType::DoesMustForceRaise() const {
     GET_STATE_INFO(MustForceRaise);
 }
