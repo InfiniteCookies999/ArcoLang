@@ -90,6 +90,7 @@ namespace arco {
 
     private:
         bool ContextInitialized = false;
+        bool FailedToFindSources = false;
         ulen TotalLinesParsed = 0;
 
         llvm::SmallVector<FileScope*> FileScopes;

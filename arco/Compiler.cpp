@@ -88,8 +88,12 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     }
 
     ParseAllFiles(Sources);
-    if (Stage == PARSE_ONLY) {
+    if (FailedToFindSources) {
         return 1;
+    }
+
+    if (Stage == PARSE_ONLY) {
+        return 0;
     }
 
     i64 ParsedIn = GetTimeInMilliseconds() - ParseTimeBegin;
@@ -197,6 +201,9 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
 
 void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
     namespace fs = std::filesystem;
+
+    // First checking that the sources exists and if they don't then just stopping compilation
+    // since references and the like will be wrong.
     for (const Source& Source : Sources) {
         const char* FLPath = Source.Path.data();
         fs::path Path = fs::path(std::string_view(FLPath, Source.Path.size()));
@@ -210,11 +217,19 @@ void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
                 Logger::GlobalError(llvm::errs(),
                     "Source \"%s\" does not exist", Source.Path);
             }
-            continue;
+            FailedToFindSources = true;
         }
+    }
+    if (FailedToFindSources) {
+        return;
+    }
+    
 
+    for (const Source& Source : Sources) {
+        const char* FLPath = Source.Path.data();
+        fs::path Path = fs::path(std::string_view(FLPath, Source.Path.size()));
+    
         Module* Mod = Context.ModNamesToMods[Source.ModName];
-
         if (fs::is_directory(Path)) {
             if (Source.PartOfMainProject) {
                 std::string PathS = Path.generic_string();
