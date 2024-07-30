@@ -152,7 +152,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
     case TypeKind::Function: {
         FunctionType* FuncTy = Ty->AsFunctionType();
         llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
-        
+
 
         bool UsesParamRetSlot = false;
         Type* RetTy = FuncTy->RetTyInfo.Ty;
@@ -171,7 +171,7 @@ llvm::Type* arco::GenType(ArcoContext& Context, Type* Ty) {
         } else {
             LLRetType = GenType(Context, RetTy);
         }
-        
+
         // TODO: This relies on the calling convention so there will need
         // to be a way to attach calling convention information to the type
         // so that the compiler knows how to properly pass parameters.
@@ -288,7 +288,7 @@ llvm::FunctionType* arco::GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Fu
     llvm::Module& LLModule = Context.LLArcoModule;
     llvm::LLVMContext& LLContext = Context.LLContext;
 
-    bool UsesParamRetSlot = false;    
+    bool UsesParamRetSlot = false;
     llvm::Type* LLRetTy;
     if (Func->RetTy->GetKind() == TypeKind::Struct) {
         StructType* StructTy = Func->RetTy->AsStructType();
@@ -316,7 +316,7 @@ llvm::FunctionType* arco::GenArcoConvFuncType(ArcoContext& Context, FuncDecl* Fu
         LLRetTy = Func == Context.MainEntryFunc ? llvm::Type::getInt32Ty(LLContext)
             : GenType(Context, Func->RetTy);
     }
-    
+
     llvm::SmallVector<llvm::Type*, 4> LLParamTypes;
     ulen ImplicitParams = 0;
 
@@ -406,7 +406,7 @@ void arco::IRGenerator::GenGlobalVar(VarDecl* Global) {
 }
 
 void arco::IRGenerator::GenImplicitDefaultConstructor(StructType* StructTy) {
-    
+
     llvm::FunctionType* LLFuncType = llvm::FunctionType::get(
         llvm::Type::getVoidTy(LLContext),
         { llvm::PointerType::get(StructTy->LLStructType, 0) },
@@ -478,7 +478,7 @@ void arco::IRGenerator::GenImplicitDefaultConstructor(StructType* StructTy) {
     }
 
     Builder.CreateRetVoid();
-    
+
 }
 
 void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
@@ -518,7 +518,7 @@ void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
 
         llvm::Value* LLFieldAddr      = CreateStructGEP(LLThis, Field->LLFieldIdx);
         llvm::Value* LLOtherFieldAddr = CreateStructGEP(LLOther, Field->LLFieldIdx);
-        
+
         if (Field->Ty->GetKind() == TypeKind::Struct) {
             StructType* StructTy = Field->Ty->AsStructType();
             CopyStructObject(LLFieldAddr, LLOtherFieldAddr, StructTy);
@@ -531,13 +531,13 @@ void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
                 if (StructTy->DoesNeedsCopy()) {
 
                     llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
-                    
+
                     llvm::Value* LLArrFromStartPtr   = MultiDimensionalArrayToPointerOnly(LLOtherFieldAddr, ArrayTy);
                     llvm::Value* LLArrToStartPtr     = MultiDimensionalArrayToPointerOnly(LLFieldAddr, ArrayTy);
 
                     llvm::BasicBlock* LoopBB    = llvm::BasicBlock::Create(LLContext, "array.loop", LLFunc);
                     llvm::BasicBlock* LoopEndBB = llvm::BasicBlock::Create(LLContext, "array.end", LLFunc);
-                 
+
                     llvm::BasicBlock* LLCurBlock = Builder.GetInsertBlock();
 
                     Builder.CreateBr(LoopBB);
@@ -548,7 +548,7 @@ void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
 
                     // Store zero to start the loop.
                     LLArrayIdx->addIncoming(GetSystemUInt(0), LLCurBlock);
-                    
+
                     llvm::Value* LLFromStructAddr = CreateInBoundsGEP(LLArrFromStartPtr, { LLArrayIdx });
                     llvm::Value* LLToStructAddr   = CreateInBoundsGEP(LLArrToStartPtr  , { LLArrayIdx });
 
@@ -562,7 +562,7 @@ void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
 
                     llvm::Value* LLAraryIdxNext  = Builder.CreateAdd(LLArrayIdx, GetSystemUInt(1), "arr.idx.next");
                     llvm::Value* LLArrayInitDone = Builder.CreateICmpEQ(LLAraryIdxNext, LLTotalLinearLength, "arr.done.cond");
-                    
+
                     // Store the next index for indexing the array.
                     LLArrayIdx->addIncoming(LLAraryIdxNext, LoopBB);
                     Builder.CreateCondBr(LLArrayInitDone, LoopEndBB, LoopBB);
@@ -572,8 +572,8 @@ void arco::IRGenerator::GenImplicitCopyConstructor(StructType* StructTy) {
 
                     continue;
                 } // else fallback on memcpy
-            } 
-            
+            }
+
             ulen TotalLinearLength = ArrayTy->GetTotalLinearLength();
 
             llvm::Type* LLDestTy = GenType(BaseTy);
@@ -629,26 +629,26 @@ void arco::IRGenerator::GenImplicitMoveConstructor(StructType* StructTy) {
 
         llvm::Value* LLFieldAddr      = CreateStructGEP(LLThis, Field->LLFieldIdx);
         llvm::Value* LLOtherFieldAddr = CreateStructGEP(LLOther, Field->LLFieldIdx);
-    
+
         if (Field->Ty->GetKind() == TypeKind::Struct) {
             StructType* StructTy = Field->Ty->AsStructType();
             MoveStructObject(LLFieldAddr, LLOtherFieldAddr, StructTy);
         } else if (Field->Ty->GetKind() == TypeKind::Array) {
             ArrayType* ArrayTy = Field->Ty->AsArrayTy();
             Type* BaseTy = ArrayTy->GetBaseType();
-            
+
             if (BaseTy->GetKind() == TypeKind::Struct) {
                 StructType* StructTy = BaseTy->AsStructType();
                 if (StructTy->DoesNeedsCopy()) {
-                
+
                     llvm::Value* LLTotalLinearLength = GetSystemUInt(ArrayTy->GetTotalLinearLength());
-                    
+
                     llvm::Value* LLArrFromStartPtr   = MultiDimensionalArrayToPointerOnly(LLOtherFieldAddr, ArrayTy);
                     llvm::Value* LLArrToStartPtr     = MultiDimensionalArrayToPointerOnly(LLFieldAddr, ArrayTy);
 
                     llvm::BasicBlock* LoopBB    = llvm::BasicBlock::Create(LLContext, "array.loop", LLFunc);
                     llvm::BasicBlock* LoopEndBB = llvm::BasicBlock::Create(LLContext, "array.end", LLFunc);
-                 
+
                     llvm::BasicBlock* LLCurBlock = Builder.GetInsertBlock();
 
                     Builder.CreateBr(LoopBB);
@@ -659,7 +659,7 @@ void arco::IRGenerator::GenImplicitMoveConstructor(StructType* StructTy) {
 
                     // Store zero to start the loop.
                     LLArrayIdx->addIncoming(GetSystemUInt(0), LLCurBlock);
-                    
+
                     llvm::Value* LLFromStructAddr = CreateInBoundsGEP(LLArrFromStartPtr, { LLArrayIdx });
                     llvm::Value* LLToStructAddr   = CreateInBoundsGEP(LLArrToStartPtr  , { LLArrayIdx });
 
@@ -673,7 +673,7 @@ void arco::IRGenerator::GenImplicitMoveConstructor(StructType* StructTy) {
 
                     llvm::Value* LLAraryIdxNext  = Builder.CreateAdd(LLArrayIdx, GetSystemUInt(1), "arr.idx.next");
                     llvm::Value* LLArrayInitDone = Builder.CreateICmpEQ(LLAraryIdxNext, LLTotalLinearLength, "arr.done.cond");
-                    
+
                     // Store the next index for indexing the array.
                     LLArrayIdx->addIncoming(LLAraryIdxNext, LoopBB);
                     Builder.CreateCondBr(LLArrayInitDone, LoopEndBB, LoopBB);
@@ -719,7 +719,7 @@ void arco::IRGenerator::GenGenericStructConstructorSharedInstructions(StructType
         LLModule
     );
     LLFunc->setDSOLocal(true);
-    
+
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "shared.func.entry", LLFunc);
     Builder.SetInsertPoint(LLEntryBlock);
 
@@ -748,7 +748,7 @@ void arco::IRGenerator::GenGenericStructConstructorSharedInstructions(StructType
         } else if (!Field->LeaveUninitialized) {
             GenDefaultValue(Field->Ty, LLFieldAddr);
         }
-            
+
         ++FieldInitializingIdx;
     }
 
@@ -762,7 +762,7 @@ void arco::IRGenerator::GenGenericStructConstructorSharedInstructions(StructType
 void arco::IRGenerator::GenGlobalInitFuncBody() {
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "entry.block", Context.LLInitGlobalFunc);
 
-    LLFunc = Context.LLInitGlobalFunc;	
+    LLFunc = Context.LLInitGlobalFunc;
     Builder.SetInsertPoint(LLEntryBlock);
 
     // Iterator since it is modifiable during generation.
@@ -776,13 +776,13 @@ void arco::IRGenerator::GenGlobalInitFuncBody() {
         }
         ++Itr;
     }
-    
+
     Builder.CreateRetVoid();
 }
 
 void arco::IRGenerator::GenGlobalDestroyFuncBody() {
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "entry.block", Context.LLDestroyGlobalsFunc);
-        
+
     LLFunc = Context.LLDestroyGlobalsFunc;
     Builder.SetInsertPoint(LLEntryBlock);
 
@@ -794,7 +794,7 @@ void arco::IRGenerator::GenGlobalDestroyFuncBody() {
 }
 
 void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
-    
+
     // TODO: Optimization: GenFuncLinkName already creates the linkage
     // name so this is creating it twice. Although this relies on Identifier
     // and the other on a Twine.
@@ -810,7 +810,7 @@ void arco::IRGenerator::GenFuncDecl(FuncDecl* Func) {
             return;
         }
     }
-    
+
     // TODO: Native functions will not need to return data structures
     //       in the same way.
 
@@ -881,7 +881,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 
     CFunc  = Func;
     LLFunc = Func->LLFunction;
-    
+
     // Entry block for the function.
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
     Builder.SetInsertPoint(LLEntryBlock);
@@ -1031,7 +1031,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
     if (LLFuncEndBB) {
         POP_SCOPE();
     }
-    
+
     // Branching to LLFuncEndBB if its needed.
     if (LLFuncEndBB && Builder.GetInsertBlock()->empty()) {
         // If the current block is empty we can just use
@@ -1065,7 +1065,7 @@ void arco::IRGenerator::GenFuncBody(FuncDecl* Func) {
 
     llvm::Instruction* LLRet = nullptr;
     if (LLFuncEndBB) {
-        
+
         CallDestructors(AlwaysInitializedDestroyedObjects);
         // Call global destructors after destroying local values.
         if (Func == Context.MainEntryFunc) {
@@ -1249,7 +1249,7 @@ void arco::IRGenerator::GenGlobalVarDecl(VarDecl* Global) {
 
 llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
     llvm::Value* LLValue = GenNode(E);
-    
+
     switch (E->Kind) {
     case AstKind::IDENT_REF:
     case AstKind::ARRAY_ACCESS:
@@ -1259,7 +1259,7 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
         // TODO: Probably want to do the other checks sitll if it is
         //       a moveobj expr.
     case AstKind::MOVEOBJ: {
-        
+
         if (E->Is(AstKind::FIELD_ACCESSOR)) {
             FieldAccessor* FieldAcc = static_cast<FieldAccessor*>(E);
             if (FieldAcc->IsArrayLength || FieldAcc->EnumValue) {
@@ -1306,7 +1306,7 @@ llvm::Value* arco::IRGenerator::GenRValue(Expr* E) {
         break;
     }
     }
-    
+
     if (E->CastTy) {
         LLValue = GenCast(E->CastTy, E->Ty, LLValue);
         if (E->CastTy->GetKind() == TypeKind::Slice ||
@@ -1375,9 +1375,9 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
     if (!LLFuncEndBB) {
         // Only a single return so the instruction has full control over
         // returning and must create the return instructions.
-    
+
         llvm::Value* LLRetValue = nullptr;
-        
+
         if (CFunc->RetTy->GetKind() == TypeKind::Struct) {
             if (CFunc->UsesOptimizedIntRet) {
                 LLRetValue = GenReturnValueForOptimizedStructAsInt(GenNode(Ret->Value));
@@ -1385,7 +1385,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             else if (Ret->Value->Is(AstKind::IDENT_REF) && static_cast<IdentRef*>(Ret->Value)->Var->IsLocalRetValue) {
                 // Do not need to move the object because we are returning a locally defined
                 // value which already points to the return address.
-                // 
+                //
                 // Ex.
                 //     'fn func() A {
                 //         a A = A{ 44, 22 };
@@ -1423,7 +1423,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
         // this point.
         CallDestructors(AlwaysInitializedDestroyedObjects);
         DestroyCurrentlyInitializedObjects();
-    
+
         if (LLRetValue) {
             if (CFunc == Context.MainEntryFunc &&
                 Ret->Value                     &&
@@ -1452,19 +1452,19 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             llvm::Value* LLToAddr = CFunc->UsesParamRetSlot
                                           ? GetElisionRetSlotAddr(CFunc)
                                           : LLRetAddr;
-            
+
             if (CFunc->UsesOptimizedIntRet) {
                 // TODO: This can actually be optimized further by checking if the thing being
                 // returned is a struct initializer then instead of creating the struct
                 // just generate it's integer value and store it directly into the return slot.
-            
+
                 llvm::Value* LLRetValue = GenNode(Ret->Value);
-                
+
                 // Bitcasting the return slot to the an integer address to store the optimized integer
                 // return value.
                 llvm::Type* LLRetTy = LLFunc->getReturnType();
                 LLToAddr = Builder.CreateBitCast(LLToAddr, llvm::PointerType::get(LLRetTy, 0));
-                
+
                 Builder.CreateStore(GenReturnValueForOptimizedStructAsInt(LLRetValue), LLToAddr);
             }
             else if (Ret->Value->Is(AstKind::IDENT_REF) &&
@@ -1489,7 +1489,7 @@ llvm::Value* arco::IRGenerator::GenReturn(ReturnStmt* Ret) {
             }
             // Checking for cases in which no no existing LValue exists and the value needs
             // to be passed to prevent irrelevent copies.
-            // 
+            //
             // TODO: If we checked to make sure there are no lvalues in the ternary operator
             //       we could also get away with it here!
             else if (Ret->Value->Is(AstKind::STRUCT_INITIALIZER) ||
@@ -1555,7 +1555,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "loop.end", LLFunc);
     llvm::BasicBlock* LLBodyBB = llvm::BasicBlock::Create(LLContext, "loop.body", LLFunc);
     llvm::BasicBlock* LLCondBB = llvm::BasicBlock::Create(LLContext, "loop.cond", LLFunc);
-    
+
     LoopBreakStack.push_back(LLEndBB);
     LoopContinueStack.push_back(LLCondBB);
 
@@ -1563,7 +1563,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     EMIT_DI(GetDIEmitter()->EmitScopeStart(Loop->Scope.StartLoc));
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
-    GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);	
+    GenLoopCondJump(LLCondBB, LLBodyBB, LLEndBB, Loop->Cond);
     EMIT_DI(EmitDebugLocation(Loop));
 
     GenBlock(LLBodyBB, Loop->Scope.Stmts);
@@ -1580,7 +1580,7 @@ llvm::Value* arco::IRGenerator::GenPredicateLoop(PredicateLoopStmt* Loop) {
     Builder.SetInsertPoint(LLEndBB);
 
     EMIT_DI(GetDIEmitter()->EmitScopeEnd());
-    
+
     return nullptr;
 }
 
@@ -1606,7 +1606,7 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
     EMIT_DI(GetDIEmitter()->EmitScopeStart(LScope.StartLoc));
     PUSH_SCOPE();
     LocScope->IsLoopScope = true;
-    
+
     // Generating the condition block
     Builder.CreateBr(LLCondBB);
     Builder.SetInsertPoint(LLCondBB);
@@ -1645,7 +1645,7 @@ llvm::Value* arco::IRGenerator::GenRangeExprLoop(Range* Rg, LexScope& LScope, Va
     if (LLIncBB) {
 
         Builder.SetInsertPoint(LLIncBB);
-        
+
         // Increment the index.
         llvm::Value* LLIndexValue = CreateLoad(LLIndex);
         LLIndexValue = Builder.CreateAdd(LLIndexValue, GetOneValue(Rg->Ty), "inc");
@@ -1751,7 +1751,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
         LLLength = CreateLoad(CreateStructGEP(LLIterOnExpr, 0));
         LLPtrToArrStart = CreateLoad(CreateStructGEP(LLIterOnExpr, 1));
     }
-    
+
     llvm::Value* LLPtrToArrEnd = CreateInBoundsGEP(LLPtrToArrStart, { LLLength });
     LLPtrToArrEnd->setName("arr.itr.end");
     Builder.CreateStore(LLPtrToArrStart, LLArrItrPtrAddr);
@@ -1778,7 +1778,7 @@ llvm::Value* arco::IRGenerator::GenIteratorLoop(IteratorLoopStmt* Loop) {
     llvm::Value* LLArrPtrValue = CreateLoad(LLArrItrPtrAddr);
     LLArrPtrValue = LoadIteratorLoopValueIfNeeded(LLArrPtrValue, Loop->VarVal->Ty, ContainerTy->GetElementType());
     // TODO: Doesn't this need to cast since SemAnalysis uses IsAssignableTo?
-    
+
     Builder.CreateStore(LLArrPtrValue, Loop->VarVal->LLAddress);
 
     PUSH_SCOPE();
@@ -1854,7 +1854,7 @@ llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
                     });
             }
         }
-        
+
         llvm::Value* LLFree = llvm::CallInst::CreateFree(LLArrayPtr, Builder.GetInsertBlock());
         Builder.Insert(LLFree);
     } else {
@@ -1870,7 +1870,7 @@ llvm::Value* arco::IRGenerator::GenDelete(DeleteStmt* Delete) {
         llvm::Value* LLFree = llvm::CallInst::CreateFree(LLValue, Builder.GetInsertBlock());
         Builder.Insert(LLFree);
     }
-    
+
     EMIT_DI(EmitDebugLocation(Delete));
     return nullptr;
 }
@@ -1919,7 +1919,7 @@ llvm::Value* arco::IRGenerator::GenNestedScope(NestedScopeStmt* NestedScope) {
 
 llvm::Value* arco::IRGenerator::GenRaise(RaiseStmt* Raise) {
     EncounteredReturn = true; // TODO: Is this meant to be here?
-    
+
     StructType* RaisedStructTy = Raise->StructInit->Ty->AsStructType();
     StructDecl* RaisedStruct   = RaisedStructTy->GetStruct();
 
@@ -1974,7 +1974,7 @@ llvm::Value* arco::IRGenerator::GenInitObj(InitObjStmt* InitObj) {
 }
 
 void arco::IRGenerator::GenRaiseReturnZeroedValue() {
-    
+
     if (FieldInitializingIdx != -1 && FieldInitializingIdx >  0) {
         // Oh god we are initializing a constructor we have to roll back the values
         // that were initialized.
@@ -2082,7 +2082,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
                 PtrAddr = BinOp->LHS->Ty->IsPointer() ? LLLHS : LLRHS;
                 Add     = BinOp->LHS->Ty->IsPointer() ? LLRHS : LLLHS;
             }
- 
+
             return CreateInBoundsGEP(PtrAddr, { Add });
         } else {
             return GenAdd(LLLHS, LLRHS, BinOp->Ty);
@@ -2274,7 +2274,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         llvm::Value* LLLHS = GenNode(BinOp->LHS);
         llvm::Value* LLRHS = GenRValue(BinOp->RHS);
         llvm::Value* LLLHSRV = CreateLoad(LLLHS);
-        
+
         llvm::Value* V;
         if (BinOp->Ty->IsSigned()) {
             // Arithmetic shift so that the sign is considered
@@ -2409,7 +2409,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
                 return Builder.CreateICmpSGT(LLLHS, LLRHS);
             } else {
                 return Builder.CreateICmpUGT(LLLHS, LLRHS);
-            }	
+            }
         }
     }
     case TokenKind::LT_EQ: {
@@ -2430,7 +2430,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
                 return Builder.CreateICmpSLE(LLLHS, LLRHS);
             } else {
                 return Builder.CreateICmpULE(LLLHS, LLRHS);
-            }	
+            }
         }
     }
     case TokenKind::GT_EQ: {
@@ -2451,7 +2451,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
                 return Builder.CreateICmpSGE(LLLHS, LLRHS);
             } else {
                 return Builder.CreateICmpUGE(LLLHS, LLRHS);
-            }	
+            }
         }
     }
     case TokenKind::AMP_AMP: { // &&
@@ -2487,7 +2487,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 
         llvm::BasicBlock* LLEndBB     = llvm::BasicBlock::Create(LLContext, "and.end", LLFunc);
         llvm::BasicBlock* LLLHSTrueBB = llvm::BasicBlock::Create(LLContext, "and.lhs.true", LLFunc);
-        
+
         // Generate children
         GenBranchOnCond(BinOp->LHS, LLLHSTrueBB, LLEndBB);
 
@@ -2510,7 +2510,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         // Need to re-obtain the last block since the condiition might have
         // added more blocks.
         LLLHSTrueBB = Builder.GetInsertBlock();
-        
+
         Builder.CreateBr(LLEndBB);
         Builder.SetInsertPoint(LLEndBB);
         LLResPHINode->addIncoming(LLRHSCondV, LLLHSTrueBB);
@@ -2548,7 +2548,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
         // Need to re-obtain the last block since the condiition might have
         // added more blocks.
         LLLHSFalseBB = Builder.GetInsertBlock();
-        
+
         Builder.CreateBr(LLEndBB);
         Builder.SetInsertPoint(LLEndBB);
         LLResPHINode->addIncoming(LLRHSCondV, LLLHSFalseBB);
@@ -2562,7 +2562,7 @@ llvm::Value* arco::IRGenerator::GenBinaryOp(BinaryOp* BinOp) {
 }
 
 llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
-    
+
     switch (UniOp->Op) {
     case TokenKind::PLUS_PLUS: case TokenKind::POST_PLUS_PLUS: {
         llvm::Value* LLVal  = GenNode(UniOp->Value);
@@ -2615,10 +2615,10 @@ llvm::Value* arco::IRGenerator::GenUnaryOp(UnaryOp* UniOp) {
         //
         // It is possible that it is not in cases in which its a pointer
         // as a result of some operation. Examples:
-        // 
+        //
         // Example 1:  '*(a + 4)'    (where 'a' is a pointer)
         // Example 2:  'int a = *f()'
-        // 
+        //
         // TODO: There is probably a cleaner way of doing this.
         //       Some type of IsLValue() function?
         if (UniOp->Value->Is(AstKind::IDENT_REF) || UniOp->Value->Is(AstKind::FIELD_ACCESSOR) ||
@@ -2705,7 +2705,7 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
         // TODO: Generics
         return Func->LLFunction;
     }
-    
+
     VarDecl* Var = IRef->Var;
     if (Var->IsGeneric()) {
         return IRef->FoundBinding->LLValue;
@@ -2720,7 +2720,7 @@ llvm::Value* arco::IRGenerator::GenIdentRef(IdentRef* IRef) {
     if (Var->IsGlobal) {
         GenGlobalVarDecl(Var);
     }
-    
+
     if (Var->IsField()) {
         return CreateStructGEP(LLThis, Var->LLFieldIdx);
     } else {
@@ -2754,9 +2754,9 @@ llvm::Value* arco::IRGenerator::GenFieldAccessor(FieldAccessor* FieldAcc) {
             return FieldAcc->Var->LLComptimeVal;
         }
     }
-    
+
     Expr* Site = FieldAcc->Site;
-    llvm::Value* LLSite;	
+    llvm::Value* LLSite;
     if (Site->Is(AstKind::FUNC_CALL) && Site->Ty->GetKind() == TypeKind::Struct) {
         FuncCall* Call = static_cast<FuncCall*>(Site);
         LLSite = CreateUnseenAlloca(GenType(Call->Ty), "tmp.obj");
@@ -2810,7 +2810,7 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call,
     llvm::SmallVector<llvm::Value*> LLArgs;
     LLArgs.resize(Call->Args.size() + (UsesParameterRetSlot ? 1 : 0));
     ulen ArgIdx = 0;
-    
+
     if (UsesParameterRetSlot) {
         if (!LLAddr) {
             // Strange, but the user has decided to ignore
@@ -2821,11 +2821,11 @@ llvm::Value* arco::IRGenerator::GenFuncCall(FuncCall* Call,
 
         LLArgs[ArgIdx++] = LLAddr;
     }
-    
+
     for (ulen i = 0; i < Call->Args.size(); i++) {
         LLArgs[ArgIdx++] = GenCallArg(Call->Args[i], false);
     }
-    
+
     llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(
         GenType(Call->Site->Ty)->getPointerElementType());
     llvm::Value* LLCallee = GenRValue(Call->Site);
@@ -2857,8 +2857,8 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                                                    llvm::SmallVector<NamedValue>& NamedArgs,
                                                    llvm::Value* LLAddr,
                                                    bool VarArgsPassAlong) {
-    
-    
+
+
     if (CalledFunc->LLVMIntrinsicID) {
         return GenLLVMIntrinsicCall(CallNode->Loc, CalledFunc, Args, NamedArgs);
     }
@@ -2902,10 +2902,10 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                 LLAddr = CreateUnseenAlloca(GenType(CallNode->Ty), "tmp.struct");
                 AddObjectToDestroyOpt(CallNode->Ty, LLAddr);
             }
-            
+
             LLArgs[ArgOffset++] = LLAddr;
         } else {
-            
+
             FuncCall* Call = static_cast<FuncCall*>(CallNode);
             llvm::Value* LLThisPass;
             if (Call->Site->Is(AstKind::FIELD_ACCESSOR)) {
@@ -2913,14 +2913,14 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             } else {
                 // Calling one member function from another.
                 LLThisPass = LLThis;
-            
-                
+
+
             }
             if (CalledFunc->MappedInterfaceFunc) {
                 // Calling a virtual function so need to adjust the base
                 // address which will then readjust it back at the called
                 // function.
-                
+
                 StructDecl* Struct = CalledFunc->Struct;
                 llvm::StructType* LLStructTy = CalledFunc->GetLLStructType();
                 ulen InterfaceOffset = 0;
@@ -2971,7 +2971,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
     } else if (ImplicitlyReturnsErrors) {
         LLArgs[ArgOffset++] = GetErrorRetAddr(CFunc);
     }
-    
+
 
     if (!CalledFunc->IsVariadic) {
         for (ulen i = 0; i < Args.size(); i++) {
@@ -3006,13 +3006,13 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                 llvm::Value* LLElmAddr = GetArrayIndexAddress(LLArray, GetSystemInt(ArrayIdx));
                 Builder.CreateStore(GenCallArg(Args[i], ImplicitPtr), LLElmAddr);
             }
-        
+
             llvm::Value* LLVarArgs = CreateUnseenAlloca(GenType(LastParam->Ty), "tmp.varargs");
             llvm::Value* LLSliceLengthAddr = CreateStructGEP(LLVarArgs, 0);
             Builder.CreateStore(GetSystemInt(NumVarArgs), LLSliceLengthAddr);
             llvm::Value* LLSliceArrPtrAddr = CreateStructGEP(LLVarArgs, 1);
             Builder.CreateStore(DecayArray(LLArray), LLSliceArrPtrAddr);
-        
+
             LLArgs[ArgOffset++] = CreateLoad(LLVarArgs);
         }
     }
@@ -3038,7 +3038,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
                     LLArgs[ArgOffset + Param->ParamIdx] = GenCallArg(Param->Assignment, false);
                 }
             }
-        }    
+        }
     }
 
     llvm::Value* LLRetValue;
@@ -3050,7 +3050,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         } else {
             LLCalledFunc = CalledFunc->LLFunction;
         }
-        
+
         // -- DEBUG
         // llvm::outs() << "Calling function with name: " << CalledFunc->Name << "\n";
         // llvm::outs() << "Types passed to function:\n";
@@ -3072,7 +3072,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
         if (Interface->NumFuncs == 1) {
             llvm::Value* LLMappedInterfaceFunc = CreateLoad(LLInterfaceAddr);
             llvm::FunctionType* LLFuncTy = llvm::cast<llvm::FunctionType>(LLMappedInterfaceFunc->getType()->getPointerElementType());
-            
+
             // -- DEBUG
             // llvm::outs() << "Calling virtual interface function with name: " << CalledFunc->Name << "\n";
             // llvm::outs() << "Types passed to function:\n";
@@ -3085,7 +3085,7 @@ llvm::Value* arco::IRGenerator::GenFuncCallGeneral(Expr* CallNode,
             // }
             // llvm::outs() << "\n";
 
-            
+
             LLRetValue = Builder.CreateCall(LLFuncTy, LLMappedInterfaceFunc, LLArgs);
         } else {
             llvm::Value* LLOffsetIntoVTable = CreateLoad(LLInterfaceAddr);
@@ -3176,7 +3176,7 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
                 llvm::Value* LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
                 // TODO: Do we need to move the object here?
                 GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
-                
+
                 // It is passed as a pointer so the current function has ownership over the memory.
                 AddObjectToDestroyOpt(Arg->Ty, LLArg);
 
@@ -3233,7 +3233,7 @@ llvm::Value* arco::IRGenerator::GenCallArg(Expr* Arg, bool ImplictPtr) {
 
         LLArg = CreateUnseenAlloca(GenType(Arg->Ty), "arg.tmp");
         GenStoreStructRetFromCall(static_cast<FuncCall*>(Arg), LLArg);
-        
+
         // TODO: If there ends up being further optimizations such that parameters
         // take into account similar constraints to return values where structs
         // get passed as integers/pointers depending on memory size then this will
@@ -3406,14 +3406,14 @@ llvm::Constant* arco::IRGenerator::GenConstArray(Array* Arr, ArrayType* DestTy) 
 }
 
 void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayType* DestTy) {
-    
+
     Type* ElmTy = DestTy->GetElementType();
     bool ElmsAreArrs = ElmTy->GetKind() == TypeKind::Array;
 
     bool AddrIsPtr = LLAddr->getType()->isPointerTy() && !LLAddr->getType()->getPointerElementType()->isArrayTy();
-    
+
     for (ulen i = 0; i < DestTy->GetLength(); i++) {
-        
+
         // Because the address might come from a heap allocation it is possible
         // it refers to a pointer therefore it becomes necessary to check if it
         // is a pointer first.
@@ -3424,7 +3424,7 @@ void arco::IRGenerator::FillArrayViaGEP(Array* Arr, llvm::Value* LLAddr, ArrayTy
         } else {
             LLAddrAtIndex = GetArrayIndexAddress(LLAddr, LLIndex);
         }
-        
+
         if (i < Arr->Elements.size()) {
             Expr* Elm = Arr->Elements[i];
             if (ElmsAreArrs) {
@@ -3485,13 +3485,13 @@ llvm::Value* arco::IRGenerator::GenTypeCast(TypeCast* Cast) {
 }
 
 llvm::Value* arco::IRGenerator::GenTypeBitCast(TypeBitCast* Cast) {
-   
+
     llvm::Value* LLValue = GenRValue(Cast->Value);
     Type* FromType = Cast->Value->Ty;
     // Enum values may be floats and which are not indexable so need to load.
     //
     if (FromType->UnboxGeneric()->GetRealKind() == TypeKind::Enum) {
-        
+
         // KEEP static cast here because AsStructTy will strip away enum information.
         EnumDecl* Enum = static_cast<StructType*>(FromType->UnboxGeneric())->GetEnum();
         FromType = Enum->ValuesType;
@@ -3521,7 +3521,7 @@ llvm::Value* arco::IRGenerator::GenStructInitializer(StructInitializer* StructIn
             StructInit->VarArgsPassAlong
         );
     }
-    
+
     // This must go after GenFuncCallGeneral because if the constructor raises an
     // error then the GenFuncCallGeneral code does special work when LLAddr is nullptr
     // to make sure to only clean up the object if it is actually initialized.
@@ -3542,7 +3542,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
                                           llvm::SmallVector<NamedValue>& NamedArgs) {
 
     // Initializing the VTable and storing pointers to it.
-    
+
     // TODO: Language optimization: This is probably pointless if the
     //       structures only has like a single interface.
     if (!Struct->Interfaces.empty()) {
@@ -3554,7 +3554,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
         Expr* Value = Args[i];
         VarDecl* Field = Struct->Fields[i];
         if (Field->IsComptime()) continue;
-        
+
         llvm::Value* LLFieldAddr = CreateStructGEP(LLAddr, Field->LLFieldIdx);
         GenAssignment(LLFieldAddr, Field->Ty, Value, Field->HasConstAddress);
     }
@@ -3583,7 +3583,7 @@ void arco::IRGenerator::GenStructInitArgs(llvm::Value* LLAddr,
         for (; i < Struct->Fields.size(); i++) {
             VarDecl* Field = Struct->Fields[i];
             if (Field->IsComptime()) continue;
-            
+
             auto Itr = std::find_if(NamedArgs.begin(), NamedArgs.end(),
                 [Field](const NamedValue& A) {
                     return A.VarRef == Field;
@@ -3609,14 +3609,14 @@ llvm::Value* arco::IRGenerator::GenHeapAlloc(HeapAlloc* Alloc, llvm::Value* LLAd
         llvm::Value* LLTotalLinearLength = GenRValue(ArrayTy->GetLengthExpr());
         while (ArrayTy->GetElementType()->GetKind() == TypeKind::Array) {
             ArrayTy = ArrayTy->GetElementType()->AsArrayTy();
-            LLTotalLinearLength = 
+            LLTotalLinearLength =
                 Builder.CreateMul(LLTotalLinearLength, GenRValue(ArrayTy->GetLengthExpr()));
         }
 
         Type* BaseTy = ArrayTy->GetElementType();
         llvm::Type* LLBaseTy = GenType(BaseTy);
         llvm::Value* LLArrStartPtr = GenMalloc(LLBaseTy, LLTotalLinearLength);
-        
+
         if (!Alloc->Values.empty()) {
             GenAssignment(LLArrStartPtr, BaseTy, Alloc->Values[0], false);
         } else if (BaseTy->GetKind() == TypeKind::Struct) {
@@ -3704,7 +3704,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfGlobal(Type* GetTy) {
 }
 
 llvm::Constant* arco::IRGenerator::GenTypeOfType(Type* GetTy) {
-    
+
     llvm::StructType* LLTypeType          = Context.StdTypeStructType->LLStructType;
     llvm::StructType* LLArrayStructType   = Context.StdArrayTypeStructType->LLStructType;
     llvm::StructType* LLStructStructType  = Context.StdStructTypeStructType->LLStructType;
@@ -3776,7 +3776,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenTypeOfArrayTypeGlobal(ArrayType* Arr
 }
 
 llvm::GlobalVariable* arco::IRGenerator::GenTypeOfStructTypeGlobal(StructType* StructTy) {
-    
+
     StructDecl* Struct = StructTy->GetStruct();
 
     // Creating a field array.
@@ -3859,19 +3859,19 @@ llvm::Constant* arco::IRGenerator::GenTypeId(TypeId* TId) {
 }
 
 llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, bool DestroyIfNeeded) {
-    
+
     if (Tern->Ty->GetKind() == TypeKind::Struct ||
         Tern->Ty->GetKind() == TypeKind::Array) {
         llvm::BasicBlock* LLThenBB = llvm::BasicBlock::Create(LLContext, "tif.then", LLFunc);
         llvm::BasicBlock* LLEndBB  = llvm::BasicBlock::Create(LLContext, "tif.end", LLFunc);
         llvm::BasicBlock* LLElseBB = llvm::BasicBlock::Create(LLContext, "tif.else", LLFunc);
-        
+
         if (!LLAddr) {
             LLAddr = CreateUnseenAlloca(GenType(Tern->Ty), "tern.result");
         }
 
         GenBranchOnCond(Tern->Cond, LLThenBB, LLElseBB);
-        
+
         // Then block
         Builder.SetInsertPoint(LLThenBB);
         GenAssignment(LLAddr, Tern->Ty, Tern->LHS, Tern->HasConstAddress, DestroyIfNeeded);
@@ -3894,7 +3894,7 @@ llvm::Value* arco::IRGenerator::GenTernary(Ternary* Tern, llvm::Value* LLAddr, b
 }
 
 llvm::Value* arco::IRGenerator::GenVarDeclList(VarDeclList* List) {
-    
+
     for (VarDecl* Var : List->Decls) {
         GenVarDecl(Var);
     }
@@ -3904,7 +3904,7 @@ llvm::Value* arco::IRGenerator::GenVarDeclList(VarDeclList* List) {
 }
 
 llvm::Value* arco::IRGenerator::GenTryError(TryError* Try, llvm::Value* LLAddr) {
-    
+
     llvm::BasicBlock* LLCatchEndBlock = GenTryErrorPrelude(Try);
     llvm::Value* LLResult = GenNode(Try->Value);
     GenTryErrorBody(Try, LLCatchEndBlock);
@@ -3940,7 +3940,7 @@ llvm::BasicBlock* arco::IRGenerator::GenTryErrorPrelude(TryError* Try) {
 }
 
 void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* LLCatchEndBlock) {
-    
+
     // TODO: This will need to free up memory of raised error!
 
     CallDestructors(CurrentErrorBoundNeedingDestroyed);
@@ -3978,9 +3978,9 @@ void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* L
 
                 Builder.CreateCondBr(LLCond, LLIsReraiseBlock, LLImplicitReraiseEndBlock);
                 llvm::BasicBlock* LLPrevBasicBlock = Builder.GetInsertBlock();
-                
+
                 Builder.SetInsertPoint(LLIsReraiseBlock);
-                
+
                 // Place the currently caught error into the return address
                 // of the error and return.
                 llvm::Value* LLErrorRet = GetErrorRetAddr(CFunc);
@@ -3988,7 +3988,7 @@ void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* L
                 GenRaiseReturnZeroedValue();
 
                 Builder.SetInsertPoint(LLPrevBasicBlock);
-                
+
             }
         }
         if (LLImplicitReraiseEndBlock) {
@@ -4010,7 +4010,7 @@ void arco::IRGenerator::GenCatchErrorBody(CatchError* Catch, llvm::BasicBlock* L
 void arco::IRGenerator::GenTryErrorBody(TryError* Try, llvm::BasicBlock* LLCatchEndBlock) {
 
     // TODO: This will need to free up memory of raised error!
-    
+
     // End of catched expressions need to jump to the end block since no error was
     // encountered.
     Builder.CreateBr(LLCatchEndBlock);
@@ -4214,7 +4214,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
             }
         } else if (FromType->IsPointer()) {
             PointerType* PtrType = ToType->AsPointerTy();
-            
+
             if (PtrType->GetElementType()->GetKind() == TypeKind::Interface) {
                 StructDecl* Struct = FromType->AsPointerTy()->GetElementType()->AsStructType()->GetStruct();
                 return GenCastToInterface(PtrType, Struct, LLValue, LLCastType);
@@ -4241,7 +4241,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
                 return Builder.CreateBitCast(LLValue, LLCastType);
             } else {
                 // Pointer to Pointer
-                
+
                 if (FromType->Equals(Context.ErrorInterfacePtrType)) {
                     if (PtrType->GetElementType()->GetKind() == TypeKind::Struct) {
                         StructType* StructTy = PtrType->GetElementType()->AsStructType();
@@ -4251,10 +4251,10 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
                             // We want to subtract off the amount of virtual interface data from the pointer
                             // so that the pointer points to the beginning of that data structure instead of
                             // at the specific interface data.
-                            
+
                             // Have to cast to i8* first to properly offset in bytes.
                             llvm::Value* LLBitcasted = Builder.CreateBitCast(LLValue, llvm::Type::getInt8PtrTy(LLContext));
-                            
+
                             llvm::Value* Sub = GetSystemInt(-Struct->VirtualOffset);
                             LLBitcasted = CreateInBoundsGEP(LLBitcasted, { Sub });
                             LLBitcasted = Builder.CreateBitCast(LLBitcasted, LLCastType);
@@ -4299,7 +4299,7 @@ llvm::Value* arco::IRGenerator::GenCast(Type* ToType, Type* FromType, llvm::Valu
             // This happens when casting from cstr.
             // TODO: Need to make sure this constructor is actually requested for
             // generation
-            // 
+            //
             llvm::Function* LLFunc = Context.StdStringCStrConstructor->LLFunction;
             llvm::Value* LLString = CreateUnseenAlloca(GenType(ToType), "s");
             Builder.CreateCall(LLFunc, { LLString, LLValue });
@@ -4318,7 +4318,7 @@ missingCaseLab:
 
 llvm::Value* arco::IRGenerator::GenCastToInterface(PointerType* InterfacePtrTy, StructDecl* Struct, llvm::Value* LLValue, llvm::Type* LLCastType) {
     InterfaceDecl* Interface = InterfacePtrTy->GetElementType()->AsStructType()->GetInterface();
-    
+
     ulen InterfaceOffset = 0;
     for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
         if (InheritedInterface == Interface) {
@@ -4347,7 +4347,7 @@ void arco::IRGenerator::GenArrayToSlice(llvm::Value* LLSlice, llvm::Value* LLArr
 }
 
 void arco::IRGenerator::GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type* ValueTy) {
-    
+
     if (ValueTy->Equals(Context.AnyType)) {
         // TODO: performance?
         Builder.CreateStore(CreateLoad(LLValue), LLAny);
@@ -4359,14 +4359,14 @@ void arco::IRGenerator::GenToAny(llvm::Value* LLAny, llvm::Value* LLValue, Type*
     // we cannot it is declared as constant.
     Builder.CreateStore(GenTypeOfGlobal(ValueTy), LLTypeFieldAddr);
     llvm::Value* LLValueFieldAddr = CreateStructGEP(LLAny, 1);
-    
+
     if (LLValue->getType()->isArrayTy()) {
         LLValue = ArrayToPointer(LLValue);
     } else if (!LLValue->getType()->isPointerTy()) {
         // Must have been a literal so need to generate an address to point to.
         llvm::Value* LLValueAddr = CreateUnseenAlloca(LLValue->getType(), "tmp.any.val");
         // TODO: need to check for destruction here?
-        
+
         Builder.CreateStore(LLValue, LLValueAddr);
         LLValue = LLValueAddr;
     } else {
@@ -4427,7 +4427,7 @@ llvm::Constant* arco::IRGenerator::GenZeroedValue(Type* Ty) {
 }
 
 llvm::Value* arco::IRGenerator::GenMalloc(llvm::Type* LLType, llvm::Value* LLArrayLength) {
-    
+
     llvm::Value* LLMalloc = llvm::CallInst::CreateMalloc(
         Builder.GetInsertBlock(),                   // llvm::BasicBlock *InsertAtEnd
         llvm::Type::getInt64Ty(LLContext),          // llvm::Type* IntPtrTy
@@ -4438,7 +4438,7 @@ llvm::Value* arco::IRGenerator::GenMalloc(llvm::Type* LLType, llvm::Value* LLArr
         ""
     );
     Builder.Insert(LLMalloc);
-    
+
     return LLMalloc;
 }
 
@@ -4455,7 +4455,7 @@ void arco::IRGenerator::GenInternalArrayLoop(Type* BaseTy,
                                              llvm::Value* LLArrStartPtr,
                                              llvm::Value* LLTotalLinearLength,
                                              const std::function<void(llvm::PHINode*, Type*)>& CodeGenCallback) {
-    
+
     llvm::BasicBlock* BeforeLoopBB = Builder.GetInsertBlock();
     llvm::Value* LLEndOfArrPtr = CreateInBoundsGEP(LLArrStartPtr, { LLTotalLinearLength });
 
@@ -4494,14 +4494,14 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
     if (Enum->LLGlobalArray) {
         return Enum->LLGlobalArray;
     }
-    
+
     std::string LLEnumName = "__global.enum.array." + std::to_string(Context.NumGeneratedGlobalVars++);
-    
+
     llvm::ArrayType* LLArrType =
         llvm::ArrayType::get(GenType(Enum->ValuesType), Enum->Values.size());
     llvm::GlobalVariable* LLGlobalArray =
         GenLLVMGlobalVariable(LLEnumName, LLArrType);
-    
+
     //llvm::Value* LLArray;
     llvm::SmallVector<llvm::Constant*, 4> LLElements;
     LLElements.resize(Enum->Values.size());
@@ -4514,13 +4514,13 @@ llvm::Value* arco::IRGenerator::GenGlobalEnumArray(EnumDecl* Enum) {
 
     LLGlobalArray->setConstant(true);
     LLGlobalArray->setDSOLocal(true);
-    
+
     Enum->LLGlobalArray = LLGlobalArray;
     return LLGlobalArray;
 }
 
 llvm::GlobalVariable* arco::IRGenerator::GenVTable(StructDecl* Struct) {
-    
+
     ulen NumFuncs = 0;
     for (InterfaceDecl* Interface : Struct->Interfaces) {
         if (Interface->NumFuncs != 1) {
@@ -4545,7 +4545,7 @@ llvm::GlobalVariable* arco::IRGenerator::GenVTable(StructDecl* Struct) {
     }
     llvm::ArrayType* LLArrayTy = llvm::ArrayType::get(LLVoidPtrTy, NumFuncs);
     llvm::Constant* LLConstArray = llvm::ConstantArray::get(LLArrayTy, LLFuncPtrs);
-    
+
     std::string LLGlobalVarName = std::string("__vtable.") + Struct->Name.Text.str() + "." + std::to_string(Context.NumGeneratedGlobalVars++);
     llvm::GlobalVariable* LLGlobal = GenLLVMGlobalVariable(LLGlobalVarName, LLArrayTy);
     LLGlobal->setInitializer(LLConstArray);
@@ -4563,7 +4563,7 @@ llvm::Value* arco::IRGenerator::DecayArray(llvm::Value* LLArray) {
 llvm::Value* arco::IRGenerator::ArrayToPointer(llvm::Value* LLArray) {
 
     llvm::Type* LLType = LLArray->getType();
-    
+
     // case 1: [n x BaseType]*    Happens when LLArray is the address to an array.
     // case 2: [n x BaseType]     Could happen if the array is a constant global array.
     if ((LLType->isPointerTy() && LLType->getPointerElementType()->isArrayTy()) ||
@@ -4591,7 +4591,7 @@ llvm::Value* arco::IRGenerator::MultiDimensionalArrayToPointerOnly(llvm::Value* 
     // case 2: [n x BaseType][..][n x BaseType]     Could happen if the array is a constant global array.
     if ((LLType->isPointerTy() && LLType->getPointerElementType()->isArrayTy()) ||
         LLType->isArrayTy()) {
-        
+
         ulen Depth = ArrTy->GetDepthLevel();
         llvm::SmallVector<llvm::Value*, 4> LLIdxs;
         for (ulen i = 0; i < Depth + 1; i++) {
@@ -4601,7 +4601,7 @@ llvm::Value* arco::IRGenerator::MultiDimensionalArrayToPointerOnly(llvm::Value* 
     }
     // The array may be represented as:   BaseType**                          -> BaseType*  (good now its a pointer)
     //                                    [n x BaseType][..][n x BaseType]**  -> [n x BaseType][..][n x BaseType]* (No not what we want still have to GEP)
-    // 
+    //
     // This can happen because when arrays are passed to functions they are decayed
     // and the pointer to that array is stored in a local variable. So LLArray would
     // be the address of the variable storing the pointer to the array.
@@ -4762,7 +4762,7 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
     }
     if (Struct->IsGeneric()) {
         GenericStructInfo* GenStructInfo = Func->GenData->CurBinding->StructInfo;
-        
+
         llvm::Function* LLSharedFunc = GenStructInfo->LLSharedConstructorsFunc;
         ReplaceInstList LLReplaceAllocaInstructions;
         // TODO: This is not correct entirely because it will create unseen allocations
@@ -4777,9 +4777,9 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
                 llvm::Value* LLFieldAddr = CreateStructGEP(LLThis, Field->LLFieldIdx);
                 GenAssignment(LLFieldAddr, Field->Ty, InitValue, Field->HasConstAddress);
             } else if (Field->Assignment || !Field->LeaveUninitialized) {
-                
+
                 auto& Range = GenStructInfo->ConstructorsSharedInstructionRanges[FieldInitializingIdx];
-                
+
                 ReplaceInstList LLReplaceInstructions;
                 llvm::DenseMap<llvm::BasicBlock*, llvm::BasicBlock*> LLVisitedBlocks;
                 GenCommonSharedFieldInstructions(LLThis,
@@ -4788,7 +4788,7 @@ void arco::IRGenerator::GenConstructorBodyFieldAssignments(FuncDecl* Func, Struc
                                                  LLReplaceInstructions,
                                                  LLReplaceAllocaInstructions,
                                                  LLVisitedBlocks);
-                
+
             }
             ++FieldInitializingIdx;
         }
@@ -4844,7 +4844,7 @@ llvm::Function* arco::IRGenerator::GenInitVTableFunc(StructDecl* Struct, StructT
     llvm::BasicBlock* BackupInsertBlock = Builder.GetInsertBlock();
     llvm::BasicBlock* LLEntryBlock = llvm::BasicBlock::Create(LLContext, "func.entry", LLFunc);
     Builder.SetInsertPoint(LLEntryBlock);
-    
+
     llvm::Value* LLVTable = nullptr;
     for (ulen i = 0; i < Struct->Interfaces.size(); i++) {
         llvm::Value* LLFuncPtrAddr = CreateStructGEP(LLThis, i);
@@ -4866,7 +4866,7 @@ llvm::Function* arco::IRGenerator::GenInitVTableFunc(StructDecl* Struct, StructT
             if (!LLVTable) {
                 LLVTable = GenVTable(Struct);
             }
-            
+
             ulen OffsetIntoVTable = 0;
             for (InterfaceDecl* InheritedInterface : Struct->Interfaces) {
                 if (InheritedInterface == Interface) {
@@ -4882,7 +4882,7 @@ llvm::Function* arco::IRGenerator::GenInitVTableFunc(StructDecl* Struct, StructT
 
         }
     }
-    
+
     Builder.CreateRetVoid();
 
     Builder.SetInsertPoint(BackupInsertBlock);
@@ -4894,7 +4894,7 @@ std::tuple<bool, llvm::Constant*> arco::IRGenerator::GenGlobalVarInitializeValue
     Type* Ty = Global->Ty;
     Expr* Assignment = Global->Assignment;
     if (Assignment) {
-        
+
         if (Assignment->Is(AstKind::ARRAY)) {
             // Is Array
             if (Assignment->IsFoldable && Ty->GetKind() != TypeKind::Slice) {
@@ -4956,8 +4956,8 @@ void arco::IRGenerator::AddObjectToDestroyOpt(Type* Ty, llvm::Value* LLAddr) {
 
 void arco::IRGenerator::AddObjectToDestroy(Type* Ty, llvm::Value* LLAddr) {
     //  if cond {
-    //     return;  
-    //  } 
+    //     return;
+    //  }
     //  a A;  <-- if cond is encountered then 'a' does not need to
     //            be destroyed and is therefore not put into
     //            AlwaysInitializedDestroyedObjects.
@@ -5128,7 +5128,7 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 
             llvm::BasicBlock* LLLHSTrueBB = llvm::BasicBlock::Create(LLContext, "and.lhs.true", LLFunc);
             GenBranchOnCond(BinOp->LHS, LLLHSTrueBB, LLFalseBB);
-            
+
             Builder.SetInsertPoint(LLLHSTrueBB);
             GenBranchOnCond(BinOp->RHS, LLTrueBB, LLFalseBB);
             return;
@@ -5159,7 +5159,7 @@ void arco::IRGenerator::GenBranchOnCond(Expr* Cond, llvm::BasicBlock* LLTrueBB, 
 
     llvm::Value* LLCond = GenCond(Cond);
     Builder.CreateCondBr(LLCond, LLTrueBB, LLFalseBB);
-    
+
 }
 
 void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
@@ -5192,7 +5192,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
         Value->CastTy = nullptr; // Reset of generics
     } else if (Value->Is(AstKind::STRUCT_INITIALIZER)) {
         StructType* StructTy = AddrTy->AsStructType();
-        
+
         if (StructTy->TypeNeedsDestruction() && DestroyIfNeeded) {
             // Need a temporary struct so the the original memory isn't overwritten and
             // the destructor delete the original memory.
@@ -5214,7 +5214,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
             // TODO: I think this code is wrong when errors are generated since it can call copy
             // constructors of data that is invalid from the return of a call. This needs to not
             // happen.
-            
+
             if (DestroyIfNeeded && Call->Ty->TypeNeedsDestruction()) {
                 // Memory already exists and so passing in the existing address
                 // could cause problems since it might override memory (memory
@@ -5222,7 +5222,7 @@ void arco::IRGenerator::GenAssignment(llvm::Value* LLAddress,
                 // created and then the return will be for the temporary, then
                 // the original memory will be destroyed, and then finally the
                 // temporary moved into the destination address.
-             
+
                 llvm::Value* LLStructRetAddr =
                     CreateUnseenAlloca(LLAddress->getType()->getPointerElementType(), "tmp.ret");
 
@@ -5347,7 +5347,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
         } else {
             llvm::StructType* LLStructTy = StructTy->LLStructType;
             ulen TotalLinearLength = SizeOfTypeInBytes(LLStructTy);
-            
+
             // TODO: For performance may want to offset and not memset the vtable ptrs.
 
             llvm::Align LLAlignment = GetAlignment(LLStructTy);
@@ -5381,7 +5381,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
                 return;
             }
         }
-        
+
         // Memset to zero.
         ulen TotalLinearLength = ArrTy->GetTotalLinearLength();
         llvm::Type* LLBaseTy = GenType(BaseTy);
@@ -5394,7 +5394,7 @@ void arco::IRGenerator::GenDefaultValue(Type* Ty, llvm::Value* LLAddr) {
             GetLLUInt64(TotalLinearLength),
             LLAlignment
         );
-        
+
     } else {
         Builder.CreateStore(GenZeroedValue(Ty), LLAddr);
     }
@@ -5418,7 +5418,7 @@ void arco::IRGenerator::CallDefaultConstructor(llvm::Value* LLAddr, StructType* 
     } else {
         LLDefaultConstructor = Struct->LLDefaultConstructor;
     }
-    
+
     Builder.CreateCall(LLDefaultConstructor, { LLAddr });
 }
 
@@ -5476,7 +5476,7 @@ llvm::Value* arco::IRGenerator::GenLLVMIntrinsicCall(SourceLoc CallLoc,
 #define CALL_GET_DECL1(Name)                                          \
 llvm::Value* Arg0 = GenRValue(GetArg(0));                             \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(			  \
-            &LLModule, llvm::Intrinsic::##Name, { Arg0->getType() }); \
+            &LLModule, llvm::Intrinsic::Name, { Arg0->getType() }); \
 LLCall = Builder.CreateCall(LLFunc, Arg0);                            \
 break;
 
@@ -5484,7 +5484,7 @@ break;
 llvm::Value* Arg0 = GenRValue(GetArg(0));                                              \
 llvm::Value* Arg1 = GenRValue(GetArg(1));                                              \
 llvm::Function* LLFunc = llvm::Intrinsic::getDeclaration(                              \
-            &LLModule, llvm::Intrinsic::##Name, { Arg0->getType(), Arg1->getType() }); \
+            &LLModule, llvm::Intrinsic::Name, { Arg0->getType(), Arg1->getType() }); \
 LLCall = Builder.CreateCall(LLFunc, { Arg0, Arg1 });                                   \
 break;
 
@@ -5565,7 +5565,7 @@ break;
     assert(!"Failed to implement intrinsic");
         break;
     }
-    
+
     EMIT_DI(EmitDebugLocation(CallLoc));
 #undef CALL_GET_DECL1
 #undef CALL_GET_DECL2
@@ -5575,7 +5575,7 @@ break;
 void arco::IRGenerator::EmitDebugLocation(SourceLoc Loc) {
     if (CFunc) {
         CFunc->FScope->DIEmitter->EmitDebugLocation(Loc, Builder);
-    }    
+    }
 }
 
 #define VISIT_BB(BB)                   \
@@ -5589,7 +5589,7 @@ GenCommonSharedFieldInstructionsBlock( \
 );
 
 void arco::IRGenerator::GenCommonSharedFieldUnseenAllocs(
-    llvm::Function* LLSharedFunc, 
+    llvm::Function* LLSharedFunc,
     ReplaceInstList& LLReplaceUnseenInstructions
 ) {
     // Luckily any unseen allocations would appear as the first instructions
@@ -5647,7 +5647,7 @@ void arco::IRGenerator::GenCommonSharedFieldInstructions(
 
     llvm::Instruction* LLStartInst = std::get<0>(Range);
     llvm::Instruction* LLEndInst   = std::get<1>(Range);
-    
+
     llvm::Value* LLSharedThis = LLSharedFunc->getArg(0);
     llvm::BasicBlock* LLOrgEntryBlock = &LLSharedFunc->getEntryBlock();
     if (IsRoot) {
@@ -5675,7 +5675,7 @@ void arco::IRGenerator::GenCommonSharedFieldInstructions(
             }
             break;
         }
-        
+
         llvm::Instruction* LLClonedInst = LLInstPtr->clone();
         LLClonedInst->replaceUsesOfWith(LLSharedThis, LLThis);
 
@@ -5689,14 +5689,14 @@ void arco::IRGenerator::GenCommonSharedFieldInstructions(
         } else {
             LLSeenPHINodes.push_back(LLClonedInst);
         }
-        
+
         Builder.Insert(LLClonedInst);
         if (!LLClonedInst->getType()->isVoidTy()) {
             LLClonedInst->setName("ci");
         }
-        
+
         if (llvm::BranchInst* LLBranch = llvm::dyn_cast<llvm::BranchInst>(LLInstPtr)) {
-            
+
             // Have to replace the PHI nodes at the very end since they can recieve values
             // out of order.
             for (llvm::Instruction* LLPHI : LLSeenPHINodes) {
@@ -5767,9 +5767,9 @@ void arco::IRGenerator::GenCommonSharedFieldInstructions(
 
                 LLClonedInst->setOperand(2, LLClonedTrueBlock);
                 LLClonedInst->setOperand(1, LLClonedFalseBlock);
-            
+
                 if (IsRoot) {
-                    
+
                     // We know that the continuation block must be the block without
                     // a terminator.
                     llvm::BasicBlock* LLContinueBlock;
@@ -5794,7 +5794,7 @@ void arco::IRGenerator::GenCommonSharedFieldInstructions(
     }
 
     // Fixing up PHI Nodes to point to the correct blocks.
-    
+
     if (IsRoot) {
         // TODO: Optimization: Should this be moved to be ran at the location of the PHI?
         for (auto [LLOrgBB, LLClonedBB] : LLVisitedBlocks) {

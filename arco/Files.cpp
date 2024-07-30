@@ -20,7 +20,7 @@ bool arco::CreateDirectories(const std::string& Dir, const char* Type) {
     return true;
 }
 
-bool arco::ReadFile(const std::string& Path, char*& Buffer, u64& Size) {
+bool arco::ReadFile(const std::string& Path, char*& Buffer, ulen& Size) {
     std::ifstream Stream(Path, std::ios::binary | std::ios::in);
     if (!Stream.good()) {
         return false;

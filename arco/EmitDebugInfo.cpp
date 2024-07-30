@@ -63,7 +63,7 @@ void arco::DebugInfoEmitter::EmitFile(FileScope* FScope) {
 }
 
 llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool ForwardDecl) {
-	
+
 	// Ensure the compilation unit exists for this function.
 	EmitFile(Func->FScope);
 
@@ -83,7 +83,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 		//                     to perform map lookup to make a new struct type. (May be worse
 		//                     or not matter though since it increases the node size).
 		//
-		
+
 		             StructTy = Func->GetParentStructType();
 		PointerType* LLThisTy = PointerType::Create(StructTy, Context);
 
@@ -97,16 +97,16 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 		llvm::DIType* DIObjectPtrTy = DBuilder->createObjectPointerType(EmitType(LLThisTy));
 		DIFuncTys.push_back(DIObjectPtrTy);
 	}
-	
+
 	// Creating types for the parameters.
 	for (VarDecl* Param : Func->Params) {
 		DIFuncTys.push_back(EmitType(Param->Ty));
 	}
-	
+
 	// TODO: Need to take into account calling convention here.
 	llvm::DISubroutineType* DIFuncTy =
 		DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(DIFuncTys));
-	
+
 	llvm::DIScope* Scope;
 
 	if (Func->Struct) {
@@ -118,7 +118,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 	} else {
 		Scope = DebugUnit->getFile();
 	}
-	
+
 
 	llvm::DISubprogram* DIFunc = DBuilder->createFunction(
 		Scope,
@@ -140,7 +140,7 @@ llvm::DISubprogram* arco::DebugInfoEmitter::EmitFunc(FuncDecl* Func, bool Forwar
 }
 
 void arco::DebugInfoEmitter::EmitParam(FuncDecl* Func, VarDecl* Param, llvm::IRBuilder<>& IRBuilder) {
-	
+
 	llvm::DIScope* DIScope = Func->LLFunction->getSubprogram();
 
 	llvm::DILocalVariable* DIVariable = DBuilder->createParameterVariable(
@@ -338,7 +338,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 		ulen PtrSizeInBits = Context.LLArcoModule
 			                        .getDataLayout()
 			                        .getPointerSizeInBits();
-		
+
 		llvm::DIType* DITy;
 		if (Ty->GetPointerElementType(Context)->GetKind() == TypeKind::Interface) {
 			DITy = DBuilder->createPointerType(
@@ -450,7 +450,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 		} while (MoreSubscripts);
 
 		llvm::DIType* DIArrayTy = DBuilder->createArrayType(
-			ArrayTy->GetTotalLinearLength() * Context.LLArcoModule
+			static_cast<uint64_t>(ArrayTy->GetTotalLinearLength()) * Context.LLArcoModule
 			                                         .getDataLayout()
 			                                         .getTypeSizeInBits(
 														  GenType(Context, ArrayTy->GetBaseType())
@@ -485,14 +485,14 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 	case TypeKind::Struct: {
 		StructType* StructTy = Ty->AsStructType();
 		StructDecl* Struct = StructTy->GetStruct();
-		
+
 		const llvm::StructLayout* LLLayout = Context.LLArcoModule
 			                                        .getDataLayout()
 			                                        .getStructLayout(StructTy->LLStructType);
 
 		u64 SizeInBits = LLLayout->getSizeInBits();
 
-		
+
 		// NOTE: Commenting just to leave this here for future reference in case it is needed:
 		//       LLVM creates the type as distinct. I think distinct only refers to internal
 		//       storage and does not actually effect debug results. However, I could be wrong
@@ -538,7 +538,7 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 		}
 		// NOTE: Commented out for now since it seems not to matter but the clang
 		//       version actual adds the functions as part of the type information.
-		// 
+		//
 		// Also have to emit all the member functions as elements.
 		/*IRGenerator IRGen(Context);
 		for (auto& [Name, FuncList] : Struct->Funcs) {
@@ -566,13 +566,13 @@ llvm::DIType* arco::DebugInfoEmitter::EmitFirstSeenType(Type* Ty, llvm::DINode::
 }
 
 llvm::DIType* arco::DebugInfoEmitter::EmitMemberFieldType(llvm::DIType* DIScope, VarDecl* Field, u64 BitsOffset) {
-	
+
 	llvm::Type* LLType = GenType(Context, Field->Ty);
 
 	u64 SizeInBits = Context.LLArcoModule
 			                 .getDataLayout()
 			                 .getTypeSizeInBits(LLType);
-	
+
 
 	llvm::DIType* DIMemberType = DBuilder->createMemberType(
 		DIScope,
@@ -585,6 +585,6 @@ llvm::DIType* arco::DebugInfoEmitter::EmitMemberFieldType(llvm::DIType* DIScope,
 		llvm::DINode::DIFlags::FlagZero,
 		EmitType(Field->Ty)
 	);
-	
+
 	return DIMemberType;
 }

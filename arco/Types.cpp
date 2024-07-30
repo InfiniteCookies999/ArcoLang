@@ -975,7 +975,7 @@ arco::GenericType* arco::GenericType::Create(Identifier Name,
 }
 
 namespace llvm {
-    raw_ostream& llvm::operator<<(raw_ostream& OS, const arco::Type* Ty) {
+    raw_ostream& operator<<(raw_ostream& OS, const arco::Type* Ty) {
         OS << Ty->ToString();
         return OS;
     }

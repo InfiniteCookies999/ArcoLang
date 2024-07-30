@@ -14,12 +14,13 @@
 #include "EmitDebugInfo.h"
 #include "Generics.h"
 #include "Files.h"
+#include "Process.h"
 
 static i64 GetTimeInMilliseconds() {
     using std::chrono::duration_cast;
     using std::chrono::milliseconds;
     using std::chrono::seconds;
-    using std::chrono::system_clock;	
+    using std::chrono::system_clock;
 
     return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
@@ -46,7 +47,7 @@ void arco::Compiler::PreInitContext() {
 }
 
 int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
-    
+
     i64 ParseTimeBegin = GetTimeInMilliseconds();
 
     if (!OutputDirectory.empty()) {
@@ -110,7 +111,7 @@ int arco::Compiler::Compile(llvm::SmallVector<Source>& Sources) {
     }
 
     if (DisplayLLVMIR) {
-        Context.LLArcoModule.dump();
+        Context.LLArcoModule.print(llvm::outs(), nullptr);
         llvm::outs() << "\n\n";
     }
 
@@ -223,12 +224,12 @@ void arco::Compiler::ParseAllFiles(llvm::SmallVector<Source>& Sources) {
     if (FailedToFindSources) {
         return;
     }
-    
+
 
     for (const Source& Source : Sources) {
         const char* FLPath = Source.Path.data();
         fs::path Path = fs::path(std::string_view(FLPath, Source.Path.size()));
-    
+
         Module* Mod = Context.ModNamesToMods[Source.ModName];
         if (fs::is_directory(Path)) {
             if (Source.PartOfMainProject) {
@@ -264,7 +265,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
             return;
         }
     }
-    
+
     // Mapping the imports to the structs within different files.
     for (FileScope* FScope : FileScopes) {
         SemAnalyzer::ResolveImports(FScope, Context);
@@ -284,7 +285,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     if (!LLMachineTarget) {
         LLMachineTarget = CreateLLVMTargetMache();
     }
-    
+
     SetTargetToModule(Context.LLArcoModule, LLMachineTarget);
     IRGenIn += GetTimeInMilliseconds() - IRGenBegin;
 
@@ -330,7 +331,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
             Analyzer.CheckFuncDecl(Func);
         }
         SemCheckIn += GetTimeInMilliseconds() - SemCheckBegin;
-    
+
         IRGenBegin = GetTimeInMilliseconds();
         if (FoundCompileError || Stage == PARSE_SEMCHECK_ONLY) {
             if (DToGen.D->Is(AstKind::FUNC_DECL)) {
@@ -342,7 +343,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
             continue;
         }
 
-        IRGenerator IRGen(Context);	
+        IRGenerator IRGen(Context);
         if (DToGen.D->Is(AstKind::FUNC_DECL)) {
             FuncDecl* Func = static_cast<FuncDecl*>(DToGen.D);
             IRGen.GenFuncBody(Func);
@@ -356,13 +357,13 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
     }
 
     IRGenBegin = GetTimeInMilliseconds();
-    
+
     if (!FoundCompileError && Stage != PARSE_SEMCHECK_ONLY) {
         IRGenerator IRGen(Context);
         IRGen.GenGlobalInitFuncBody();
         IRGen.GenGlobalDestroyFuncBody();
     }
-    
+
     for (llvm::Function* LLDiscardFunc : Context.LLDiscardFuncs) {
         LLDiscardFunc->eraseFromParent();
     }
@@ -410,7 +411,7 @@ void arco::Compiler::CheckAndGenIR(i64& SemCheckIn, i64& IRGenIn) {
         Context.LLArcoModule.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
         llvm::NamedMDNode* LLVMIdentMD = Context.LLArcoModule.getOrInsertNamedMetadata("llvm.ident");
 		LLVMIdentMD->addOperand(llvm::MDNode::get(Context.LLContext, { llvm::MDString::get(Context.LLContext, "Arco Compiler")}));
-    
+
         // Finalizing all files for debug.
         for (FileScope* FScope : FileScopes) {
             FScope->DIEmitter->Finalize();
@@ -441,7 +442,7 @@ void arco::Compiler::Linking(const std::string& AbsoluteObjPath, const std::stri
     ClangCommand += LibPaths + Libs + AbsoluteObjPath;
     ClangCommand += " -o ";
     ClangCommand +=  AbsoluteExePath;
-    
+
     if (ShowLinkCommand) {
         llvm::outs() << ClangCommand << "\n";
     }
@@ -475,7 +476,7 @@ void arco::Compiler::ParseDirectoryFiles(Module* Mod, const std::filesystem::pat
 void arco::Compiler::ParseFile(Module* Mod, std::string RelativePath, std::string AbsolutePath) {
     SourceBuf Buffer;
     if (!ReadFile(AbsolutePath.c_str(), Buffer.Memory, Buffer.length)) {
-        Logger::GlobalError(llvm::errs(), "Failed to read file: %s. Check permissions", AbsolutePath.c_str());	
+        Logger::GlobalError(llvm::errs(), "Failed to read file: %s. Check permissions", AbsolutePath.c_str());
         return;
     }
 
@@ -514,7 +515,7 @@ bool arco::Compiler::FindStdLibStructs() {
         Context.AnyType = StructType::Create(Context.StdAnyStruct, {}, Context);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.AnyType);
     }
-    
+
     if (Context.StdErrorInterface) {
         StructType* ErrorInterfaceTy = StructType::Create(Context.StdErrorInterface, Context);
         Context.ErrorInterfacePtrType = PointerType::Create(ErrorInterfaceTy, Context);
@@ -542,7 +543,7 @@ bool arco::Compiler::FindStdLibStructs() {
         Context.StdStructTypeStructType = StructType::Create(Context.StdStructTypeStruct, {}, Context);
         Context.StdFieldTypeStructType  = StructType::Create(Context.StdFieldTypeStruct , {}, Context);
         Context.StdEnumTypeStructType   = StructType::Create(Context.StdEnumTypeStruct  , {}, Context);
-    
+
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdStringStructType);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdAnyStructType);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdTypeStructType);
@@ -550,7 +551,7 @@ bool arco::Compiler::FindStdLibStructs() {
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdStructTypeStructType);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdFieldTypeStructType);
         SemAnalyzer::FinishNonGenericStructType(Context, Context.StdEnumTypeStructType);
-    
+
         // Finding the constructor of StdStringStruct which takes the cstr as an argument.
         for (FuncDecl* Constructor : Context.StdStringStruct->Constructors) {
             if (Constructor->Params.size() != 1) continue;

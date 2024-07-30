@@ -4,6 +4,10 @@
 #include <Windows.h>
 #undef min
 #undef max
+#else
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 #endif
 
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b))
@@ -14,12 +18,12 @@
 bool arco::ExeHiddenProcess(const char* Process, std::string& Result) {
 #ifdef _WIN32
     HANDLE WriteHandleIn, WriteHandle;
-    
+
     SECURITY_ATTRIBUTES SecurityAttr;
     SecurityAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
     SecurityAttr.bInheritHandle = TRUE;
     SecurityAttr.lpSecurityDescriptor = NULL;
-    
+
     if (!CreatePipe(&WriteHandleIn, &WriteHandle, &SecurityAttr, 0)) {
         Logger::GlobalError(llvm::errs(), "Internal compiler error: Failed to create pipe for process");
         return false;
@@ -32,7 +36,7 @@ bool arco::ExeHiddenProcess(const char* Process, std::string& Result) {
     StartupInfo.hStdOutput   = WriteHandle;
     StartupInfo.hStdError    = WriteHandle;
     StartupInfo.wShowWindow  = SW_HIDE; // Don't show the newly created window.
-    
+
     if (!CreateProcessA(NULL, (char*)Process, NULL, NULL, TRUE,
                         CREATE_NEW_CONSOLE,
                         NULL,
@@ -107,5 +111,15 @@ int arco::ExeProcess(const char* Process, const char* ProcessDir, bool SeperateW
     CloseHandle(ProcessInfo.hProcess);
     CloseHandle(ProcessInfo.hThread);
     return ExitCode;
+#else
+    if(pid_t child = fork(); child == 0) {
+        chdir(ProcessDir);
+        exit(system(Process));
+    } else {
+        int exitcode = 0;
+        wait(&exitcode);
+
+        return exitcode;
+    }
 #endif
 }

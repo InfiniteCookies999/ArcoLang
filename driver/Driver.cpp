@@ -4,6 +4,7 @@
 #include "SpellChecking.h"
 
 #include "Options.h"
+#include "Process.h"
 #include "picosha3.h"
 
 #include "Files.h"
@@ -47,7 +48,7 @@ Possible options:
 
     -out=<name>
         Sets the name of the executable.
- 
+
     -emit-debug
         Emits debug information.
 
@@ -181,7 +182,7 @@ i32 ParseIntegerValue(llvm::StringRef ValPart, bool& ParseError) {
     ulen Idx = 0;
     ulen Len = ValPart.size();
     i32 IntValue = 0, PrevValue = 0;
-    
+
     if (Len == 0) {
         ParseError = true;
         return 0;
@@ -204,10 +205,10 @@ i32 ParseIntegerValue(llvm::StringRef ValPart, bool& ParseError) {
             return 0;
         }
         ++Idx;
-        
+
         PrevValue = IntValue;
         IntValue  = IntValue * 10 + ((i32)C - '0');
-    
+
         // Check for overflow
         if (IntValue / 10 < PrevValue) {
             ParseError = true;
@@ -241,7 +242,7 @@ void CreateNewProject(const char* ProjDir) {
     if (!arco::CreateDirectories(ProjDirStr + "/src", "project src")) {
         return;
     }
-    
+
     const char* MainFileContents =
 R"(import std;
 
@@ -277,7 +278,7 @@ import std.build;
 OUTPUT_NAME :: "program";
 
 fn main(argc int, argv char**) {
-    
+
     build.output_name = OUTPUT_NAME;
 
     build.add_source("src");
@@ -326,6 +327,8 @@ void RunBuildCommand(int argc, char* argv[], int i) {
     std::string OriginalHash;
 #ifdef _WIN32
     std::string BuildExePath = ".arco_build/build.exe";
+#else
+    std::string BuildExePath = ".arco_build/build";
 #endif
 
     if (std::filesystem::exists(".arco_build/build_hash.txt") &&
@@ -341,7 +344,7 @@ void RunBuildCommand(int argc, char* argv[], int i) {
     } // else just let it be empty and it will recreate the hash.
 
     char* BuildFileBuffer;
-    u64  BuildFileSize;
+    ulen  BuildFileSize;
     if (!arco::ReadFile("build.arco", BuildFileBuffer, BuildFileSize)) {
         arco::Logger::GlobalError(llvm::errs(),
             "Failed to build because the 'build.arco' file failed to open");
@@ -350,7 +353,7 @@ void RunBuildCommand(int argc, char* argv[], int i) {
 
     llvm::StringRef BuildFileContents = llvm::StringRef(BuildFileBuffer, BuildFileSize);
     std::string Hash = CreateBuildHash(BuildFileContents);
-    
+
     if (Hash != OriginalHash) {
         // Different hashes so have to recompile!
         llvm::outs() << ">> Building build.arco\n";
@@ -509,7 +512,7 @@ int main(int argc, char* argv[]) {
             Path
         });
     });
-    
+
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
             llvm::StringRef Opt = llvm::StringRef(argv[i] + 1);

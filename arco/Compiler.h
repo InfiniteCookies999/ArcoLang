@@ -1,17 +1,13 @@
 #ifndef ARCO_COMPILER_H
 #define ARCO_COMPILER_H
 
+#include <filesystem>
+
 #include "Prelude.h"
 #include "Identifier.h"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
-
-namespace std {
-    namespace filesystem {
-        class path;
-    }
-}
 
 namespace arco {
 
@@ -76,7 +72,7 @@ namespace arco {
         int Compile(llvm::SmallVector<Source>& Sources);
 
         void PreInitContext();
-    
+
         void AddLibrary(const char* LibName) { Libraries.push_back(LibName); }
         void AddLibraryPath(const char* LibPath) { LibrarySearchPaths.push_back(LibPath); }
 
